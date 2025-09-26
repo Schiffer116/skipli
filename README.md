@@ -1,6 +1,6 @@
 # Real-Time Board Management Tool
 
-![](demo.mp4)
+[![Watch the demo](https://raw.githubusercontent.com/Schiffer116/skipli/master/thumbnail.png)](https://raw.githubusercontent.com/Schiffer116/skipli/master/demo.mp4)
 
 ## Overview
 
