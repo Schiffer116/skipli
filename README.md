@@ -1,6 +1,6 @@
 # Real-Time Board Management Tool
 
-[Watch the demo](demo.gif)
+![Watch the demo](demo.gif)
 
 ## Overview
 
