@@ -1,0 +1,18 @@
+{
+  "name": "skipli",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "pnpm --prefix api start",
+    "build": "pnpm ui:install && pnpm ui:build && pnpm api:install && pnpm api:build",
+    "api:install": "pnpm --prefix api install",
+    "api:build": "pnpm --prefix api build",
+    "ui:install": "pnpm --prefix ui install",
+    "ui:build": "pnpm --prefix ui build"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.15.1"
+}
