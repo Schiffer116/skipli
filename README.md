@@ -15,7 +15,7 @@ This project is a **real-time board management tool** that allows teams to colla
 ## Tech Stack
 
 - **Frontend**: React, TypeScript, TailwindCSS
-- **Backend**: Node.js, TypeScript, Express, Socket.io
+- **Backend**: Node.js, TypeScript, Express, Firebase, Socket.io
 
 ## Running the app
 
