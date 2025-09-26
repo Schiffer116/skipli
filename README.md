@@ -1,6 +1,6 @@
 # Real-Time Board Management Tool
 
-[Watch the demo](https://youtu.be/beR_QLP0Mew)
+[Watch the demo](demo.gif)
 
 ## Overview
 
