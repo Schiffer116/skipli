@@ -15,7 +15,7 @@ import (
 func main() {
 	server := server.NewServer()
 
-	// On Lambda (behind a function URL, which sends API Gateway v2 payloads)
+	// On Lambda (behind an API Gateway HTTP API, which sends v2 payloads)
 	// serve the same router through the adapter instead of a port.
 	if os.Getenv("AWS_LAMBDA_RUNTIME_API") != "" {
 		lambda.Start(httpadapter.NewV2(server.Router).ProxyWithContext)

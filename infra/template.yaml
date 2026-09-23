@@ -1,7 +1,8 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
-  Skipli - React frontend on S3 + CloudFront, Go API on Lambda (function URL)
-  served under /api/* on the same CloudFront domain, DynamoDB single table.
+  Skipli - React frontend on S3 + CloudFront, Go API on Lambda (behind an
+  HTTP API) served under /api/* on the same CloudFront domain, DynamoDB
+  single table.
 
 Parameters:
   CodeBucket:
@@ -123,29 +124,50 @@ Resources:
           APP_EMAIL_PASSWORD: !Ref AppEmailPassword
           JWT_SECRET: !Ref JwtSecret
 
-  # Public URL, but only CloudFront is meant to call it; the API does its
-  # own JWT auth. (IAM auth + OAC would need clients to sign request bodies.)
-  ApiFunctionUrl:
-    Type: AWS::Lambda::Url
+  # HTTP API in front of the function (Lambda function URLs aren't
+  # available through CloudFormation in every region, e.g. ap-southeast-7).
+  # It sends the same v2 payload the Go adapter expects. Its default
+  # endpoint is public, but only CloudFront is meant to call it; the API
+  # does its own JWT auth.
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
     Properties:
-      TargetFunctionArn: !Ref ApiFunction
-      AuthType: NONE
+      Name: !Sub ${AWS::StackName}-api
+      ProtocolType: HTTP
 
-  ApiFunctionUrlPermission:
-    Type: AWS::Lambda::Permission
+  HttpApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
     Properties:
-      FunctionName: !Ref ApiFunction
-      Action: lambda:InvokeFunctionUrl
-      Principal: "*"
-      FunctionUrlAuthType: NONE
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ApiFunction.Arn
+      PayloadFormatVersion: "2.0"
 
-  ApiFunctionInvokePermission:
+  HttpApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: $default
+      Target: !Sub integrations/${HttpApiIntegration}
+
+  # $default stage: no stage prefix, so /api/... reaches the router as-is.
+  HttpApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: $default
+      AutoDeploy: true
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 100
+        ThrottlingRateLimit: 50
+
+  HttpApiInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !Ref ApiFunction
       Action: lambda:InvokeFunction
-      Principal: "*"
-      InvokedViaFunctionUrl: true
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*
 
   # --- Frontend -------------------------------------------------------------
 
@@ -246,7 +268,7 @@ Resources:
             S3OriginConfig:
               OriginAccessIdentity: ""
           - Id: api
-            DomainName: !Select [2, !Split ["/", !GetAtt ApiFunctionUrl.FunctionUrl]]
+            DomainName: !Select [2, !Split ["/", !GetAtt HttpApi.ApiEndpoint]]
             CustomOriginConfig:
               OriginProtocolPolicy: https-only
               OriginSSLProtocols: [TLSv1.2]

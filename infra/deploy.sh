@@ -35,6 +35,25 @@ stack_output() {
     --query "Stacks[0].Outputs[?OutputKey=='$2'].OutputValue" --output text
 }
 
+# `cloudformation deploy` can't update a stack left in one of these states
+# by an earlier failure; say how to clear it instead of a raw API error.
+check_stack() {
+  local status
+  status="$(aws cloudformation describe-stacks --stack-name "$1" \
+    --query 'Stacks[0].StackStatus' --output text 2>/dev/null || true)"
+  case "$status" in
+    ROLLBACK_COMPLETE | ROLLBACK_FAILED | DELETE_FAILED)
+      echo "Stack $1 is in $status and must be deleted before redeploying:" >&2
+      echo "  aws cloudformation delete-stack --stack-name $1" >&2
+      echo "(for $STACK_NAME-artifacts, empty its bucket first)" >&2
+      exit 1
+      ;;
+  esac
+}
+
+check_stack "$STACK_NAME-artifacts"
+check_stack "$STACK_NAME"
+
 echo "==> Artifacts bucket"
 aws cloudformation deploy \
   --stack-name "$STACK_NAME-artifacts" \
