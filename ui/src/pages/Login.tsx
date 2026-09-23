@@ -17,7 +17,7 @@ export default function Login() {
     e.preventDefault();
 
     sessionStorage.setItem("email", email);
-    fetch("/api/auth/email", {
+    fetch("/api/auth/send", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -29,8 +29,8 @@ export default function Login() {
   };
 
   return (
-    <div className="w-full min-h-screen bg-gradient-to-br from-orange-50 to-orange-100 flex justify-center items-center text-center">
-      <Card className="bg-card border-border shadow-sm w-full max-w-md">
+    <div className="w-full min-h-screen bg-background border-t-[3rem] border-nav flex justify-center items-center text-center">
+      <Card className="w-full max-w-md border-t-4 border-t-primary">
         <CardHeader>
           <img src="skipli.png" alt="Logo" className="h-20 w-auto mx-auto" />
           <CardDescription>Enter your email to continue</CardDescription>

@@ -33,8 +33,8 @@ export default function Verify() {
   };
 
   return (
-    <div className="w-full min-h-screen bg-gradient-to-br from-orange-50 to-orange-100 flex justify-center items-center text-center">
-      <Card className="bg-card border-border shadow-sm w-full max-w-md">
+    <div className="w-full min-h-screen bg-background border-t-[3rem] border-nav flex justify-center items-center text-center">
+      <Card className="w-full max-w-md border-t-4 border-t-primary">
         <CardHeader>
           <CardTitle>Email Verification</CardTitle>
           <CardDescription>

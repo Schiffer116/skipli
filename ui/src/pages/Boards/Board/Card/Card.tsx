@@ -19,9 +19,10 @@ import {
 } from "@/components/ui/card";
 
 import { BoardContext } from "../Board";
-import Task, { type TaskType } from "./Task";
+import Task, { DummyTask, type TaskType } from "./Task";
 import CreateTaskForm from "./Task/CreateTaskForm";
 import EditCardDialog from "./EditCardDialog";
+import { throwIfNotOk } from "@/utils/throwIfNotOk";
 
 export type CardType = {
   id: string;
@@ -36,6 +37,7 @@ export async function fetchCards(boardId: string) {
       Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
     },
   });
+  throwIfNotOk(data);
   const cards: CardType[] = await data.json();
   return cards;
 }
@@ -79,48 +81,62 @@ export default function CardView(props: CardType) {
 
 type DummyCardProps = CardType & {
   listeners?: SyntheticListenerMap;
+  // Rendered inside DragOverlay: its tasks must not register as sortables,
+  // or they'd share ids with the real ones and dnd-kit would re-measure the
+  // pair against each other forever.
+  overlay?: boolean;
 } & React.HTMLAttributes<HTMLDivElement>;
 
 export const DummyCard = forwardRef<HTMLDivElement, DummyCardProps>(
   (props, ref) => {
-    const { id, name, description, tasks, listeners, ...rest } = props;
+    const { id, name, description, tasks, listeners, overlay, ...rest } =
+      props;
     const { createTaskFormId, setCreateTaskFormId, setShowCreateCardForm } =
       useContext(BoardContext)!;
 
     return (
       <div ref={ref} {...rest} className="flex-shrink-0 w-80">
-        <Card
-          className={`bg-card border-border shadow-sm gap-4 py-4 ${tasks.length == 0 && "gap-2"}`}
-        >
-          <CardHeader className="cursor-pointer flex items-center justify-between">
-            <CardTitle
-              className="text-md font-semibold text-card-foreground w-full"
-              {...listeners}
-            >
+        <Card className="bg-card gap-0 py-0 overflow-hidden">
+          <CardHeader
+            className="cursor-grab flex items-center justify-between px-4 py-3 bg-muted border-b"
+            {...listeners}
+          >
+            <CardTitle className="text-base font-bold text-card-foreground w-full">
               {name}
+              <span className="ml-2 font-normal text-muted-foreground">
+                ({tasks.length})
+              </span>
             </CardTitle>
             <EditCardDialog {...props} />
           </CardHeader>
-          <CardContent>
-            <SortableContext
-              id={id}
-              items={tasks}
-              strategy={verticalListSortingStrategy}
-            >
+          <CardContent className={tasks.length ? "px-3 pt-3" : "px-3"}>
+            {overlay ? (
               <div className="space-y-2">
                 {tasks.map((task) => (
-                  <Task key={task.id} {...task} />
+                  <DummyTask key={task.id} {...task} />
                 ))}
               </div>
-            </SortableContext>
+            ) : (
+              <SortableContext
+                id={id}
+                items={tasks}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="space-y-2">
+                  {tasks.map((task) => (
+                    <Task key={task.id} {...task} />
+                  ))}
+                </div>
+              </SortableContext>
+            )}
           </CardContent>
-          <CardFooter>
+          <CardFooter className="px-3 py-2">
             {createTaskFormId === id ? (
               <CreateTaskForm cardId={id} />
             ) : (
               <Button
                 variant="ghost"
-                className="h-12 w-full justify-start text-muted-foreground hover:text-primary hover:bg-accent/50 p-0"
+                className="h-9 w-full justify-start rounded-md font-bold text-link hover:text-link hover:bg-accent p-0"
                 onClick={(e) => {
                   e.stopPropagation();
                   setCreateTaskFormId(id);

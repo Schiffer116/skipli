@@ -97,6 +97,9 @@ export default function EditBoardDialog(props: UpdateBoardDialogProps) {
       <DialogContent
         className="sm:max-w-[425px]"
         onClick={(e) => e.stopPropagation()}
+        // Dialogs render in a portal, but React still bubbles events up to
+        // the draggable parent; keep a text selection from starting a drag.
+        onMouseDown={(e) => e.stopPropagation()}
       >
         <form onSubmit={handleSubmit}>
           <DialogHeader>

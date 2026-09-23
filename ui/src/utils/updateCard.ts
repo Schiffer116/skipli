@@ -46,35 +46,42 @@ export const moveTask =
     newCardId: UniqueIdentifier,
     newTaskIndex: number,
   ) =>
-    (cards: CardType[]) => {
-      const oldCard = cards.find((card) =>
-        card.tasks.find((task) => task.id == taskId),
-      )!;
-      const newCard = cards.find((card) => card.id === newCardId)!;
+  (cards: CardType[]) => {
+    const oldCard = cards.find((card) =>
+      card.tasks.some((task) => task.id === taskId),
+    );
+    const newCard = cards.find((card) => card.id === newCardId);
+    if (!oldCard || !newCard) return cards;
 
-      if (newCard.id === oldCard.id) {
-        return cards.map((card) =>
-          card.id === newCardId
-            ? {
+    const oldTaskIndex = oldCard.tasks.findIndex((task) => task.id === taskId);
+
+    if (newCard.id === oldCard.id) {
+      if (oldTaskIndex === newTaskIndex) return cards;
+      return cards.map((card) =>
+        card.id === newCard.id
+          ? {
               ...card,
-              tasks: arrayMove(
-                card.tasks,
-                oldCard.tasks.findIndex((task) => task.id === taskId),
-                newTaskIndex,
-              ),
+              tasks: arrayMove(card.tasks, oldTaskIndex, newTaskIndex),
             }
-            : card,
-        );
-      }
-
-      const [task] = oldCard.tasks.splice(
-        oldCard.tasks.findIndex((task) => task.id === taskId),
-        1,
+          : card,
       );
-      newCard.tasks.splice(newTaskIndex, 0, {
-        ...task,
-        cardId: newCardId as string,
-      });
+    }
 
-      return [...cards];
+    // Build new task arrays instead of splicing, so the previous state
+    // (which onDragEnd rolls back to on failure) is left untouched.
+    const task = {
+      ...oldCard.tasks[oldTaskIndex],
+      cardId: newCard.id as string,
     };
+    return cards.map((card) => {
+      if (card.id === oldCard.id) {
+        return { ...card, tasks: card.tasks.filter((t) => t.id !== taskId) };
+      }
+      if (card.id === newCard.id) {
+        const tasks = [...card.tasks];
+        tasks.splice(newTaskIndex, 0, task);
+        return { ...card, tasks };
+      }
+      return card;
+    });
+  };

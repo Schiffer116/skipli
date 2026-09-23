@@ -10,6 +10,7 @@ import { useParams } from "react-router";
 import { socket } from "@/main";
 import { updateTask } from "@/utils/updateCard";
 import { BoardContext } from "../../Board";
+import { throwIfNotOk } from "@/utils/throwIfNotOk";
 
 export type TaskType = {
   id: string;
@@ -25,6 +26,7 @@ export async function fetchTasks(boardId: string, cardId: string) {
       Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
     },
   });
+  throwIfNotOk(data);
   const tasks: TaskType[] = await data.json();
   return tasks;
 }
@@ -110,23 +112,26 @@ export const DummyTask = forwardRef<HTMLDivElement, DummyTaskProps>(
     };
 
     return (
-      <Card ref={ref} {...rest} className="h-12 p-0 cursor-pointer">
+      <Card
+        ref={ref}
+        {...rest}
+        className="h-10 p-0 cursor-grab shadow-none rounded-md hover:border-link hover:bg-accent/40"
+      >
         <CardHeader className="relative group flex items-center p-0 pr-2 h-full">
           <Button
-            className={`${status === "done" ? "block" : "hidden group-hover:block "} `}
+            className={`size-6 ml-2 ${status === "done" ? "flex" : "hidden group-hover:flex"}`}
             variant="ghost"
             size="icon"
-            asChild
             onClick={toggleStatus}
           >
             {status === "done" ? (
-              <CheckCircle2 className="w-5 h-5 text-green-500 ml-3" />
+              <CheckCircle2 className="size-4 text-success" />
             ) : (
-              <Circle className="w-5 h-5 text-gray-400 ml-3" />
+              <Circle className="size-4 text-muted-foreground" />
             )}
           </Button>
           <CardTitle
-            className={`h-full ${status === "done" ? "ml-1" : "ml-4"} group-hover:ml-1 flex-1 font-medium flex items-center`}
+            className={`h-full ${status === "done" ? "ml-1" : "ml-4"} group-hover:ml-1 flex-1 text-sm font-normal flex items-center ${status === "done" ? "text-muted-foreground line-through" : ""}`}
             {...listeners}
           >
             {name}

@@ -48,41 +48,41 @@ export default function Sidebar() {
   };
 
   return (
-    <div className="sticky z-10 top-0 left-0 w-xs p-4 bg-white border-r border-orange-200 shadow-sm flex flex-col min-w-xs">
-      <div className="flex items-center text-lg gap-2 p-2 group">
-        <SquareKanban className="h-10 w-10 text-orange-400" />
-        <h2>Members</h2>
+    <div className="sticky z-10 top-12 left-0 h-[calc(100vh-3rem)] w-xs py-4 bg-sidebar border-r border-sidebar-border flex flex-col min-w-xs">
+      <div className="flex items-center gap-2 px-6 pb-3 mb-2 border-b border-sidebar-border">
+        <SquareKanban className="size-5 text-primary" />
+        <h2 className="text-lg font-bold">Members</h2>
       </div>
-      <div className="px-2 space-y-1">
+      <div className="px-4 space-y-1">
         <div className="space-y-1 mt-1">
           {members.map((member, idx) => (
             <div
               key={member}
-              className="flex items-center gap-2 p-2 rounded-md"
+              className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-sidebar-accent"
             >
-              <Avatar className="border-2 border-gray-500 h-8 w-8">
+              <Avatar className="ring-1 ring-border size-7">
                 <AvatarImage src={avatarUrls[idx]} alt={member} />
               </Avatar>
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-gray-700 truncate">{member}</p>
+                <p className="text-sm text-link truncate">{member}</p>
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="absolute bottom-0 left-0 w-full">
+      <div className="mt-auto px-4 pt-4 border-t border-sidebar-border">
         <Dialog>
           <DialogTrigger asChild>
             <Button
-              variant="ghost"
-              className="flex h-14 items-center justify-center gap-2 w-full text-lg rounded-none border-t-3 border-t-gray-200"
+              variant="outline"
+              className="flex items-center justify-center gap-2 w-full cursor-pointer"
               asChild
             >
               <div>
                 <div className="flex items-center">
-                  <Plus className="size-4" />
-                  <User className="size-6" />
+                  <Plus className="size-3" />
+                  <User className="size-4" />
                 </div>
                 <span>Invite</span>
               </div>

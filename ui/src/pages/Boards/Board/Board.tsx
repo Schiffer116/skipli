@@ -2,7 +2,6 @@ import { useLoaderData } from "react-router";
 import { Plus } from "lucide-react";
 
 import {
-  closestCorners,
   DndContext,
   DragOverlay,
   MouseSensor,
@@ -57,13 +56,21 @@ export default function Board() {
   };
 
   const sensors = useSensors(
-    useSensor(MouseSensor),
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: 5 },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
 
-  const { onDragStart, onDragOver, onDragEnd } = useDnd(
+  const {
+    collisionDetection,
+    onDragStart,
+    onDragOver,
+    onDragEnd,
+    onDragCancel,
+  } = useDnd(
     cards,
     setCards,
     activeCard,
@@ -76,23 +83,24 @@ export default function Board() {
 
   return (
     <BoardContext.Provider value={boardContextValue}>
-      <div className="flex-1 p-6 ">
+      <div className="flex-1 px-8 py-6">
         <div className="flex flex-col h-full">
-          <header className="mb-8">
-            <h1 className="text-4xl font-bold text-primary mb-2">{name}</h1>
-            <p className="text-muted-foreground">
+          <header className="mb-6">
+            <h1 className="text-2xl font-bold mb-1">{name}</h1>
+            <p className="text-sm text-muted-foreground">
               Organize your tasks with drag and drop
             </p>
           </header>
 
           <DndContext
             sensors={sensors}
-            collisionDetection={closestCorners}
+            collisionDetection={collisionDetection}
             onDragStart={onDragStart}
             onDragOver={onDragOver}
             onDragEnd={onDragEnd}
+            onDragCancel={onDragCancel}
           >
-            <div className="flex gap-6 pb-6 flex-1 items-start">
+            <div className="flex gap-4 pb-6 flex-1 items-start">
               <SortableContext
                 items={cards}
                 strategy={horizontalListSortingStrategy}
@@ -105,7 +113,7 @@ export default function Board() {
                   {activeTask ? (
                     <DummyTask {...activeTask} />
                   ) : activeCard ? (
-                    <DummyCard {...activeCard} />
+                    <DummyCard {...activeCard} overlay />
                   ) : null}
                 </DragOverlay>
               </SortableContext>
@@ -116,7 +124,7 @@ export default function Board() {
                 ) : (
                   <Button
                     variant="ghost"
-                    className="w-80 h-12 border-2 border-dashed border-border hover:border-primary hover:bg-accent/50 text-muted-foreground hover:text-primary"
+                    className="w-80 h-12 rounded-lg border-2 border-dashed border-border bg-card/60 hover:border-link hover:bg-accent text-muted-foreground hover:text-link"
                     onClick={() => {
                       setShowCreateCardForm(true);
                       setCreateTaskFormId(null);

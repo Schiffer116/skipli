@@ -37,17 +37,17 @@ export default function SpinnerToCheckPage() {
   }, []);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-background">
       <div className="flex items-center gap-4">
         {status === "loading" ? (
-          <Loader2 className="h-16 w-16 animate-spin text-orange-500" />
+          <Loader2 className="h-16 w-16 animate-spin text-link" />
         ) : status === "success" ? (
-          <Check className="h-16 w-16 text-green-600" />
+          <Check className="h-16 w-16 text-success" />
         ) : (
-          <XCircle className="h-16 w-16 text-red-600" />
+          <XCircle className="h-16 w-16 text-destructive" />
         )}
         <div>
-          <p className="text-lg font-semibold text-gray-800">
+          <p className="text-lg font-semibold text-foreground">
             {status ? "Done!" : "Loading..."}
           </p>
           <p className="">

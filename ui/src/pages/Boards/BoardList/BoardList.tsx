@@ -1,17 +1,17 @@
 import { Plus } from "lucide-react";
 import { useState } from "react";
-import { redirect, useNavigate } from "react-router";
+import { redirect } from "react-router";
 import { useLoaderData } from "react-router";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 
 import CreateBoardForm from "./CreateBoardForm";
-import EditBoardDialog from "./EditBoardDialog";
+import SortableBoards from "./SortableBoards";
 
 export type Board = {
   id: string;
   name: string;
+  owenr: string;
   description: string;
 };
 
@@ -19,17 +19,19 @@ export const boardListLoader = async (): Promise<{
   boards: Board[];
   teamBoards: Board[];
 }> => {
-  const data = await fetch("/api/boards", {
+  const res = await fetch("/api/boards", {
     headers: {
       Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
     },
   });
 
-  if (!data.ok) {
+  if (!res.ok) {
     throw redirect("/login");
   }
-  const { boards, teamBoards } = await data.json();
+  const { boards, teamBoards } = await res.json();
   const boardIds = boards.map((board: Board) => board.id);
+
+  console.log("board", boards);
 
   return {
     boards,
@@ -40,34 +42,16 @@ export const boardListLoader = async (): Promise<{
 };
 
 export default function BoardList() {
-  const navigate = useNavigate();
-
-  const [boards, setBoards] = useState(
-    useLoaderData<typeof boardListLoader>().boards,
-  );
-  const teamBoards = useLoaderData<typeof boardListLoader>().teamBoards;
-
-  useLoaderData<typeof boardListLoader>();
+  const loaderData = useLoaderData<typeof boardListLoader>();
+  const [boards, setBoards] = useState(loaderData.boards);
+  const [teamBoards, setTeamBoards] = useState(loaderData.teamBoards);
   const [showCreateBoardForm, setShowCreateBoardForm] = useState(false);
 
   return (
-    <div className="flex flex-col gap-16 p-12">
-      <div className="flex flex-col gap-8">
-        <h1 className="text-3xl font-bold text-primary">Your workspace</h1>
-        <div className="flex flex-wrap items-start gap-8">
-          {boards.map((board) => (
-            <Card
-              key={board.id}
-              className="relative w-full max-w-xs aspect-video cursor-pointer p-2"
-              onClick={() => navigate(`/boards/${board.id}`)}
-            >
-              <CardHeader className="flex justify-between items-center p-0 pl-2">
-                <CardTitle>{board.name}</CardTitle>
-                <EditBoardDialog {...board} setBoards={setBoards} />
-              </CardHeader>
-            </Card>
-          ))}
-
+    <div className="flex flex-col gap-10 px-10 py-8">
+      <div className="flex flex-col gap-4">
+        <h1 className="text-2xl font-bold">Your workspace</h1>
+        <SortableBoards boards={boards} setBoards={setBoards} editable>
           {showCreateBoardForm ? (
             <CreateBoardForm
               setBoards={setBoards}
@@ -76,31 +60,19 @@ export default function BoardList() {
           ) : (
             <Button
               variant="ghost"
-              className="max-w-xs h-full aspect-video w-full border-2 border-dashed border-border hover:border-primary hover:bg-accent/50 text-muted-foreground hover:text-primary"
+              className="max-w-xs h-full aspect-video w-full rounded-lg border-2 border-dashed border-border bg-card/60 hover:border-link hover:bg-accent text-muted-foreground hover:text-link"
               onClick={() => setShowCreateBoardForm(true)}
             >
               <Plus className="h-5 w-5" />
               Create new board
             </Button>
           )}
-        </div>
+        </SortableBoards>
       </div>
 
-      <div className="flex flex-col gap-8">
-        <h2 className="text-3xl font-bold text-primary">Your teams</h2>
-        <div className="flex flex-wrap items-start gap-8">
-          {teamBoards.map((board) => (
-            <Card
-              key={board.id}
-              className="relative w-full max-w-xs aspect-video cursor-pointer p-2"
-              onClick={() => navigate(`/boards/${board.id}`)}
-            >
-              <CardHeader className="flex justify-between items-center p-2">
-                <CardTitle>{board.name}</CardTitle>
-              </CardHeader>
-            </Card>
-          ))}
-        </div>
+      <div className="flex flex-col gap-4">
+        <h2 className="text-xl font-bold">Your teams</h2>
+        <SortableBoards boards={teamBoards} setBoards={setTeamBoards} />
       </div>
     </div>
   );

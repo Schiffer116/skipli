@@ -14,10 +14,11 @@ This project is a **real-time board management tool** that allows teams to colla
 
 ## Tech Stack
 
-- **Frontend**: React, TypeScript, TailwindCSS
-- **Backend**: Node.js, TypeScript, Express, Firebase, Socket.io
+- **Frontend**: React, TypeScript, TailwindCSS (`ui/`)
+- **Backend**: Go, DynamoDB (`app/`)
+- **Infrastructure**: AWS CloudFormation: S3 + CloudFront, Lambda, DynamoDB (`infra/`)
 
-## Running the app
+## Running locally
 
 1. Clone the repository:
 
@@ -26,30 +27,40 @@ git clone https://github.com/Schiffer116/skipli.git
 cd skipli
 ```
 
-1. Install dependencies:
+1. Configure the API's environment (AWS credentials come from the usual
+   AWS CLI config/profile; the table is `Skipli` in `ap-southeast-7`):
 
 ```bash
-pnpm install
+export APP_EMAIL=your-app-email@example.com
+export APP_EMAIL_PASSWORD=your-app-email-password
+export JWT_SECRET=a-string-secret-at-least-256-bits-long
 ```
 
-1. Configure environment variables:
-
-Create a `.env` file in the root with Firebase and GitHub credentials:
-
-```env
-FIREBASE_DB_URL=your-firebase-db-url
-GOOGLE_APPLICATION_CREDENTIALS=your-google-application-credentials
-APP_EMAIL=your-app-email@example.com
-APP_EMAIL_PASSWORD=your-app-email-password
-JWT_SECRET=a-string-secret-at-least-256-bits-long
-```
-
-1. Build and run:
+1. Start the API (port 3000, override with `PORT`):
 
 ```bash
-pnpm build
-pnpm start
+cd app && make run
 ```
+
+1. Start the frontend (proxies `/api` to the API, override with `API_URL`):
+
+```bash
+cd ui && pnpm install && pnpm dev
+```
+
+## Deploying
+
+With the same environment variables set and AWS credentials for the target
+account:
+
+```bash
+./infra/deploy.sh
+```
+
+This deploys `infra/template.yaml`: the frontend on S3 behind CloudFront and
+the API on Lambda under `/api/*` on the same domain. It reuses an existing
+`Skipli` table by default; set `CREATE_TABLE=true` to have the stack create
+it. `STACK_NAME` and `AWS_REGION` are also configurable.
 
 ## Screenshots
 

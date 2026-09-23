@@ -4,9 +4,19 @@ import Board from "./Board/Board";
 import { fetchCards, type CardType } from "./Board/Card";
 import { fetchTasks } from "./Board/Card/Task/Task";
 import Sidebar from "./Board/Sidebar";
+import { throwIfNotOk } from "@/utils/throwIfNotOk";
 
 export async function boardViewLoader({ params }: LoaderFunctionArgs) {
   const boardId = params.boardId!;
+
+  // Board first, so a bad id is a clean 404 rather than a failed card fetch.
+  const boardRes = await fetch(`/api/boards/${boardId}`, {
+    headers: {
+      Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+    },
+  });
+  throwIfNotOk(boardRes);
+  const { name } = await boardRes.json();
 
   const cards = await fetchCards(boardId);
   const cardsWithTasks = await Promise.all(
@@ -16,17 +26,12 @@ export async function boardViewLoader({ params }: LoaderFunctionArgs) {
     }),
   );
 
-  const { name } = await fetch(`/api/boards/${boardId}`, {
-    headers: {
-      Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-    },
-  }).then((res) => res.json());
-
   const res = await fetch(`/api/boards/${boardId}/members`, {
     headers: {
       Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
     },
   });
+  throwIfNotOk(res);
 
   const members: string[] = await res.json();
 
