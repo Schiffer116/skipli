@@ -1,0 +1,47 @@
+name: cicd
+run-name: ${{ github.actor }} is running CI/CD
+on: [push]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  ui:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ap-southeast-7
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v7
+        with:
+          cache: pnpm
+          cache-dependency-path: ui/pnpm-lock.yaml
+          node-version: "26"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      # Production
+      - uses: aws-actions/configure-aws-credentials@v5
+        if: ${{ !env.ACT }}
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Local testing with nektos/act
+      - uses: aws-actions/configure-aws-credentials@v5
+        if: ${{ env.ACT }}
+        with:
+          aws-access-key-id: ${{ secrets.LOCAL_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.LOCAL_AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - run: aws sts get-caller-identity
+      - run: aws s3 sync ./dist s3://skipli-797848269974-ap-southeast-7-an/ --delete
