@@ -1,6 +1,6 @@
 name: cicd
 run-name: ${{ github.actor }} is running CI/CD
-on: [push]
+on: [push, workflow_dispatch]
 
 permissions:
   id-token: write
@@ -9,9 +9,6 @@ permissions:
 jobs:
   ui:
     runs-on: ubuntu-latest
-    env:
-      AWS_REGION: ap-southeast-1
-      S3_UI_BUCKET: s3://skipli-797848269974-ap-southeast-7-an/
     defaults:
       run:
         working-directory: ui
@@ -34,15 +31,25 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-deploy-role-arn: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - run: aws sts get-caller-identity
-      - run: aws s3 sync ./dist $S3_UI_BUCKET --delete
+
+      - name: Look up UI bucket name
+        id: ui-bucket
+        run: echo "name=$(aws ssm get-parameter --name /skipli/ui-bucket-name --query Parameter.Value --output text)" >> "$GITHUB_OUTPUT"
+
+      - run: aws s3 sync ./dist "s3://${{ steps.ui-bucket.outputs.name }}" --delete
 
   infra:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      # For future changeset review
-      # - uses: ./.github/actions/configure-aws-with-act-aws-with-act
+      - uses: ./.github/actions/configure-aws-with-act
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-deploy-role-arn: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - run: aws cloudformation validate-template --template-body file://infra/api.yaml

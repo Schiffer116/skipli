@@ -8,6 +8,8 @@ inputs:
     required: false
   aws-deploy-role-arn:
     required: false
+  aws-region:
+    required: true
 
 runs:
   using: composite
@@ -17,10 +19,10 @@ runs:
       with:
         aws-access-key-id: ${{ inputs.aws-access-key-id }}
         aws-secret-access-key: ${{ inputs.aws-secret-access-key }}
-        aws-region: ${{ env.AWS_REGION }}
+        aws-region: ${{ inputs.aws-region }}
 
     - uses: aws-actions/configure-aws-credentials@v5
       if: ${{ !env.ACT }}
       with:
         role-to-assume: ${{ inputs.aws-deploy-role-arn }}
-        aws-region: ${{ env.AWS_REGION }}
+        aws-region: ${{ inputs.aws-region }}

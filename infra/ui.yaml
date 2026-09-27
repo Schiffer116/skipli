@@ -1,0 +1,61 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Resources:
+  UIBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketNamespace: account-regional
+      BucketNamePrefix: skipli-ui
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  UIBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref UIBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: cloudfront.amazonaws.com }
+            Action: s3:GetObject
+            Resource: !Sub ${UIBucket.Arn}/*
+            Condition:
+              StringEquals:
+                # AWS:SourceArn: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${CloudfrontDistribution}
+                AWS:SourceArn: Ref! CloudfrontDistribution.Arn
+
+  UIBucketNameParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /skipli/ui-bucket-name
+      Type: String
+      Value: !Ref UIBucket
+
+  UIOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: skipli-ui
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  CloudfrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Origins:
+          - Id: UIBucketOrigin
+            DomainName: !GetAtt UIBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt UIOriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+        DefaultCacheBehavior:
+          TargetOriginId: UIBucketOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # AWS managed CachingOptimized

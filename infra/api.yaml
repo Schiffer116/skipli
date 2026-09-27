@@ -2,7 +2,33 @@ AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: An AWS Serverless Application Model (SAM) template describing your function.
 
+Parameters:
+  Gmail:
+    Type: String
+  GmailAppPassword:
+    Type: String
+    NoEcho: true
+
 Resources:
+  AppEmailParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Description: "Gmail to send verification mails"
+      Name: "/skipli/app-email"
+      Type: String
+      Value: !Ref Gmail
+
+  AppSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: "SkipliSecret"
+      Description: "Secrets for Skipli"
+      GenerateSecretString:
+        SecretStringTemplate: !Sub '{"gmailAppPassword": "${GmailAppPassword}"}'
+        GenerateStringKey: "jwtSecret"
+        PasswordLength: 64
+        ExcludePunctuation: true
+
   APILambdaFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -33,3 +59,8 @@ Resources:
       Timeout: 3
       Tracing: PassThrough
       Role: arn:aws:iam::797848269974:role/service-role/Skipli-role-ran0krvh
+
+  APIGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: $default
