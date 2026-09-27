@@ -1,5 +1,3 @@
-# Secrets
 .env
-.env.*
 .envrc
-*firebase-adminsdk*.json
+.*.env

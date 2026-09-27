@@ -1,2 +1,2 @@
-ci:
+cicd:
 	act --secret-file=.secret.env

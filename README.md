@@ -62,6 +62,38 @@ the API on Lambda under `/api/*` on the same domain. It reuses an existing
 `Skipli` table by default; set `CREATE_TABLE=true` to have the stack create
 it. `STACK_NAME` and `AWS_REGION` are also configurable.
 
+The site is served at `https://skipli.schifferarchitecture.com`: the script
+issues its certificate in `us-east-1` (`infra/certificate.yaml`, as CloudFront
+requires) and creates the DNS records in the domain's Route 53 zone. Set
+`DOMAIN_NAME` to use another domain, or to an empty string for none.
+
+## CI/CD
+
+`.github/workflows/pipeline.yml` runs on every push and pull request:
+frontend lint + typecheck + build, backend `gofmt`/`vet`/`test`/Lambda build, and
+lint for the CloudFormation templates and deploy script. Pushes to `master`
+that pass then deploy with `infra/deploy.sh`.
+
+The deploy job authenticates to AWS with GitHub OIDC, so no AWS keys are
+stored in GitHub. One-time setup:
+
+1. Deploy the bootstrap stack (set `CreateOidcProvider=false` if the account
+   already has a `token.actions.githubusercontent.com` identity provider):
+
+```bash
+aws cloudformation deploy --region ap-southeast-7 \
+  --stack-name skipli-pipeline \
+  --template-file infra/pipeline.yaml \
+  --capabilities CAPABILITY_NAMED_IAM
+aws cloudformation describe-stacks --region ap-southeast-7 \
+  --stack-name skipli-pipeline --query 'Stacks[0].Outputs'
+```
+
+1. In the GitHub repository, create an environment named `production` and
+   add to it:
+   - variables `AWS_DEPLOY_ROLE_ARN` and `AWS_CFN_ROLE_ARN` (the two outputs)
+   - secrets `APP_EMAIL`, `APP_EMAIL_PASSWORD` and `JWT_SECRET`
+
 ## Screenshots
 
 ![workspace](workspace.png)
