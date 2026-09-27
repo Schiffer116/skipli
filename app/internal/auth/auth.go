@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
@@ -79,17 +80,33 @@ type VerifyResponse struct {
 	AccessToken string `json:"accessToken"`
 }
 
-// verify issues a token for any code, without checking it against the stored
-// one. Email delivery is currently broken for reasons outside this codebase,
-// so there's no way for a real user to receive their code yet; remove this
-// bypass once that's resolved.
 func (h *Handler) verify(w http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+
 	var r VerifyRequest
 	if err := json.NewDecoder(req.Body).Decode(&r); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	defer req.Body.Close()
+
+	storedCode, ok, err := h.getStoredCode(ctx, r.Email)
+	if err != nil {
+		log.Printf("failed to get verification code: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !ok || r.Code == "" || r.Code != storedCode {
+		http.Error(w, "invalid email or verification code", http.StatusUnauthorized)
+		return
+	}
+
+	// One-time use, matching the old API deleting the record on success.
+	if err := h.deleteCode(ctx, r.Email); err != nil {
+		log.Printf("failed to delete verification code: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	accessToken, err := h.tokens.Issue(r.Email)
 	if err != nil {
@@ -128,6 +145,39 @@ func (h *Handler) storeCode(ctx context.Context, email, code string) error {
 			"PK":               &types.AttributeValueMemberS{Value: "USER#" + email},
 			"SK":               &types.AttributeValueMemberS{Value: "VERIFICATION"},
 			"VerificationCode": &types.AttributeValueMemberS{Value: code},
+		},
+	})
+	return err
+}
+
+func (h *Handler) getStoredCode(ctx context.Context, email string) (string, bool, error) {
+	response, err := h.db.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String(tableName),
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: "USER#" + email},
+			"SK": &types.AttributeValueMemberS{Value: "VERIFICATION"},
+		},
+	})
+	if err != nil {
+		return "", false, err
+	}
+	if response.Item == nil {
+		return "", false, nil
+	}
+
+	var item struct{ VerificationCode string }
+	if err := attributevalue.UnmarshalMap(response.Item, &item); err != nil {
+		return "", false, err
+	}
+	return item.VerificationCode, true, nil
+}
+
+func (h *Handler) deleteCode(ctx context.Context, email string) error {
+	_, err := h.db.DeleteItem(ctx, &dynamodb.DeleteItemInput{
+		TableName: aws.String(tableName),
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: "USER#" + email},
+			"SK": &types.AttributeValueMemberS{Value: "VERIFICATION"},
 		},
 	})
 	return err

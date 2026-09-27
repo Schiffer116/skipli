@@ -38,6 +38,7 @@ func (h *Handler) RegisterRoutes(router *http.ServeMux) {
 	router.HandleFunc("GET /boards/{id}/members", h.tokens.RequireAuth(h.members))
 	router.HandleFunc("POST /boards", h.tokens.RequireAuth(h.create))
 	router.HandleFunc("PUT /boards/order", h.tokens.RequireAuth(h.order))
+	router.HandleFunc("PUT /boards/{id}", h.tokens.RequireAuth(h.put))
 }
 
 type CreateRequest struct {
@@ -56,8 +57,7 @@ func (h *Handler) create(w http.ResponseWriter, req *http.Request) {
 	log.Println("owner's email:", owner)
 
 	var r CreateRequest
-	decoder := json.NewDecoder(req.Body)
-	if err := decoder.Decode(&r); err != nil {
+	if err := json.NewDecoder(req.Body).Decode(&r); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -88,10 +88,7 @@ func (h *Handler) create(w http.ResponseWriter, req *http.Request) {
 						"PK":     &types.AttributeValueMemberS{Value: id},
 						"SK":     &types.AttributeValueMemberS{Value: "MEMBER#" + owner},
 						"Member": &types.AttributeValueMemberS{Value: owner},
-						// A timestamp sorts a new board after every board the
-						// caller already has, whether those were ordered by
-						// `order` (small indexes) or also by creation time.
-						"Order": &types.AttributeValueMemberN{Value: strconv.FormatInt(time.Now().UnixMilli(), 10)},
+						"Order":  &types.AttributeValueMemberN{Value: strconv.FormatInt(time.Now().UnixMilli(), 10)},
 					},
 				},
 			},
@@ -144,9 +141,6 @@ func (h *Handler) get(w http.ResponseWriter, req *http.Request) {
 	json.NewEncoder(w).Encode(board)
 }
 
-// members mirrors the old API's `GET /:boardId/members`: 404 if the board
-// doesn't exist, otherwise the plain array of member emails (not full
-// objects — matches `boardSnapshot.data()!.members` being returned as-is).
 func (h *Handler) members(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 	id := req.PathValue("id")
@@ -216,8 +210,6 @@ type Board struct {
 	Description string `json:"description"`
 }
 
-// boardItem is either a board's META item or a MEMBER# item, as they come
-// back mixed together from list's BatchGetItem; SK tells them apart.
 type boardItem struct {
 	Board
 	PK    string
@@ -253,6 +245,7 @@ func (h *Handler) list(w http.ResponseWriter, req *http.Request) {
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
 		KeyConditionExpression:    expr.KeyCondition(),
+		ProjectionExpression:      aws.String("PK"),
 	})
 
 	var keys []map[string]types.AttributeValue
@@ -378,6 +371,7 @@ func (h *Handler) order(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// A transaction can't touch the same item twice.
+	// This is questionable design.
 	seen := map[string]bool{}
 	for _, id := range r.BoardIDs {
 		if seen[id] {
@@ -444,6 +438,50 @@ func (h *Handler) delete(w http.ResponseWriter, req *http.Request) {
 	})
 	if err != nil {
 		log.Printf("failed to delete item: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type PutBoardRequest struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+func (h *Handler) put(w http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+
+	id := req.PathValue("id")
+
+	email, ok := auth.EmailFromContext(ctx)
+	if !ok {
+		http.Error(w, "missing email in context", http.StatusInternalServerError)
+		return
+	}
+
+	var r PutBoardRequest
+	if err := json.NewDecoder(req.Body).Decode(&r); err != nil {
+		log.Printf("failed to decode request body: %v", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	defer req.Body.Close()
+
+	_, err := h.db.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName: aws.String(tableName),
+		Item: map[string]types.AttributeValue{
+			"PK":          &types.AttributeValueMemberS{Value: id},
+			"SK":          &types.AttributeValueMemberS{Value: "META"},
+			"ID":          &types.AttributeValueMemberS{Value: id},
+			"Name":        &types.AttributeValueMemberS{Value: r.Name},
+			"Description": &types.AttributeValueMemberS{Value: r.Description},
+			"Owner":       &types.AttributeValueMemberS{Value: email},
+		},
+	})
+	if err != nil {
+		log.Printf("failed to put item: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

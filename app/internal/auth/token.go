@@ -27,7 +27,6 @@ func (t *TokenIssuer) Issue(email string) (string, error) {
 	return token.SignedString(t.secret)
 }
 
-// Verify parses and validates a JWT and returns the email claim it carries.
 func (t *TokenIssuer) Verify(tokenString string) (string, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -56,15 +55,11 @@ type contextKey int
 
 const emailContextKey contextKey = iota
 
-// EmailFromContext returns the email a prior call to RequireAuth verified
-// and attached to the request context.
 func EmailFromContext(ctx context.Context) (string, bool) {
 	email, ok := ctx.Value(emailContextKey).(string)
 	return email, ok
 }
 
-// RequireAuth wraps next so it only runs once the request's Bearer token has
-// been verified, making the token's email available via EmailFromContext.
 func (t *TokenIssuer) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		tokenString, ok := strings.CutPrefix(req.Header.Get("Authorization"), "Bearer ")
