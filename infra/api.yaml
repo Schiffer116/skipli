@@ -1,0 +1,35 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: An AWS Serverless Application Model (SAM) template describing your function.
+
+Resources:
+  APILambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Architectures:
+        - arm64
+      CodeUri: "s3://skipli-artifact-797848269974-ap-southeast-1-an/api.zip"
+      Description: "Skipli's API Lambda Function"
+      Environment:
+        Variables:
+          APP_EMAIL: "{{resolve:ssm:/skipli/app-email}}"
+          APP_EMAIL_PASSWORD: "{{resolve:secretsmanager:SkipliSecret:SecretString:gmailAppPassword}}"
+          JWT_SECRET: "{{resolve:secretsmanager:SkipliSecret:SecretString:jwtSecret}}"
+      EphemeralStorage:
+        Size: 512
+      Handler: hello.handler
+      LoggingConfig:
+        LogFormat: Text
+        LogGroup: /aws/lambda/Skipli
+      MemorySize: 128
+      PackageType: Zip
+      RecursiveLoop: Terminate
+      Runtime: provided.al2023
+      RuntimeManagementConfig:
+        UpdateRuntimeOn: Auto
+      SnapStart:
+        ApplyOn: None
+      Tags: {}
+      Timeout: 3
+      Tracing: PassThrough
+      Role: arn:aws:iam::797848269974:role/service-role/Skipli-role-ran0krvh
