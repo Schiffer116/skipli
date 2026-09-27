@@ -6,13 +6,18 @@ import io from "socket.io-client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-import Boards, { boardsLoader } from "@/pages/Boards";
-import BoardList, { boardListLoader } from "@/pages/Boards/BoardList";
+import Boards from "@/pages/Boards";
+import BoardList from "@/pages/Boards/BoardList";
 import Login from "@/pages/Login";
 import Verify from "@/pages/Verify";
 import AcceptInvite from "@/pages/AcceptInvite";
 import ErrorPage from "@/pages/ErrorPage";
-import BoardView, { boardViewLoader } from "@/pages/Boards/BoardView";
+import BoardView from "@/pages/Boards/BoardView";
+import {
+  boardListLoader,
+  boardsLoader,
+  boardViewLoader,
+} from "@/pages/Boards/loaders";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -23,7 +28,10 @@ const queryClient = new QueryClient({
   },
 });
 
-export const socket = io("ws://localhost:3000");
+// Temporarily disabled: nothing serves socket.io, so the connection attempts
+// only fill the console. Restore this line to reconnect.
+// export const socket = io("ws://localhost:3000");
+export const socket = io("ws://localhost:3000", { autoConnect: false });
 
 declare global {
   interface Window {

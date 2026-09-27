@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 
 import { socket } from "@/main";
 import type { TaskType } from "./Task";
-import { BoardContext } from "../../Board";
+import { BoardContext } from "../../BoardContext";
+import useEscape from "@/hooks/useEscape";
 
 type TaskFormProps = {
   cardId: string;
@@ -15,6 +16,7 @@ type TaskFormProps = {
 export default function CreateTaskForm(props: TaskFormProps) {
   const { cardId } = props;
   const { setCards, setCreateTaskFormId } = useContext(BoardContext)!;
+  useEscape(() => setCreateTaskFormId(null));
 
   const boardId = useParams().boardId!;
 
@@ -76,6 +78,7 @@ export default function CreateTaskForm(props: TaskFormProps) {
           <Button
             variant="ghost"
             size="sm"
+            type="button"
             onClick={() => {
               setCreateTaskFormId(null);
             }}

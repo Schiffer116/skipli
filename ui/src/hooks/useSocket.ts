@@ -56,7 +56,7 @@ export default function useSocket(
       setCards(moveTask(taskId, newCardId, newTaskIndex));
     }
 
-    const events: [string, (...args: any[]) => void][] = [
+    const events: [string, Parameters<typeof socket.on>[1]][] = [
       ["create card", onCreateCard],
       ["update card", onUpdateCard],
       ["delete card", onDeleteCard],
@@ -76,5 +76,5 @@ export default function useSocket(
         socket.off(event, handler);
       });
     };
-  }, []);
+  }, [setCards]);
 }

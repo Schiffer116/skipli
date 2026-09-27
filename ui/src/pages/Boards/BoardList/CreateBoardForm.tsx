@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
 import type { Board } from "./BoardList";
+import useEscape from "@/hooks/useEscape";
 
 type BoardFormProps = {
   setBoards: React.Dispatch<React.SetStateAction<Board[]>>;
@@ -11,6 +12,7 @@ type BoardFormProps = {
 
 export default function CreateBoardForm(props: BoardFormProps) {
   const { setBoards, setShowCreateBoardForm } = props;
+  useEscape(() => setShowCreateBoardForm(false));
 
   const createBoard = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -67,6 +69,7 @@ export default function CreateBoardForm(props: BoardFormProps) {
             <div className="space-x-2">
               <Button type="submit">Create</Button>
               <Button
+                type="button"
                 variant="outline"
                 onClick={() => setShowCreateBoardForm(false)}
               >

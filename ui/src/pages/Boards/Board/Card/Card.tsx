@@ -18,11 +18,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-import { BoardContext } from "../Board";
-import Task, { DummyTask, type TaskType } from "./Task";
+import { BoardContext } from "../BoardContext";
+import Task, { DummyTask, type TaskType } from "./Task/Task";
 import CreateTaskForm from "./Task/CreateTaskForm";
 import EditCardDialog from "./EditCardDialog";
-import { throwIfNotOk } from "@/utils/throwIfNotOk";
 
 export type CardType = {
   id: string;
@@ -30,23 +29,6 @@ export type CardType = {
   description: string;
   tasks: TaskType[];
 };
-
-export async function fetchCards(boardId: string) {
-  const data = await fetch(`/api/boards/${boardId}/cards`, {
-    headers: {
-      Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-    },
-  });
-  throwIfNotOk(data);
-  const cards: CardType[] = await data.json();
-  return cards;
-}
-
-export async function fetchCard(boardId: string, cardId: string) {
-  const data = await fetch(`/api/boards/${boardId}/cards/${cardId}`);
-  const cards: CardType = await data.json();
-  return cards;
-}
 
 export default function CardView(props: CardType) {
   const { id } = props;

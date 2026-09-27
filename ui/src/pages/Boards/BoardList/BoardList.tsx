@@ -1,44 +1,18 @@
 import { Plus } from "lucide-react";
 import { useState } from "react";
-import { redirect } from "react-router";
 import { useLoaderData } from "react-router";
 
 import { Button } from "@/components/ui/button";
 
 import CreateBoardForm from "./CreateBoardForm";
 import SortableBoards from "./SortableBoards";
+import type { boardListLoader } from "../loaders";
 
 export type Board = {
   id: string;
   name: string;
   owenr: string;
   description: string;
-};
-
-export const boardListLoader = async (): Promise<{
-  boards: Board[];
-  teamBoards: Board[];
-}> => {
-  const res = await fetch("/api/boards", {
-    headers: {
-      Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-    },
-  });
-
-  if (!res.ok) {
-    throw redirect("/login");
-  }
-  const { boards, teamBoards } = await res.json();
-  const boardIds = boards.map((board: Board) => board.id);
-
-  console.log("board", boards);
-
-  return {
-    boards,
-    teamBoards: teamBoards.filter(
-      (board: Board) => !boardIds.includes(board.id),
-    ),
-  };
 };
 
 export default function BoardList() {

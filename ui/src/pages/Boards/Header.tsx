@@ -1,5 +1,5 @@
 import { Link, useLoaderData } from "react-router";
-import type { boardsLoader } from "./Boards";
+import type { boardsLoader } from "./loaders";
 import { Avatar, AvatarImage } from "@/components/ui/avatar";
 
 import md5 from "md5";
@@ -12,7 +12,7 @@ export default function Header() {
 
   return (
     <header className="sticky top-0 z-20">
-      <div className="bg-nav text-nav-foreground h-12 px-4 w-screen flex items-center gap-2 justify-between">
+      <div className="bg-nav text-nav-foreground h-12 px-4 w-full flex items-center gap-2 justify-between">
         <Link to="/boards" className="flex items-center gap-2">
           <img src="/skipli.png" alt="Logo" width={28} height={28} />
           <p className="font-bold text-base">Skipli</p>

@@ -28,7 +28,7 @@ import { DialogDescription } from "@radix-ui/react-dialog";
 
 import { socket } from "@/main";
 import type { CardType } from "./Card";
-import { BoardContext } from "../Board";
+import { BoardContext } from "../BoardContext";
 import { useParams } from "react-router";
 import { deleteCard, updateCard } from "@/utils/updateCard";
 

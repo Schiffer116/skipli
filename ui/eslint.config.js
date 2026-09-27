@@ -19,5 +19,17 @@ export default tseslint.config([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // Destructuring a prop out just to keep it from `...rest` is intended.
+      '@typescript-eslint/no-unused-vars': ['error', { ignoreRestSiblings: true }],
+    },
+  },
+  {
+    // shadcn/ui components export their variant helpers (e.g. buttonVariants)
+    // alongside the component; they're generated, not hand-maintained.
+    files: ['src/components/ui/**'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
   },
 ])

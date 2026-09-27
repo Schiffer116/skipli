@@ -37,7 +37,7 @@ export default function SpinnerToCheckPage() {
       setStatus("success");
       navigate(`/boards/${boardId}`);
     })();
-  }, []);
+  }, [boardId, navigate, token]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">

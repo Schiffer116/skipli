@@ -1,2 +1,2 @@
 export { default } from "./BoardList";
-export * from "./BoardList";
+export type { Board } from "./BoardList";

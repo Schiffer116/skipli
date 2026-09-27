@@ -9,8 +9,7 @@ import { Button } from "@/components/ui/button";
 import { useParams } from "react-router";
 import { socket } from "@/main";
 import { updateTask } from "@/utils/updateCard";
-import { BoardContext } from "../../Board";
-import { throwIfNotOk } from "@/utils/throwIfNotOk";
+import { BoardContext } from "../../BoardContext";
 
 export type TaskType = {
   id: string;
@@ -18,29 +17,6 @@ export type TaskType = {
   name: string;
   description: string;
   status: string;
-};
-
-export async function fetchTasks(boardId: string, cardId: string) {
-  const data = await fetch(`/api/boards/${boardId}/cards/${cardId}/tasks`, {
-    headers: {
-      Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-    },
-  });
-  throwIfNotOk(data);
-  const tasks: TaskType[] = await data.json();
-  return tasks;
-}
-
-export const fetchTask = async (
-  boardId: string,
-  cardId: string,
-  taskId: string,
-) => {
-  const data = await fetch(
-    `/api/boards/${boardId}/cards/${cardId}/tasks/${taskId}`,
-  );
-  const task: TaskType = await data.json();
-  return task;
 };
 
 export default function Task(props: TaskType) {

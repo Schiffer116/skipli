@@ -28,7 +28,7 @@ import { Button } from "@/components/ui/button";
 import { DialogDescription } from "@radix-ui/react-dialog";
 
 import { socket } from "@/main";
-import { BoardContext } from "../../Board";
+import { BoardContext } from "../../BoardContext";
 import type { TaskType } from "./Task";
 import { deleteTask, updateTask } from "@/utils/updateCard";
 

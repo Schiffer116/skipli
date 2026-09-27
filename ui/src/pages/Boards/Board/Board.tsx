@@ -18,22 +18,12 @@ import { Button } from "@/components/ui/button";
 import useDnd from "@/hooks/useDnd";
 import useSocket from "@/hooks/useSocket";
 
-import Card, { DummyCard, type CardType } from "./Card";
-import { DummyTask, type TaskType } from "./Card/Task";
-import { createContext, useState } from "react";
+import Card, { DummyCard, type CardType } from "./Card/Card";
+import { DummyTask, type TaskType } from "./Card/Task/Task";
+import { useState } from "react";
 import CreateCardForm from "./Card/CreateCardForm";
-import type { boardViewLoader } from "../BoardView";
-
-type BoardContextType = {
-  cards: CardType[];
-  setCards: React.Dispatch<React.SetStateAction<CardType[]>>;
-  showCreateCardForm: boolean;
-  setShowCreateCardForm: React.Dispatch<React.SetStateAction<boolean>>;
-  createTaskFormId: string | null;
-  setCreateTaskFormId: React.Dispatch<React.SetStateAction<string | null>>;
-};
-
-export const BoardContext = createContext<BoardContextType | null>(null);
+import type { boardViewLoader } from "../loaders";
+import { BoardContext } from "./BoardContext";
 
 export default function Board() {
   const [cards, setCards] = useState(
@@ -83,7 +73,7 @@ export default function Board() {
 
   return (
     <BoardContext.Provider value={boardContextValue}>
-      <div className="flex-1 px-8 py-6">
+      <div className="flex-1 min-w-0 px-8 pt-6">
         <div className="flex flex-col h-full">
           <header className="mb-6">
             <h1 className="text-2xl font-bold mb-1">{name}</h1>
@@ -100,7 +90,7 @@ export default function Board() {
             onDragEnd={onDragEnd}
             onDragCancel={onDragCancel}
           >
-            <div className="flex gap-4 pb-6 flex-1 items-start">
+            <div className="flex gap-4 pb-6 flex-1 min-h-0 items-start overflow-auto">
               <SortableContext
                 items={cards}
                 strategy={horizontalListSortingStrategy}

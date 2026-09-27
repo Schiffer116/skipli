@@ -34,7 +34,7 @@ export default function SpinnerToCheckPage() {
 
       setStatus("success");
     })();
-  }, []);
+  }, [token]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">

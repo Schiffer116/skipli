@@ -49,8 +49,8 @@ export default function useDnd(
     oldCard.current =
       cards.find((card) => card.tasks.find((task) => task.id === active.id)) ??
       null;
-    const task = oldCard.current?.tasks.find((task) => task.id === active.id)!;
-    setActiveTask(task);
+    const task = oldCard.current?.tasks.find((task) => task.id === active.id);
+    setActiveTask(task ?? null);
   };
 
   // Adapted from dnd-kit's multiple-containers example. With plain

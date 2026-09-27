@@ -1,2 +1,2 @@
 export { default } from "./Task";
-export * from "./Task";
+export type { TaskType } from "./Task";

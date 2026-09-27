@@ -1,5 +1,12 @@
 import { Avatar, AvatarImage } from "@/components/ui/avatar";
-import { Plus, SquareKanban, User } from "lucide-react";
+import {
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  SquareKanban,
+  User,
+} from "lucide-react";
+import { useEffect, useState } from "react";
 import { useLoaderData, useParams } from "react-router";
 import md5 from "md5";
 import { Button } from "@/components/ui/button";
@@ -16,11 +23,31 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@radix-ui/react-dialog";
-import type { boardViewLoader } from "../BoardView";
+import type { boardViewLoader } from "../loaders";
+
+// Per-browser preference; storage can be unavailable (private mode etc.).
+const COLLAPSED_KEY = "skipli:membersCollapsed";
+
+function readCollapsed() {
+  try {
+    return localStorage.getItem(COLLAPSED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
 
 export default function Sidebar() {
   const { boardId } = useParams();
   const { members } = useLoaderData<typeof boardViewLoader>();
+  const [collapsed, setCollapsed] = useState(readCollapsed);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(COLLAPSED_KEY, String(collapsed));
+    } catch {
+      // Not remembered this time; the toggle still works.
+    }
+  }, [collapsed]);
 
   const avatarUrls = members.map((member) => {
     const hash = md5(member);
@@ -47,46 +74,86 @@ export default function Sidebar() {
     });
   };
 
+  const toggleLabel = collapsed ? "Expand member list" : "Collapse member list";
+
   return (
-    <div className="sticky z-10 top-12 left-0 h-[calc(100vh-3rem)] w-xs py-4 bg-sidebar border-r border-sidebar-border flex flex-col min-w-xs">
-      <div className="flex items-center gap-2 px-6 pb-3 mb-2 border-b border-sidebar-border">
-        <SquareKanban className="size-5 text-primary" />
-        <h2 className="text-lg font-bold">Members</h2>
+    <aside
+      id="member-list"
+      aria-label="Members"
+      className={`z-10 h-full shrink-0 py-4 bg-sidebar border-r border-sidebar-border flex flex-col overflow-hidden transition-[width] duration-200 ${collapsed ? "w-14" : "w-xs"}`}
+    >
+      <div
+        className={`flex items-center gap-2 pb-3 mb-2 border-b border-sidebar-border ${collapsed ? "justify-center px-2" : "px-6 pr-3"}`}
+      >
+        {!collapsed && (
+          <>
+            <SquareKanban className="size-5 shrink-0 text-primary" />
+            <h2 className="flex-1 text-lg font-bold">
+              Members
+              <span className="ml-2 font-normal text-muted-foreground">
+                ({members.length})
+              </span>
+            </h2>
+          </>
+        )}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8 shrink-0 text-muted-foreground"
+          aria-label={toggleLabel}
+          title={toggleLabel}
+          aria-expanded={!collapsed}
+          aria-controls="member-list"
+          onClick={() => setCollapsed((collapsed) => !collapsed)}
+        >
+          {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+        </Button>
       </div>
-      <div className="px-4 space-y-1">
+      <div className={collapsed ? "px-2" : "px-4"}>
         <div className="space-y-1 mt-1">
           {members.map((member, idx) => (
             <div
               key={member}
-              className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-sidebar-accent"
+              title={collapsed ? member : undefined}
+              className={`flex items-center gap-2 py-1.5 rounded-md hover:bg-sidebar-accent ${collapsed ? "justify-center" : "px-2"}`}
             >
               <Avatar className="ring-1 ring-border size-7">
                 <AvatarImage src={avatarUrls[idx]} alt={member} />
               </Avatar>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-link truncate">{member}</p>
-              </div>
+              {!collapsed && (
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-link truncate">{member}</p>
+                </div>
+              )}
             </div>
           ))}
         </div>
       </div>
 
-      <div className="mt-auto px-4 pt-4 border-t border-sidebar-border">
+      <div
+        className={`mt-auto pt-4 border-t border-sidebar-border ${collapsed ? "px-2" : "px-4"}`}
+      >
         <Dialog>
           <DialogTrigger asChild>
-            <Button
-              variant="outline"
-              className="flex items-center justify-center gap-2 w-full cursor-pointer"
-              asChild
-            >
-              <div>
-                <div className="flex items-center">
+            {collapsed ? (
+              <Button
+                variant="outline"
+                size="icon"
+                className="w-full"
+                aria-label="Invite"
+                title="Invite"
+              >
+                <Plus className="size-3" />
+              </Button>
+            ) : (
+              <Button variant="outline" className="w-full">
+                <span className="flex items-center">
                   <Plus className="size-3" />
                   <User className="size-4" />
-                </div>
-                <span>Invite</span>
-              </div>
-            </Button>
+                </span>
+                Invite
+              </Button>
+            )}
           </DialogTrigger>
           <DialogContent>
             <form onSubmit={handleSubmit}>
@@ -112,6 +179,6 @@ export default function Sidebar() {
           </DialogContent>
         </Dialog>
       </div>
-    </div>
+    </aside>
   );
 }

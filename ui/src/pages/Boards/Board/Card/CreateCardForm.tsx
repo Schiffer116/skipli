@@ -6,13 +6,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
 import { socket } from "@/main";
-import { BoardContext } from "../Board";
+import { BoardContext } from "../BoardContext";
 import { createCard } from "@/utils/updateCard";
+import useEscape from "@/hooks/useEscape";
 
 export default function CreateCard() {
   const boardId = useParams().boardId!;
 
   const { setCards, setShowCreateCardForm } = useContext(BoardContext)!;
+  useEscape(() => setShowCreateCardForm(false));
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -69,6 +71,7 @@ export default function CreateCard() {
             <Button
               variant="ghost"
               size="sm"
+              type="button"
               onClick={() => setShowCreateCardForm(false)}
             >
               Cancel
