@@ -19,10 +19,13 @@ runs:
       with:
         aws-access-key-id: ${{ inputs.aws-access-key-id }}
         aws-secret-access-key: ${{ inputs.aws-secret-access-key }}
+        role-to-assume: ${{ inputs.aws-deploy-role-arn }}
         aws-region: ${{ inputs.aws-region }}
+        role-skip-session-tagging: true
 
     - uses: aws-actions/configure-aws-credentials@v5
       if: ${{ !env.ACT }}
       with:
         role-to-assume: ${{ inputs.aws-deploy-role-arn }}
         aws-region: ${{ inputs.aws-region }}
+        role-skip-session-tagging: true

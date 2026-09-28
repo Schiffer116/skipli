@@ -1,16 +1,72 @@
 AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  CloudFormation template for the UI of Skipli. Only deploy to us-east-1
+
+Parameters:
+  DomainName:
+    Type: String
+    Description: e.g. skipli.schifferarchitecture.com
+  HostedZoneId:
+    Type: AWS::Route53::HostedZone::Id
+    Description: Route 53 zone the domain lives in, validation record goes here
 
 Resources:
+  GitHubOIDCProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+
+  GitHubDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOIDCProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub: repo:Schiffer116/skipli:ref:refs/heads/master
+
+          - Effect: Allow
+            Principal:
+              AWS: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:user/iamadmin
+            Action: sts:AssumeRole
+
+      ManagedPolicyArns:
+        - !GetAtt UIBucketAccessPolicy.PolicyArn
+        # - arn:aws:iam::aws:policy/AdministratorAccess
+
+  UIBucketAccessPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: UIBucketAccess
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+            Resource: [!GetAtt UIBucket.Arn, !Sub "${UIBucket.Arn}/*"]
+          - Sid: AppParameterAccess
+            Effect: Allow
+            Action: ssm:GetParameter
+            Resource: !GetAtt UIBucketNameParameter.Arn
+
   UIBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketNamespace: account-regional
       BucketNamePrefix: skipli-ui
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
 
   UIBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -25,9 +81,9 @@ Resources:
             Resource: !Sub ${UIBucket.Arn}/*
             Condition:
               StringEquals:
-                # AWS:SourceArn: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${CloudfrontDistribution}
-                AWS:SourceArn: Ref! CloudfrontDistribution.Arn
+                AWS:SourceArn: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${CloudfrontDistribution}
 
+  # For Github action
   UIBucketNameParameter:
     Type: AWS::SSM::Parameter
     Properties:
@@ -48,7 +104,13 @@ Resources:
     Type: AWS::CloudFront::Distribution
     Properties:
       DistributionConfig:
+        Aliases:
+          - !Ref DomainName
+        ViewerCertificate:
+          AcmCertificateArn: !Ref Certificate
+          SslSupportMethod: sni-only
         Enabled: true
+        WebACLId: !GetAtt WebACL.Arn
         Origins:
           - Id: UIBucketOrigin
             DomainName: !GetAtt UIBucket.RegionalDomainName
@@ -59,3 +121,49 @@ Resources:
           TargetOriginId: UIBucketOrigin
           ViewerProtocolPolicy: redirect-to-https
           CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # AWS managed CachingOptimized
+
+  FlatRateFreePlan:
+    Type: AWS::PricingPlanManager::Subscription
+    Properties:
+      PlanFamily: CloudFront
+      PlanTier: FREE
+      ResourceArns:
+        - !Sub "arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${CloudfrontDistribution.Id}"
+        - !GetAtt WebACL.Arn
+
+  WebACL:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Scope: CLOUDFRONT
+      DefaultAction:
+        Allow: {}
+      VisibilityConfig:
+        CloudWatchMetricsEnabled: true
+        MetricName: CloudFrontWebACLCloudWatchMetric
+        SampledRequestsEnabled: true
+      # Rules:
+
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref DomainName
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Ref DomainName
+          HostedZoneId: !Ref HostedZoneId
+
+  DomainRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt CloudfrontDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2
+
+Outputs:
+  GithubDeployRoleArn:
+    Value: !GetAtt GitHubDeployRole.Arn
+  SiteURL:
+    Value: !Ref DomainName
