@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: An AWS Serverless Application Model (SAM) template describing your function.
+Description: Skipli API - Lambda behind an HTTP API Gateway.
 
 Parameters:
   Gmail:
@@ -8,24 +8,25 @@ Parameters:
   GmailAppPassword:
     Type: String
     NoEcho: true
+  DomainName:
+    Type: String
+    Description: e.g. api.skipli.schifferarchitecture.com
+  HostedZoneId:
+    Type: AWS::Route53::HostedZone::Id
+  CodeBucket:
+    Type: String
+    Description: Bucket holding the API's Lambda bundle (from artifacts.yaml)
+  CodeKey:
+    Type: String
+    Description: Object key of the API's Lambda bundle (bootstrap in a zip)
 
 Resources:
-  AppEmailParameter:
-    Type: AWS::SSM::Parameter
-    Properties:
-      Description: "Gmail to send verification mails"
-      Name: "/skipli/app-email"
-      Type: String
-      Value: !Ref Gmail
-
   AppSecret:
     Type: AWS::SecretsManager::Secret
     Properties:
       Name: "SkipliSecret"
-      Description: "Secrets for Skipli"
+      Description: "JWT signing secret for Skipli"
       GenerateSecretString:
-        SecretStringTemplate: !Sub '{"gmailAppPassword": "${GmailAppPassword}"}'
-        GenerateStringKey: "jwtSecret"
         PasswordLength: 64
         ExcludePunctuation: true
 
@@ -34,15 +35,15 @@ Resources:
     Properties:
       Architectures:
         - arm64
-      CodeUri: "s3://skipli-artifact-797848269974-ap-southeast-1-an/api.zip"
+      CodeUri:
+        Bucket: !Ref CodeBucket
+        Key: !Ref CodeKey
       Description: "Skipli's API Lambda Function"
       Environment:
         Variables:
-          APP_EMAIL: "{{resolve:ssm:/skipli/app-email}}"
-          APP_EMAIL_PASSWORD: "{{resolve:secretsmanager:SkipliSecret:SecretString:gmailAppPassword}}"
-          JWT_SECRET: "{{resolve:secretsmanager:SkipliSecret:SecretString:jwtSecret}}"
-      EphemeralStorage:
-        Size: 512
+          APP_EMAIL: !Ref Gmail
+          APP_EMAIL_PASSWORD: !Ref GmailAppPassword
+          JWT_SECRET: "{{resolve:secretsmanager:SkipliSecret:SecretString}}"
       Handler: hello.handler
       LoggingConfig:
         LogFormat: Text
@@ -59,8 +60,43 @@ Resources:
       Timeout: 3
       Tracing: PassThrough
       Role: arn:aws:iam::797848269974:role/service-role/Skipli-role-ran0krvh
+      Events:
+        Api:
+          Type: HttpApi
 
-  APIGateway:
-    Type: AWS::Serverless::Api
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
     Properties:
-      StageName: $default
+      DomainName: !Ref DomainName
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Ref DomainName
+          HostedZoneId: !Ref HostedZoneId
+
+  ApiDomainName:
+    Type: AWS::ApiGatewayV2::DomainName
+    Properties:
+      DomainName: !Ref DomainName
+      DomainNameConfigurations:
+        - CertificateArn: !Ref Certificate
+
+  ApiMapping:
+    Type: AWS::ApiGatewayV2::ApiMapping
+    Properties:
+      ApiId: !Ref ServerlessHttpApi
+      DomainName: !Ref ApiDomainName
+      Stage: $default
+
+  DomainRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt ApiDomainName.RegionalDomainName
+        HostedZoneId: !GetAtt ApiDomainName.RegionalHostedZoneId
+
+Outputs:
+  ApiUrl:
+    Value: !Sub https://${DomainName}

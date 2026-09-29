@@ -1,0 +1,61 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  GitHub Actions OIDC provider and deploy role for Skipli's UI stack.
+
+Resources:
+  GitHubOIDCProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+
+  GitHubDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOIDCProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub: repo:Schiffer116/skipli:ref:refs/heads/master
+
+          - Effect: Allow
+            Principal:
+              AWS: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:user/iamadmin
+            Action: sts:AssumeRole
+
+      ManagedPolicyArns:
+        - !GetAtt UIBucketAccessPolicy.PolicyArn
+        # - arn:aws:iam::aws:policy/AdministratorAccess
+
+  UIBucketAccessPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: UIBucketAccess
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+            Resource:
+              - !Sub arn:${AWS::Partition}:s3:::skipli-ui-${AWS::AccountId}-${AWS::Region}-an
+              - !Sub arn:${AWS::Partition}:s3:::skipli-ui-${AWS::AccountId}-${AWS::Region}-an/*
+          - Sid: AppParameterAccess
+            Effect: Allow
+            Action: ssm:GetParameter
+            Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/skipli/ui-bucket-name
+
+Outputs:
+  GithubDeployRoleArn:
+    Value: !GetAtt GitHubDeployRole.Arn

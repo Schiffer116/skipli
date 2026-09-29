@@ -1,0 +1,16 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Bucket for Lambda code bundles uploaded by deploy.sh
+
+Resources:
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldBundles
+            Status: Enabled
+            ExpirationInDays: 30
+
+Outputs:
+  ArtifactBucketName:
+    Value: !Ref ArtifactBucket
