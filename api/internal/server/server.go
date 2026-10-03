@@ -21,10 +21,6 @@ type Server struct {
 
 func NewServer() *Server {
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("ap-southeast-7"))
-	if err != nil {
-		log.Fatalf("unable to load SDK config: %v", err)
-	}
 
 	appEmail := os.Getenv("APP_EMAIL")
 	appEmailPassword := os.Getenv("APP_EMAIL_PASSWORD")
@@ -36,7 +32,12 @@ func NewServer() *Server {
 		log.Fatal("JWT_SECRET must be set")
 	}
 
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("ap-southeast-7"))
+	if err != nil {
+		log.Fatalf("unable to load SDK config: %v", err)
+	}
 	db := dynamodb.NewFromConfig(cfg)
+
 	mailer := auth.NewMailer(appEmail, appEmailPassword)
 	tokens := auth.NewTokenIssuer(jwtSecret)
 	router := http.NewServeMux()

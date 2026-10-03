@@ -1,2 +1,4 @@
 .terraform/
 cloudformation
+*.tfstate*
+*.tfvars
