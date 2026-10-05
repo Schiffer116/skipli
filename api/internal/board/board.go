@@ -17,7 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
-	"github.com/Schiffer116/skipli/internal/auth"
+	"github.com/Schiffer116/skipli/api/internal/auth"
 )
 
 const tableName = "Skipli"

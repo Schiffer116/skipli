@@ -9,10 +9,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 
-	"github.com/Schiffer116/skipli/internal/auth"
-	"github.com/Schiffer116/skipli/internal/board"
-	"github.com/Schiffer116/skipli/internal/card"
-	"github.com/Schiffer116/skipli/internal/task"
+	"github.com/Schiffer116/skipli/api/internal/auth"
+	"github.com/Schiffer116/skipli/api/internal/board"
+	"github.com/Schiffer116/skipli/api/internal/card"
+	"github.com/Schiffer116/skipli/api/internal/task"
 )
 
 type Server struct {

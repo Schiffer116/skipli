@@ -1,4 +1,4 @@
-module github.com/Schiffer116/skipli
+module github.com/Schiffer116/skipli/api
 
 go 1.26.6
 

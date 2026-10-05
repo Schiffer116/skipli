@@ -1,5 +1,31 @@
+provider "github" {
+  token = var.github_token
+}
+
 provider "aws" {
   region = "ap-southeast-7"
+}
+
+variable "github_token" {
+  description = "GitHub token for authentication"
+  type        = string
+  sensitive   = true
+}
+
+locals {
+  github_repository_name = "skipli"
+}
+
+resource "github_actions_variable" "github_actions_role_arn" {
+  repository    = local.github_repository_name
+  variable_name = "AWS_GITHUB_ACTIONS_ROLE_ARN"
+  value         = aws_iam_role.github_actions.arn
+}
+
+resource "github_actions_variable" "skipli_bucket_name" {
+  repository    = local.github_repository_name
+  variable_name = "SKIPLI_BUCKET_NAME"
+  value         = aws_s3_bucket.skipli.bucket
 }
 
 data "aws_caller_identity" "current" {}
@@ -18,13 +44,6 @@ resource "aws_s3_bucket_versioning" "skipli" {
   versioning_configuration {
     status = "Enabled"
   }
-}
-
-# For Github actions
-resource "aws_ssm_parameter" "bucket_name" {
-  name  = "/skipli/bucket-name"
-  type  = "String"
-  value = aws_s3_bucket.skipli.bucket
 }
 
 resource "aws_iam_openid_connect_provider" "github_oidc" {
@@ -77,13 +96,7 @@ data "aws_iam_policy_document" "allow_skipli_s3" {
       "s3:PutObject",
       "s3:DeleteObject",
     ]
-    resources = ["${aws_s3_bucket.skipli.arn}/ui/*"]
-  }
-
-  statement {
-    effect    = "Allow"
-    actions   = ["ssm:GetParameter"]
-    resources = [aws_ssm_parameter.bucket_name.arn]
+    resources = ["${aws_s3_bucket.skipli.arn}/*"]
   }
 }
 
@@ -99,14 +112,4 @@ resource "aws_iam_role" "github_actions" {
 resource "aws_iam_role_policy_attachment" "attach_policy" {
   role       = aws_iam_role.github_actions.name
   policy_arn = aws_iam_policy.allow_skipli_s3.id
-}
-
-output "github_actions_role_arn" {
-  description = "IAM role for Github actions"
-  value       = aws_iam_role.github_actions.arn
-}
-
-output "skipli_bucket" {
-  description = "Skipli S3 bucket ARN"
-  value       = aws_s3_bucket.skipli.arn
 }

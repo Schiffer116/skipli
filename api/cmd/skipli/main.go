@@ -9,7 +9,7 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/awslabs/aws-lambda-go-api-proxy/httpadapter"
 
-	"github.com/Schiffer116/skipli/internal/server"
+	"github.com/Schiffer116/skipli/api/internal/server"
 )
 
 func main() {
