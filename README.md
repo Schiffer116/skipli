@@ -28,12 +28,13 @@ cd skipli
 ```
 
 1. Configure the API's environment (AWS credentials come from the usual
-   AWS CLI config/profile; the table is `Skipli` in `ap-southeast-7`):
+   AWS CLI config/profile; the table is in `ap-southeast-7`):
 
 ```bash
 export APP_EMAIL=your-app-email@example.com
 export APP_EMAIL_PASSWORD=your-app-email-password
 export JWT_SECRET=a-string-secret-at-least-256-bits-long
+export TABLE_NAME=Skipli
 ```
 
 1. Start the API (port 3000, override with `PORT`):

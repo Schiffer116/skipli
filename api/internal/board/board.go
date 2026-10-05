@@ -20,16 +20,16 @@ import (
 	"github.com/Schiffer116/skipli/api/internal/auth"
 )
 
-const tableName = "Skipli"
 const memberIndexName = "Member"
 
 type Handler struct {
 	db     *dynamodb.Client
+	table  string
 	tokens *auth.TokenIssuer
 }
 
-func NewHandler(db *dynamodb.Client, tokens *auth.TokenIssuer) *Handler {
-	return &Handler{db: db, tokens: tokens}
+func NewHandler(db *dynamodb.Client, table string, tokens *auth.TokenIssuer) *Handler {
+	return &Handler{db: db, table: table, tokens: tokens}
 }
 
 func (h *Handler) RegisterRoutes(router *http.ServeMux) {
@@ -70,7 +70,7 @@ func (h *Handler) create(w http.ResponseWriter, req *http.Request) {
 		TransactItems: []types.TransactWriteItem{
 			{
 				Put: &types.Put{
-					TableName: aws.String(tableName),
+					TableName: aws.String(h.table),
 					Item: map[string]types.AttributeValue{
 						"PK":          &types.AttributeValueMemberS{Value: id},
 						"SK":          &types.AttributeValueMemberS{Value: "META"},
@@ -83,7 +83,7 @@ func (h *Handler) create(w http.ResponseWriter, req *http.Request) {
 			},
 			{
 				Put: &types.Put{
-					TableName: aws.String(tableName),
+					TableName: aws.String(h.table),
 					Item: map[string]types.AttributeValue{
 						"PK":     &types.AttributeValueMemberS{Value: id},
 						"SK":     &types.AttributeValueMemberS{Value: "MEMBER#" + owner},
@@ -112,7 +112,7 @@ func (h *Handler) get(w http.ResponseWriter, req *http.Request) {
 	id := req.PathValue("id")
 
 	response, err := h.db.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(tableName),
+		TableName: aws.String(h.table),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: id},
 			"SK": &types.AttributeValueMemberS{Value: "META"},
@@ -146,7 +146,7 @@ func (h *Handler) members(w http.ResponseWriter, req *http.Request) {
 	id := req.PathValue("id")
 
 	response, err := h.db.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(tableName),
+		TableName: aws.String(h.table),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: id},
 			"SK": &types.AttributeValueMemberS{Value: "META"},
@@ -172,7 +172,7 @@ func (h *Handler) members(w http.ResponseWriter, req *http.Request) {
 	}
 
 	queryOutput := dynamodb.NewQueryPaginator(h.db, &dynamodb.QueryInput{
-		TableName:                 aws.String(tableName),
+		TableName:                 aws.String(h.table),
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
 		KeyConditionExpression:    expr.KeyCondition(),
@@ -240,7 +240,7 @@ func (h *Handler) list(w http.ResponseWriter, req *http.Request) {
 	}
 
 	queryOutput := dynamodb.NewQueryPaginator(h.db, &dynamodb.QueryInput{
-		TableName:                 aws.String(tableName),
+		TableName:                 aws.String(h.table),
 		IndexName:                 aws.String(memberIndexName),
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
@@ -280,7 +280,7 @@ func (h *Handler) list(w http.ResponseWriter, req *http.Request) {
 	if len(keys) > 0 {
 		batchOutput, err := h.db.BatchGetItem(ctx, &dynamodb.BatchGetItemInput{
 			RequestItems: map[string]types.KeysAndAttributes{
-				tableName: {Keys: keys},
+				h.table: {Keys: keys},
 			},
 		})
 		if err != nil {
@@ -289,7 +289,7 @@ func (h *Handler) list(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		if err := attributevalue.UnmarshalListOfMaps(batchOutput.Responses[tableName], &items); err != nil {
+		if err := attributevalue.UnmarshalListOfMaps(batchOutput.Responses[h.table], &items); err != nil {
 			log.Printf("failed to unmarshal boards: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -388,7 +388,7 @@ func (h *Handler) order(w http.ResponseWriter, req *http.Request) {
 		// they send.
 		transactItems = append(transactItems, types.TransactWriteItem{
 			Update: &types.Update{
-				TableName: aws.String(tableName),
+				TableName: aws.String(h.table),
 				Key: map[string]types.AttributeValue{
 					"PK": &types.AttributeValueMemberS{Value: id},
 					"SK": &types.AttributeValueMemberS{Value: "MEMBER#" + email},
@@ -431,7 +431,7 @@ func (h *Handler) delete(w http.ResponseWriter, req *http.Request) {
 
 	id := req.PathValue("id")
 	_, err := h.db.DeleteItem(ctx, &dynamodb.DeleteItemInput{
-		TableName: aws.String(tableName),
+		TableName: aws.String(h.table),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: id},
 		},
@@ -470,7 +470,7 @@ func (h *Handler) put(w http.ResponseWriter, req *http.Request) {
 	defer req.Body.Close()
 
 	_, err := h.db.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(tableName),
+		TableName: aws.String(h.table),
 		Item: map[string]types.AttributeValue{
 			"PK":          &types.AttributeValueMemberS{Value: id},
 			"SK":          &types.AttributeValueMemberS{Value: "META"},

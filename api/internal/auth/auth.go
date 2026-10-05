@@ -16,16 +16,15 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
-const tableName = "Skipli"
-
 type Handler struct {
 	db     *dynamodb.Client
+	table  string
 	mailer *Mailer
 	tokens *TokenIssuer
 }
 
-func NewHandler(db *dynamodb.Client, mailer *Mailer, tokens *TokenIssuer) *Handler {
-	return &Handler{db: db, mailer: mailer, tokens: tokens}
+func NewHandler(db *dynamodb.Client, table string, mailer *Mailer, tokens *TokenIssuer) *Handler {
+	return &Handler{db: db, table: table, mailer: mailer, tokens: tokens}
 }
 
 func (h *Handler) RegisterRoutes(router *http.ServeMux) {
@@ -140,7 +139,7 @@ func (h *Handler) getEmailFromJwt(w http.ResponseWriter, req *http.Request) {
 
 func (h *Handler) storeCode(ctx context.Context, email, code string) error {
 	_, err := h.db.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(tableName),
+		TableName: aws.String(h.table),
 		Item: map[string]types.AttributeValue{
 			"PK":               &types.AttributeValueMemberS{Value: "USER#" + email},
 			"SK":               &types.AttributeValueMemberS{Value: "VERIFICATION"},
@@ -152,7 +151,7 @@ func (h *Handler) storeCode(ctx context.Context, email, code string) error {
 
 func (h *Handler) getStoredCode(ctx context.Context, email string) (string, bool, error) {
 	response, err := h.db.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(tableName),
+		TableName: aws.String(h.table),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "USER#" + email},
 			"SK": &types.AttributeValueMemberS{Value: "VERIFICATION"},
@@ -174,7 +173,7 @@ func (h *Handler) getStoredCode(ctx context.Context, email string) (string, bool
 
 func (h *Handler) deleteCode(ctx context.Context, email string) error {
 	_, err := h.db.DeleteItem(ctx, &dynamodb.DeleteItemInput{
-		TableName: aws.String(tableName),
+		TableName: aws.String(h.table),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "USER#" + email},
 			"SK": &types.AttributeValueMemberS{Value: "VERIFICATION"},

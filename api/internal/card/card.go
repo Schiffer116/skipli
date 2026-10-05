@@ -17,23 +17,22 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
-const tableName = "Skipli"
 const orderGap = 1000
 
 // taskPrefix mirrors internal/task's own SK format ("TASK#<cardId>#..."),
 // duplicated here (not imported) so cascade-delete can find a card's tasks
-// without coupling the two packages — same duplication-over-sharing choice
-// already made for tableName across this codebase's packages.
+// without coupling the two packages.
 func taskPrefix(cardID string) string {
 	return "TASK#" + cardID + "#"
 }
 
 type Handler struct {
-	db *dynamodb.Client
+	db    *dynamodb.Client
+	table string
 }
 
-func NewHandler(db *dynamodb.Client) *Handler {
-	return &Handler{db: db}
+func NewHandler(db *dynamodb.Client, table string) *Handler {
+	return &Handler{db: db, table: table}
 }
 
 func (h *Handler) RegisterRoutes(router *http.ServeMux) {
@@ -81,7 +80,7 @@ func (h *Handler) listCards(ctx context.Context, boardID string) ([]Card, error)
 	}
 
 	queryOutput := dynamodb.NewQueryPaginator(h.db, &dynamodb.QueryInput{
-		TableName:                 aws.String(tableName),
+		TableName:                 aws.String(h.table),
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
 		KeyConditionExpression:    expr.KeyCondition(),
@@ -107,7 +106,7 @@ func (h *Handler) listCards(ctx context.Context, boardID string) ([]Card, error)
 
 func (h *Handler) getCard(ctx context.Context, boardID, cardID string) (Card, bool, error) {
 	response, err := h.db.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(tableName),
+		TableName: aws.String(h.table),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: boardID},
 			"SK": &types.AttributeValueMemberS{Value: cardSK(cardID)},
@@ -179,7 +178,7 @@ func (h *Handler) create(w http.ResponseWriter, req *http.Request) {
 
 	id := uuid.New().String()
 	_, err = h.db.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(tableName),
+		TableName: aws.String(h.table),
 		Item: map[string]types.AttributeValue{
 			"PK":          &types.AttributeValueMemberS{Value: boardID},
 			"SK":          &types.AttributeValueMemberS{Value: cardSK(id)},
@@ -249,7 +248,7 @@ func (h *Handler) update(w http.ResponseWriter, req *http.Request) {
 	}
 
 	_, err = h.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
-		TableName: aws.String(tableName),
+		TableName: aws.String(h.table),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: boardID},
 			"SK": &types.AttributeValueMemberS{Value: cardSK(cardID)},
@@ -338,7 +337,7 @@ func (h *Handler) reorder(w http.ResponseWriter, req *http.Request) {
 	}
 
 	_, err = h.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
-		TableName: aws.String(tableName),
+		TableName: aws.String(h.table),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: boardID},
 			"SK": &types.AttributeValueMemberS{Value: cardSK(cardID)},
@@ -375,7 +374,7 @@ func (h *Handler) delete(w http.ResponseWriter, req *http.Request) {
 	}
 
 	queryOutput, err := h.db.Query(ctx, &dynamodb.QueryInput{
-		TableName:                 aws.String(tableName),
+		TableName:                 aws.String(h.table),
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
 		KeyConditionExpression:    expr.KeyCondition(),
@@ -391,7 +390,7 @@ func (h *Handler) delete(w http.ResponseWriter, req *http.Request) {
 	for _, item := range queryOutput.Items {
 		transactItems = append(transactItems, types.TransactWriteItem{
 			Delete: &types.Delete{
-				TableName: aws.String(tableName),
+				TableName: aws.String(h.table),
 				Key: map[string]types.AttributeValue{
 					"PK": &types.AttributeValueMemberS{Value: boardID},
 					"SK": item["SK"],
@@ -401,7 +400,7 @@ func (h *Handler) delete(w http.ResponseWriter, req *http.Request) {
 	}
 	transactItems = append(transactItems, types.TransactWriteItem{
 		Delete: &types.Delete{
-			TableName: aws.String(tableName),
+			TableName: aws.String(h.table),
 			Key: map[string]types.AttributeValue{
 				"PK": &types.AttributeValueMemberS{Value: boardID},
 				"SK": &types.AttributeValueMemberS{Value: cardSK(cardID)},

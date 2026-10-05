@@ -12,6 +12,67 @@ resource "random_password" "jwt" {
   special = false
 }
 
+resource "aws_dynamodb_table" "skipli" {
+  name         = "Skipli"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "PK"
+  range_key    = "SK"
+
+  attribute {
+    name = "PK"
+    type = "S"
+  }
+
+  attribute {
+    name = "SK"
+    type = "S"
+  }
+
+  attribute {
+    name = "Member"
+    type = "S"
+  }
+
+  # ttl {
+  #   attribute_name = "TimeToExist"
+  #   enabled        = true
+  # }
+
+  global_secondary_index {
+    name = "Member"
+
+    key_schema {
+      attribute_name = "Member"
+      key_type       = "HASH"
+    }
+
+    key_schema {
+      attribute_name = "PK"
+      key_type       = "RANGE"
+    }
+
+    projection_type = "KEYS_ONLY"
+
+    on_demand_throughput {
+      max_read_request_units  = 5
+      max_write_request_units = 5
+    }
+  }
+
+  on_demand_throughput {
+    max_read_request_units  = 5
+    max_write_request_units = 5
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
 data "aws_iam_policy_document" "assume_role" {
   statement {
     effect = "Allow"
@@ -46,8 +107,8 @@ data "aws_iam_policy_document" "dynamodb_access" {
     ]
 
     resources = [
-      "arn:aws:dynamodb:ap-southeast-7:797848269974:table/Skipli",
-      "arn:aws:dynamodb:ap-southeast-7:797848269974:table/Skipli/*"
+      aws_dynamodb_table.skipli.arn,
+      "${aws_dynamodb_table.skipli.arn}/*"
     ]
   }
 }
@@ -89,6 +150,7 @@ resource "aws_lambda_function" "skipli" {
       APP_EMAIL          = var.gmail
       APP_EMAIL_PASSWORD = var.gmail_app_password
       JWT_SECRET         = random_password.jwt.result
+      TABLE_NAME         = aws_dynamodb_table.skipli.name
     }
   }
 }

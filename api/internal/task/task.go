@@ -17,15 +17,15 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
-const tableName = "Skipli"
 const orderGap = 1000
 
 type Handler struct {
-	db *dynamodb.Client
+	db    *dynamodb.Client
+	table string
 }
 
-func NewHandler(db *dynamodb.Client) *Handler {
-	return &Handler{db: db}
+func NewHandler(db *dynamodb.Client, table string) *Handler {
+	return &Handler{db: db, table: table}
 }
 
 func (h *Handler) RegisterRoutes(router *http.ServeMux) {
@@ -82,7 +82,7 @@ func (h *Handler) listTasks(ctx context.Context, boardID, cardID string) ([]Task
 	}
 
 	queryOutput := dynamodb.NewQueryPaginator(h.db, &dynamodb.QueryInput{
-		TableName:                 aws.String(tableName),
+		TableName:                 aws.String(h.table),
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
 		KeyConditionExpression:    expr.KeyCondition(),
@@ -108,7 +108,7 @@ func (h *Handler) listTasks(ctx context.Context, boardID, cardID string) ([]Task
 
 func (h *Handler) getTask(ctx context.Context, boardID, cardID, taskID string) (Task, bool, error) {
 	response, err := h.db.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(tableName),
+		TableName: aws.String(h.table),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: boardID},
 			"SK": &types.AttributeValueMemberS{Value: taskSK(cardID, taskID)},
@@ -180,7 +180,7 @@ func (h *Handler) create(w http.ResponseWriter, req *http.Request) {
 
 	id := uuid.New().String()
 	_, err = h.db.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(tableName),
+		TableName: aws.String(h.table),
 		Item: map[string]types.AttributeValue{
 			"PK":          &types.AttributeValueMemberS{Value: boardID},
 			"SK":          &types.AttributeValueMemberS{Value: taskSK(cardID, id)},
@@ -255,7 +255,7 @@ func (h *Handler) update(w http.ResponseWriter, req *http.Request) {
 	}
 
 	_, err = h.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
-		TableName: aws.String(tableName),
+		TableName: aws.String(h.table),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: boardID},
 			"SK": &types.AttributeValueMemberS{Value: taskSK(cardID, taskID)},
@@ -363,7 +363,7 @@ func (h *Handler) move(w http.ResponseWriter, req *http.Request) {
 		}
 
 		_, err = h.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
-			TableName: aws.String(tableName),
+			TableName: aws.String(h.table),
 			Key: map[string]types.AttributeValue{
 				"PK": &types.AttributeValueMemberS{Value: boardID},
 				"SK": &types.AttributeValueMemberS{Value: taskSK(cardID, taskID)},
@@ -389,7 +389,7 @@ func (h *Handler) move(w http.ResponseWriter, req *http.Request) {
 		TransactItems: []types.TransactWriteItem{
 			{
 				Delete: &types.Delete{
-					TableName: aws.String(tableName),
+					TableName: aws.String(h.table),
 					Key: map[string]types.AttributeValue{
 						"PK": &types.AttributeValueMemberS{Value: boardID},
 						"SK": &types.AttributeValueMemberS{Value: taskSK(cardID, taskID)},
@@ -398,7 +398,7 @@ func (h *Handler) move(w http.ResponseWriter, req *http.Request) {
 			},
 			{
 				Put: &types.Put{
-					TableName: aws.String(tableName),
+					TableName: aws.String(h.table),
 					Item: map[string]types.AttributeValue{
 						"PK":          &types.AttributeValueMemberS{Value: boardID},
 						"SK":          &types.AttributeValueMemberS{Value: taskSK(r.NewCardID, taskID)},
@@ -429,7 +429,7 @@ func (h *Handler) delete(w http.ResponseWriter, req *http.Request) {
 	taskID := req.PathValue("taskId")
 
 	_, err := h.db.DeleteItem(ctx, &dynamodb.DeleteItemInput{
-		TableName: aws.String(tableName),
+		TableName: aws.String(h.table),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: boardID},
 			"SK": &types.AttributeValueMemberS{Value: taskSK(cardID, taskID)},

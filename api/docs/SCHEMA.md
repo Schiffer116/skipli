@@ -1,10 +1,9 @@
 # Database schema
 
-Single DynamoDB table, name `"Skipli"` (defined as a duplicated local
-`const tableName` in both `internal/board/board.go` and
-`internal/auth/auth.go` — deliberately not shared, see the comment history in
-those files if curious why). Region `ap-southeast-7`, billing mode
-`PAY_PER_REQUEST` (on-demand).
+Single DynamoDB table, named by the `TABLE_NAME` environment variable
+(`Skipli` in the deployed stack, set on the Lambda by `infra/api.tf`). The
+server reads it once at startup and passes it to each package's `NewHandler`.
+Region `ap-southeast-7`, billing mode `PAY_PER_REQUEST` (on-demand).
 
 Base table key: `PK` (partition, string) + `SK` (sort, string). Item types
 are distinguished by their `SK` prefix, standard single-table design.

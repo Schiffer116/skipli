@@ -4,6 +4,12 @@ provider "github" {
 
 provider "aws" {
   region = "ap-southeast-7"
+  default_tags {
+    tags = {
+      Project   = "Skipli"
+      ManagedBy = "terraform"
+    }
+  }
 }
 
 variable "github_token" {
