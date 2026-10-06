@@ -16,7 +16,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider/types"
 )
 
-// Handler signs users in with Cognito's emailed one-time codes.
 type Handler struct {
 	idp      *cip.Client
 	poolID   string
@@ -63,7 +62,6 @@ func (h *Handler) sendVerificationEmail(w http.ResponseWriter, req *http.Request
 		return
 	}
 
-	// Cognito emails the code and returns a session to answer it with.
 	out, err := h.idp.InitiateAuth(ctx, &cip.InitiateAuthInput{
 		ClientId: aws.String(h.clientID),
 		AuthFlow: types.AuthFlowTypeUserAuth,
@@ -82,8 +80,6 @@ func (h *Handler) sendVerificationEmail(w http.ResponseWriter, req *http.Request
 	json.NewEncoder(w).Encode(SendVerificationEmailResponse{Session: *out.Session})
 }
 
-// canReceiveMail rejects malformed addresses and domains with no mail server,
-// so typos like "@gmial.com" don't bounce. DNS outages fail open.
 func canReceiveMail(ctx context.Context, email string) bool {
 	addr, err := mail.ParseAddress(email)
 	if err != nil || addr.Address != email {
@@ -96,13 +92,9 @@ func canReceiveMail(ctx context.Context, email string) bool {
 	if errors.As(err, &dnsErr) && !dnsErr.IsNotFound {
 		return true
 	}
-	// A single "." record is a null MX: the domain says it accepts no mail.
 	return err == nil && len(mx) > 0 && mx[0].Host != "."
 }
 
-// ensureUser creates the Cognito user on first sign-in, confirmed and with a
-// verified email so it can receive codes. The password is random and never
-// used; it only moves the user out of FORCE_CHANGE_PASSWORD.
 func (h *Handler) ensureUser(ctx context.Context, email string) error {
 	_, err := h.idp.AdminCreateUser(ctx, &cip.AdminCreateUserInput{
 		UserPoolId:    aws.String(h.poolID),
@@ -124,7 +116,7 @@ func (h *Handler) ensureUser(ctx context.Context, email string) error {
 	_, err = h.idp.AdminSetUserPassword(ctx, &cip.AdminSetUserPasswordInput{
 		UserPoolId: aws.String(h.poolID),
 		Username:   aws.String(email),
-		Password:   aws.String(rand.Text() + "Aa1!"), // meets the default password policy
+		Password:   aws.String(rand.Text() + "Aa1!"),
 		Permanent:  true,
 	})
 	return err
@@ -176,7 +168,6 @@ func (h *Handler) verify(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// The ID token carries the email the rest of the API keys data on.
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(VerifyResponse{AccessToken: *out.AuthenticationResult.IdToken})
 }

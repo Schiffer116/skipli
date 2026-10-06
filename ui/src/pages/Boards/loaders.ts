@@ -8,18 +8,29 @@ import type { Board } from "./BoardList/BoardList";
 import type { CardType } from "./Board/Card";
 import type { TaskType } from "./Board/Card/Task";
 
-export async function boardsLoader() {
-  const email = await fetch("/api/auth/email", {
-    headers: {
-      Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-    },
-  });
+export type Favorite = Pick<Board, "id" | "name">;
 
-  if (email.status === 401) {
-    return redirect("/login");
+export async function boardsLoader() {
+  const headers = {
+    Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+  };
+  const [emailRes, boardsRes] = await Promise.all([
+    fetch("/api/auth/email", { headers }),
+    fetch("/api/boards", { headers }),
+  ]);
+
+  if (emailRes.status === 401 || boardsRes.status === 401) {
+    throw redirect("/login");
   }
 
-  return await email.json();
+  const { email }: { email: string } = await emailRes.json();
+  const { boards, teamBoards }: { boards: Board[]; teamBoards: Board[] } =
+    await boardsRes.json();
+  const favorites: Favorite[] = [...boards, ...teamBoards]
+    .filter((board) => board.favorite)
+    .map(({ id, name }) => ({ id, name }));
+
+  return { email, favorites };
 }
 
 export const boardListLoader = async (): Promise<{

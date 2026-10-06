@@ -19,11 +19,6 @@ resource "aws_dynamodb_table" "skipli" {
     type = "S"
   }
 
-  # ttl {
-  #   attribute_name = "TimeToExist"
-  #   enabled        = true
-  # }
-
   global_secondary_index {
     name = "Member"
 

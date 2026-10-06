@@ -10,7 +10,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// TokenVerifier checks Cognito ID tokens against the user pool's public keys.
 type TokenVerifier struct {
 	keys     keyfunc.Keyfunc
 	issuer   string

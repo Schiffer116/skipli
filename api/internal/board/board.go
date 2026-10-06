@@ -39,6 +39,7 @@ func (h *Handler) RegisterRoutes(router *http.ServeMux) {
 	router.HandleFunc("POST /boards", h.tokens.RequireAuth(h.create))
 	router.HandleFunc("PUT /boards/order", h.tokens.RequireAuth(h.order))
 	router.HandleFunc("PUT /boards/{id}", h.tokens.RequireAuth(h.put))
+	router.HandleFunc("PUT /boards/{id}/favorite", h.tokens.RequireAuth(h.favorite))
 }
 
 type CreateRequest struct {
@@ -208,13 +209,15 @@ type Board struct {
 	Owner       string `json:"owner"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	Favorite    bool   `json:"favorite" dynamodbav:"-"`
 }
 
 type boardItem struct {
 	Board
-	PK    string
-	SK    string
-	Order float64
+	PK         string
+	SK         string
+	Order      float64
+	IsFavorite bool `dynamodbav:"Favorite"`
 }
 
 type ListResponse struct {
@@ -298,12 +301,17 @@ func (h *Handler) list(w http.ResponseWriter, req *http.Request) {
 
 	memberBoards := []Board{}
 	orders := map[string]float64{}
+	favorites := map[string]bool{}
 	for _, item := range items {
 		if item.SK == "META" {
 			memberBoards = append(memberBoards, item.Board)
 		} else {
 			orders[item.PK] = item.Order
+			favorites[item.PK] = item.IsFavorite
 		}
+	}
+	for i := range memberBoards {
+		memberBoards[i].Favorite = favorites[memberBoards[i].ID]
 	}
 
 	// Memberships from before Order existed read as 0 and sort first; name
@@ -419,6 +427,55 @@ func (h *Handler) order(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 		log.Printf("failed to reorder boards: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type FavoriteRequest struct {
+	Favorite bool `json:"favorite"`
+}
+
+func (h *Handler) favorite(w http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+
+	email, ok := auth.EmailFromContext(ctx)
+	if !ok {
+		http.Error(w, "missing email in context", http.StatusInternalServerError)
+		return
+	}
+
+	var r FavoriteRequest
+	if err := json.NewDecoder(req.Body).Decode(&r); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	defer req.Body.Close()
+
+	_, err := h.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(h.table),
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: req.PathValue("id")},
+			"SK": &types.AttributeValueMemberS{Value: "MEMBER#" + email},
+		},
+		UpdateExpression:    aws.String("SET #favorite = :favorite"),
+		ConditionExpression: aws.String("attribute_exists(PK)"),
+		ExpressionAttributeNames: map[string]string{
+			"#favorite": "Favorite",
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":favorite": &types.AttributeValueMemberBOOL{Value: r.Favorite},
+		},
+	})
+	var notMember *types.ConditionalCheckFailedException
+	if errors.As(err, &notMember) {
+		http.Error(w, "not a member of this board", http.StatusForbidden)
+		return
+	}
+	if err != nil {
+		log.Printf("failed to set favorite: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

@@ -1,12 +1,17 @@
-import { Link, useLoaderData } from "react-router";
-import type { boardsLoader } from "./loaders";
+import { Link } from "react-router";
+import { Star } from "lucide-react";
 import { Avatar, AvatarImage } from "@/components/ui/avatar";
 
 import md5 from "md5";
 
-export default function Header() {
-  const { email } = useLoaderData<typeof boardsLoader>();
+import type { Favorite } from "./loaders";
 
+type HeaderProps = {
+  email: string;
+  favorites: Favorite[];
+};
+
+export default function Header({ email, favorites }: HeaderProps) {
   const hash = md5(email);
   const avatarUrl = `https://www.gravatar.com/avatar/${hash}?d=identicon`;
 
@@ -25,6 +30,25 @@ export default function Header() {
           </Avatar>
         </div>
       </div>
+
+      <nav
+        aria-label="Favorite boards"
+        className="bg-nav text-nav-muted border-t border-nav-muted/20 h-9 px-4 flex items-center gap-1 overflow-x-auto text-sm"
+      >
+        {favorites.map((board) => (
+          <Link
+            key={board.id}
+            to={`/boards/${board.id}`}
+            className="flex shrink-0 items-center gap-1.5 rounded px-2 py-1 hover:bg-nav-muted/15 hover:text-nav-foreground"
+          >
+            <Star
+              className="size-3.5 fill-current text-amber-400"
+              aria-hidden
+            />
+            {board.name}
+          </Link>
+        ))}
+      </nav>
     </header>
   );
 }

@@ -33,7 +33,6 @@ export default function Login() {
       return;
     }
 
-    // Cognito's session ties the emailed code to this sign-in attempt.
     const { session } = await res.json();
     sessionStorage.setItem("email", email);
     sessionStorage.setItem("session", session);

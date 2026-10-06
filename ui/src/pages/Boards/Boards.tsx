@@ -1,11 +1,41 @@
-import { Outlet } from "react-router";
+import { useState } from "react";
+import { Outlet, useLoaderData } from "react-router";
+
 import Header from "./Header";
+import type { FavoritesContext } from "./favorites";
+import type { boardsLoader, Favorite } from "./loaders";
 
 export default function Boards() {
+  const loaderData = useLoaderData<typeof boardsLoader>();
+  const [favorites, setFavorites] = useState(loaderData.favorites);
+
+  const toggleFavorite = async (board: Favorite) => {
+    const old = favorites;
+    const favorite = !old.some((f) => f.id === board.id);
+    setFavorites(
+      favorite ? [...old, board] : old.filter((f) => f.id !== board.id),
+    );
+
+    const res = await fetch(`/api/boards/${board.id}/favorite`, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ favorite }),
+    });
+
+    if (!res.ok) {
+      setFavorites(old);
+    }
+  };
+
   return (
     <div className="flex flex-col min-h-screen bg-background">
-      <Header />
-      <Outlet />
+      <Header email={loaderData.email} favorites={favorites} />
+      <Outlet
+        context={{ favorites, toggleFavorite } satisfies FavoritesContext}
+      />
     </div>
   );
 }

@@ -40,7 +40,6 @@ func NewServer() *Server {
 	}
 	db := dynamodb.NewFromConfig(cfg)
 
-	// Pool IDs start with their region, e.g. "us-east-1_AbC123".
 	poolRegion, _, _ := strings.Cut(poolID, "_")
 	idp := cognitoidentityprovider.NewFromConfig(cfg, func(o *cognitoidentityprovider.Options) {
 		o.Region = poolRegion

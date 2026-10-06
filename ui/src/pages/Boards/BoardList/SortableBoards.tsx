@@ -22,6 +22,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 
 import type { Board } from "./BoardList";
 import EditBoardDialog from "./EditBoardDialog";
+import FavoriteButton from "../FavoriteButton";
 
 type SortableBoardsProps = {
   boards: Board[];
@@ -133,7 +134,10 @@ function BoardTile({ board, setBoards, editable }: BoardTileProps) {
         <CardTitle className="text-link group-hover:underline">
           {board.name}
         </CardTitle>
-        {editable && <EditBoardDialog {...board} setBoards={setBoards} />}
+        <div className="flex items-center">
+          <FavoriteButton board={board} />
+          {editable && <EditBoardDialog {...board} setBoards={setBoards} />}
+        </div>
       </CardHeader>
     </Card>
   );

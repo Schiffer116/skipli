@@ -1,4 +1,4 @@
-import { useLoaderData } from "react-router";
+import { useLoaderData, useParams } from "react-router";
 import { Plus } from "lucide-react";
 
 import {
@@ -24,12 +24,14 @@ import { useState } from "react";
 import CreateCardForm from "./Card/CreateCardForm";
 import type { boardViewLoader } from "../loaders";
 import { BoardContext } from "./BoardContext";
+import FavoriteButton from "../FavoriteButton";
 
 export default function Board() {
   const [cards, setCards] = useState(
     useLoaderData<typeof boardViewLoader>().cardsWithTasks,
   );
   const { name } = useLoaderData<typeof boardViewLoader>();
+  const { boardId } = useParams();
 
   const [activeTask, setActiveTask] = useState<TaskType | null>(null);
   const [activeCard, setActiveCard] = useState<CardType | null>(null);
@@ -76,7 +78,10 @@ export default function Board() {
       <div className="flex-1 min-w-0 px-8 pt-6">
         <div className="flex flex-col h-full">
           <header className="mb-6">
-            <h1 className="text-2xl font-bold mb-1">{name}</h1>
+            <div className="flex items-center gap-1 mb-1">
+              <h1 className="text-2xl font-bold">{name}</h1>
+              <FavoriteButton board={{ id: boardId!, name }} />
+            </div>
             <p className="text-sm text-muted-foreground">
               Organize your tasks with drag and drop
             </p>

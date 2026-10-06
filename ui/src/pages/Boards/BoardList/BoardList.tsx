@@ -13,6 +13,7 @@ export type Board = {
   name: string;
   owenr: string;
   description: string;
+  favorite: boolean;
 };
 
 export default function BoardList() {
