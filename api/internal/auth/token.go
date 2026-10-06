@@ -5,41 +5,40 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
+	"github.com/MicahParks/keyfunc/v3"
 	"github.com/golang-jwt/jwt/v5"
 )
 
-type TokenIssuer struct {
-	secret []byte
+// TokenVerifier checks Cognito ID tokens against the user pool's public keys.
+type TokenVerifier struct {
+	keys     keyfunc.Keyfunc
+	issuer   string
+	clientID string
 }
 
-func NewTokenIssuer(secret string) *TokenIssuer {
-	return &TokenIssuer{secret: []byte(secret)}
-}
-
-func (t *TokenIssuer) Issue(email string) (string, error) {
-	claims := jwt.MapClaims{
-		"email": email,
-		"exp":   time.Now().Add(24 * time.Hour).Unix(),
+func NewTokenVerifier(ctx context.Context, region, poolID, clientID string) (*TokenVerifier, error) {
+	issuer := fmt.Sprintf("https://cognito-idp.%s.amazonaws.com/%s", region, poolID)
+	keys, err := keyfunc.NewDefaultCtx(ctx, []string{issuer + "/.well-known/jwks.json"})
+	if err != nil {
+		return nil, err
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(t.secret)
+	return &TokenVerifier{keys: keys, issuer: issuer, clientID: clientID}, nil
 }
 
-func (t *TokenIssuer) Verify(tokenString string) (string, error) {
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-		return t.secret, nil
-	})
+func (t *TokenVerifier) Verify(tokenString string) (string, error) {
+	token, err := jwt.Parse(tokenString, t.keys.Keyfunc,
+		jwt.WithValidMethods([]string{"RS256"}),
+		jwt.WithIssuer(t.issuer),
+		jwt.WithAudience(t.clientID),
+		jwt.WithExpirationRequired(),
+	)
 	if err != nil || !token.Valid {
 		return "", fmt.Errorf("invalid token: %w", err)
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
+	if !ok || claims["token_use"] != "id" {
 		return "", fmt.Errorf("invalid token claims")
 	}
 
@@ -60,7 +59,7 @@ func EmailFromContext(ctx context.Context) (string, bool) {
 	return email, ok
 }
 
-func (t *TokenIssuer) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
+func (t *TokenVerifier) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		tokenString, ok := strings.CutPrefix(req.Header.Get("Authorization"), "Bearer ")
 		if !ok {

@@ -5,8 +5,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 
 	"github.com/Schiffer116/skipli/api/internal/auth"
@@ -22,15 +24,11 @@ type Server struct {
 func NewServer() *Server {
 	ctx := context.Background()
 
-	appEmail := os.Getenv("APP_EMAIL")
-	appEmailPassword := os.Getenv("APP_EMAIL_PASSWORD")
-	jwtSecret := os.Getenv("JWT_SECRET")
+	poolID := os.Getenv("USER_POOL_ID")
+	clientID := os.Getenv("USER_POOL_CLIENT_ID")
 	tableName := os.Getenv("TABLE_NAME")
-	if appEmail == "" || appEmailPassword == "" {
-		log.Fatal("APP_EMAIL and APP_EMAIL_PASSWORD must be set")
-	}
-	if jwtSecret == "" {
-		log.Fatal("JWT_SECRET must be set")
+	if poolID == "" || clientID == "" {
+		log.Fatal("USER_POOL_ID and USER_POOL_CLIENT_ID must be set")
 	}
 	if tableName == "" {
 		tableName = "Skipli"
@@ -42,12 +40,19 @@ func NewServer() *Server {
 	}
 	db := dynamodb.NewFromConfig(cfg)
 
-	mailer := auth.NewMailer(appEmail, appEmailPassword)
-	tokens := auth.NewTokenIssuer(jwtSecret)
+	// Pool IDs start with their region, e.g. "us-east-1_AbC123".
+	poolRegion, _, _ := strings.Cut(poolID, "_")
+	idp := cognitoidentityprovider.NewFromConfig(cfg, func(o *cognitoidentityprovider.Options) {
+		o.Region = poolRegion
+	})
+	tokens, err := auth.NewTokenVerifier(ctx, poolRegion, poolID, clientID)
+	if err != nil {
+		log.Fatalf("unable to load user pool keys: %v", err)
+	}
 	router := http.NewServeMux()
 
 	board.NewHandler(db, tableName, tokens).RegisterRoutes(router)
-	auth.NewHandler(db, tableName, mailer, tokens).RegisterRoutes(router)
+	auth.NewHandler(idp, poolID, clientID, tokens).RegisterRoutes(router)
 	card.NewHandler(db, tableName).RegisterRoutes(router)
 	task.NewHandler(db, tableName).RegisterRoutes(router)
 

@@ -7,24 +7,36 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 
 export default function Login() {
   const [email, setEmail] = useState("");
+  const [error, setError] = useState("");
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    sessionStorage.setItem("email", email);
-    fetch("/api/auth/send", {
+    const res = await fetch("/api/auth/send", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ email }),
     });
+    if (res.status === 400) {
+      setError("That email address can't receive mail. Check it for typos.");
+      return;
+    }
+    if (!res.ok) {
+      setError("Couldn't send the code. Please try again.");
+      return;
+    }
 
+    // Cognito's session ties the emailed code to this sign-in attempt.
+    const { session } = await res.json();
+    sessionStorage.setItem("email", email);
+    sessionStorage.setItem("session", session);
     navigate("/verify");
   };
 
@@ -38,13 +50,25 @@ export default function Login() {
         <CardContent className="space-y-3">
           <form onSubmit={handleSubmit} className="space-y-3">
             <Input
+              type="email"
+              required
+              autoComplete="email"
               placeholder="Enter your email"
               className="w-full"
-              onChange={(e) => setEmail(e.target.value)}
+              aria-invalid={error !== ""}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setError("");
+              }}
               value={email}
             />
-            <Button className="w-full" asChild type="submit">
-              <Link to="/verify">Continue</Link>
+            {error && (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            )}
+            <Button className="w-full" type="submit">
+              Continue
             </Button>
           </form>
         </CardContent>

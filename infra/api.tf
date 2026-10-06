@@ -1,17 +1,3 @@
-variable "gmail" {
-  type = string
-}
-
-variable "gmail_app_password" {
-  type      = string
-  sensitive = true
-}
-
-resource "random_password" "jwt" {
-  length  = 64
-  special = false
-}
-
 resource "aws_dynamodb_table" "skipli" {
   name         = "Skipli"
   billing_mode = "PAY_PER_REQUEST"
@@ -129,6 +115,20 @@ resource "aws_iam_role_policy" "dynamodb_access" {
   policy = data.aws_iam_policy_document.dynamodb_access.json
 }
 
+data "aws_iam_policy_document" "cognito_access" {
+  statement {
+    effect    = "Allow"
+    actions   = ["cognito-idp:AdminCreateUser", "cognito-idp:AdminSetUserPassword"]
+    resources = [aws_cognito_user_pool.skipli.arn]
+  }
+}
+
+resource "aws_iam_role_policy" "cognito_access" {
+  name   = "SkipliCognitoAccess"
+  role   = aws_iam_role.lambda.id
+  policy = data.aws_iam_policy_document.cognito_access.json
+}
+
 data "archive_file" "zip_archive" {
   type        = "zip"
   source_file = "${path.module}/../api/bin/bootstrap"
@@ -147,10 +147,9 @@ resource "aws_lambda_function" "skipli" {
 
   environment {
     variables = {
-      APP_EMAIL          = var.gmail
-      APP_EMAIL_PASSWORD = var.gmail_app_password
-      JWT_SECRET         = random_password.jwt.result
-      TABLE_NAME         = aws_dynamodb_table.skipli.name
+      USER_POOL_ID        = aws_cognito_user_pool.skipli.id
+      USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.skipli.id
+      TABLE_NAME          = aws_dynamodb_table.skipli.name
     }
   }
 }

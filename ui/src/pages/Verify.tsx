@@ -17,6 +17,7 @@ export default function Verify() {
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
   const [email] = useState(() => sessionStorage.getItem("email"));
+  const [session] = useState(() => sessionStorage.getItem("session"));
   const [code, setCode] = useState("");
   const [error, setError] = useState<VerifyError | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -31,7 +32,7 @@ export default function Verify() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    if (!email) {
+    if (!email || !session) {
       fail({
         title: "Session expired",
         message: "Go back and enter your email again to get a new code.",
@@ -47,7 +48,7 @@ export default function Verify() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, code: code.trim() }),
+        body: JSON.stringify({ email, code: code.trim(), session }),
       });
 
       if (res.status === 401) {

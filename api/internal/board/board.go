@@ -25,10 +25,10 @@ const memberIndexName = "Member"
 type Handler struct {
 	db     *dynamodb.Client
 	table  string
-	tokens *auth.TokenIssuer
+	tokens *auth.TokenVerifier
 }
 
-func NewHandler(db *dynamodb.Client, table string, tokens *auth.TokenIssuer) *Handler {
+func NewHandler(db *dynamodb.Client, table string, tokens *auth.TokenVerifier) *Handler {
 	return &Handler{db: db, table: table, tokens: tokens}
 }
 
