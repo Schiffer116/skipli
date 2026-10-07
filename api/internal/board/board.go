@@ -44,6 +44,7 @@ func (h *Handler) RegisterRoutes(router *http.ServeMux) {
 	router.HandleFunc("PUT /boards/{id}/favorite", h.tokens.RequireAuth(h.favorite))
 	router.HandleFunc("POST /boards/{id}/invite", h.tokens.RequireAuth(h.invite))
 	router.HandleFunc("DELETE /boards/{id}", h.tokens.RequireAuth(h.delete))
+	router.HandleFunc("POST /boards/{id}/cleanup", h.tokens.RequireAuth(h.cleanup))
 }
 
 type CreateRequest struct {
@@ -597,32 +598,74 @@ func (h *Handler) delete(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	keyEx := expression.Key("PK").Equal(expression.Value(id))
-	expr, err := expression.NewBuilder().WithKeyCondition(keyEx).Build()
-	if err != nil {
-		log.Printf("failed to build query expression: %v", err)
+	if err := h.deleteItems(ctx, expression.NewBuilder().
+		WithKeyCondition(expression.Key("PK").Equal(expression.Value(id)))); err != nil {
+		log.Printf("failed to delete board: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) cleanup(w http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+	id := req.PathValue("id")
+
+	email, ok := auth.EmailFromContext(ctx)
+	if !ok {
+		http.Error(w, "missing email in context", http.StatusInternalServerError)
+		return
+	}
+
+	member, err := h.isMember(ctx, id, email)
+	if err != nil {
+		log.Printf("failed to check membership: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !member {
+		http.Error(w, "not a member of this board", http.StatusForbidden)
+		return
+	}
+
+	if err := h.deleteItems(ctx, expression.NewBuilder().
+		WithKeyCondition(expression.Key("PK").Equal(expression.Value(id)).
+			And(expression.Key("SK").BeginsWith("TASK#"))).
+		WithFilter(expression.Name("Status").Equal(expression.Value("done")))); err != nil {
+		log.Printf("failed to clean up board: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) deleteItems(ctx context.Context, builder expression.Builder) error {
+	expr, err := builder.Build()
+	if err != nil {
+		return err
 	}
 	pages := dynamodb.NewQueryPaginator(h.db, &dynamodb.QueryInput{
 		TableName:                 aws.String(h.table),
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
 		KeyConditionExpression:    expr.KeyCondition(),
-		ProjectionExpression:      aws.String("PK, SK"),
+		FilterExpression:          expr.Filter(),
 	})
 
 	var deletes []types.WriteRequest
 	for pages.HasMorePages() {
 		page, err := pages.NextPage(ctx)
 		if err != nil {
-			log.Printf("failed to list board items: %v", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+			return err
 		}
 		for _, item := range page.Items {
 			deletes = append(deletes, types.WriteRequest{
-				DeleteRequest: &types.DeleteRequest{Key: item},
+				DeleteRequest: &types.DeleteRequest{Key: map[string]types.AttributeValue{
+					"PK": item["PK"],
+					"SK": item["SK"],
+				}},
 			})
 		}
 	}
@@ -635,14 +678,11 @@ func (h *Handler) delete(w http.ResponseWriter, req *http.Request) {
 			RequestItems: map[string][]types.WriteRequest{h.table: batch},
 		})
 		if err != nil {
-			log.Printf("failed to delete board items: %v", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+			return err
 		}
 		deletes = append(deletes, out.UnprocessedItems[h.table]...)
 	}
-
-	w.WriteHeader(http.StatusNoContent)
+	return nil
 }
 
 type PutBoardRequest struct {

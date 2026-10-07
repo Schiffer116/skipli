@@ -5,6 +5,7 @@ import {
   DndContext,
   DragOverlay,
   MouseSensor,
+  TouchSensor,
 } from "@dnd-kit/core";
 import { KeyboardSensor, useSensor, useSensors } from "@dnd-kit/core";
 import {
@@ -25,6 +26,7 @@ import CreateCardForm from "./Card/CreateCardForm";
 import type { boardViewLoader } from "../loaders";
 import { BoardContext } from "./BoardContext";
 import FavoriteButton from "../FavoriteButton";
+import CleanUpButton from "./CleanUpButton";
 
 export default function Board() {
   const [cards, setCards] = useState(
@@ -50,6 +52,9 @@ export default function Board() {
   const sensors = useSensors(
     useSensor(MouseSensor, {
       activationConstraint: { distance: 5 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 250, tolerance: 5 },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
@@ -81,6 +86,13 @@ export default function Board() {
             <div className="flex items-center gap-1 mb-1">
               <h1 className="text-2xl font-bold">{name}</h1>
               <FavoriteButton board={{ id: boardId!, name }} />
+              <div className="ml-auto">
+                <CleanUpButton
+                  boardId={boardId!}
+                  cards={cards}
+                  setCards={setCards}
+                />
+              </div>
             </div>
             <p className="text-sm text-muted-foreground">
               Organize your tasks with drag and drop
