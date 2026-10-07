@@ -7,16 +7,14 @@ import { throwIfNotOk } from "@/utils/throwIfNotOk";
 import type { Board } from "./BoardList/BoardList";
 import type { CardType } from "./Board/Card";
 import type { TaskType } from "./Board/Card/Task";
+import { apiFetch } from "@/utils/apiFetch";
 
 export type Favorite = Pick<Board, "id" | "name">;
 
 export async function boardsLoader() {
-  const headers = {
-    Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-  };
   const [emailRes, boardsRes] = await Promise.all([
-    fetch("/api/auth/email", { headers }),
-    fetch("/api/boards", { headers }),
+    apiFetch("/api/auth/email"),
+    apiFetch("/api/boards"),
   ]);
 
   if (emailRes.status === 401 || boardsRes.status === 401) {
@@ -37,11 +35,7 @@ export const boardListLoader = async (): Promise<{
   boards: Board[];
   teamBoards: Board[];
 }> => {
-  const res = await fetch("/api/boards", {
-    headers: {
-      Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-    },
-  });
+  const res = await apiFetch("/api/boards");
 
   if (!res.ok) {
     throw redirect("/login");
@@ -60,22 +54,14 @@ export const boardListLoader = async (): Promise<{
 };
 
 async function fetchCards(boardId: string) {
-  const data = await fetch(`/api/boards/${boardId}/cards`, {
-    headers: {
-      Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-    },
-  });
+  const data = await apiFetch(`/api/boards/${boardId}/cards`);
   throwIfNotOk(data);
   const cards: CardType[] = await data.json();
   return cards;
 }
 
 async function fetchTasks(boardId: string, cardId: string) {
-  const data = await fetch(`/api/boards/${boardId}/cards/${cardId}/tasks`, {
-    headers: {
-      Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-    },
-  });
+  const data = await apiFetch(`/api/boards/${boardId}/cards/${cardId}/tasks`);
   throwIfNotOk(data);
   const tasks: TaskType[] = await data.json();
   return tasks;
@@ -85,11 +71,7 @@ export async function boardViewLoader({ params }: LoaderFunctionArgs) {
   const boardId = params.boardId!;
 
   // Board first, so a bad id is a clean 404 rather than a failed card fetch.
-  const boardRes = await fetch(`/api/boards/${boardId}`, {
-    headers: {
-      Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-    },
-  });
+  const boardRes = await apiFetch(`/api/boards/${boardId}`);
   throwIfNotOk(boardRes);
   const { name } = await boardRes.json();
 
@@ -101,11 +83,7 @@ export async function boardViewLoader({ params }: LoaderFunctionArgs) {
     }),
   );
 
-  const res = await fetch(`/api/boards/${boardId}/members`, {
-    headers: {
-      Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-    },
-  });
+  const res = await apiFetch(`/api/boards/${boardId}/members`);
   throwIfNotOk(res);
 
   const members: string[] = await res.json();

@@ -25,6 +25,7 @@ import {
 import { Button } from "@/components/ui/button";
 import type { Board } from "./BoardList";
 import { DialogDescription } from "@radix-ui/react-dialog";
+import { apiFetch } from "@/utils/apiFetch";
 
 type UpdateBoardDialogProps = Board & {
   setBoards: React.Dispatch<React.SetStateAction<Board[]>>;
@@ -43,11 +44,10 @@ export default function EditBoardDialog(props: UpdateBoardDialogProps) {
       return;
     }
 
-    const res = await fetch(`/api/boards/${id}`, {
+    const res = await apiFetch(`/api/boards/${id}`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
       },
       body: JSON.stringify({
         name,
@@ -67,11 +67,8 @@ export default function EditBoardDialog(props: UpdateBoardDialogProps) {
   };
 
   const deleteBoard = async () => {
-    const res = await fetch(`/api/boards/${id}`, {
+    const res = await apiFetch(`/api/boards/${id}`, {
       method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-      },
     });
 
     if (!res.ok) {

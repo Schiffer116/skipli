@@ -23,6 +23,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Board } from "./BoardList";
 import EditBoardDialog from "./EditBoardDialog";
 import FavoriteButton from "../FavoriteButton";
+import { apiFetch } from "@/utils/apiFetch";
 
 type SortableBoardsProps = {
   boards: Board[];
@@ -57,10 +58,9 @@ export default function SortableBoards({
     );
     setBoards(newBoards);
 
-    const res = await fetch("/api/boards/order", {
+    const res = await apiFetch("/api/boards/order", {
       method: "PUT",
       headers: {
-        Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ boardIds: newBoards.map((board) => board.id) }),

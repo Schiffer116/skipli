@@ -8,6 +8,7 @@ import { socket } from "@/main";
 import type { TaskType } from "./Task";
 import { BoardContext } from "../../BoardContext";
 import useEscape from "@/hooks/useEscape";
+import { apiFetch } from "@/utils/apiFetch";
 
 type TaskFormProps = {
   cardId: string;
@@ -31,11 +32,10 @@ export default function CreateTaskForm(props: TaskFormProps) {
 
     e.currentTarget.reset();
 
-    const res = await fetch(`/api/boards/${boardId}/cards/${cardId}/tasks`, {
+    const res = await apiFetch(`/api/boards/${boardId}/cards/${cardId}/tasks`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
       },
       body: JSON.stringify({
         name,

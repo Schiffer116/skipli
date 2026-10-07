@@ -16,6 +16,7 @@ import { useParams } from "react-router";
 
 import { socket } from "@/main";
 import { moveCard, moveTask } from "@/utils/updateCard";
+import { apiFetch } from "@/utils/apiFetch";
 
 export default function useDnd(
   cards: CardType[],
@@ -172,10 +173,9 @@ export default function useDnd(
       const newCards = moveCard(oldCardIndex, newCardIndex)(cards);
       setCards(newCards);
 
-      const res = await fetch(`/api/boards/${boardId}/cards/${active.id}`, {
+      const res = await apiFetch(`/api/boards/${boardId}/cards/${active.id}`, {
         method: "PATCH",
         headers: {
-          Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -216,12 +216,11 @@ export default function useDnd(
     );
     if (originalCard.id === taskCard.id && originalIndex === taskIndex) return;
 
-    const res = await fetch(
+    const res = await apiFetch(
       `/api/boards/${boardId}/cards/${originalCard.id}/tasks/${active.id}`,
       {
         method: "PATCH",
         headers: {
-          Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({

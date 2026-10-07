@@ -31,6 +31,7 @@ import type { CardType } from "./Card";
 import { BoardContext } from "../BoardContext";
 import { useParams } from "react-router";
 import { deleteCard, updateCard } from "@/utils/updateCard";
+import { apiFetch } from "@/utils/apiFetch";
 
 export default function EditCardDialog(props: CardType) {
   const { id, name, description } = props;
@@ -49,11 +50,10 @@ export default function EditCardDialog(props: CardType) {
       return;
     }
 
-    const res = await fetch(`/api/boards/${boardId}/cards/${id}`, {
+    const res = await apiFetch(`/api/boards/${boardId}/cards/${id}`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
       },
       body: JSON.stringify({
         name,
@@ -71,11 +71,8 @@ export default function EditCardDialog(props: CardType) {
   };
 
   const handleDelete = async () => {
-    const res = await fetch(`/api/boards/${boardId}/cards/${id}`, {
+    const res = await apiFetch(`/api/boards/${boardId}/cards/${id}`, {
       method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-      },
     });
 
     if (!res.ok) {

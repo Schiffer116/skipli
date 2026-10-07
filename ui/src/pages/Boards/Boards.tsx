@@ -4,6 +4,7 @@ import { Outlet, useLoaderData } from "react-router";
 import Header from "./Header";
 import type { FavoritesContext } from "./favorites";
 import type { boardsLoader, Favorite } from "./loaders";
+import { apiFetch } from "@/utils/apiFetch";
 
 export default function Boards() {
   const loaderData = useLoaderData<typeof boardsLoader>();
@@ -16,10 +17,9 @@ export default function Boards() {
       favorite ? [...old, board] : old.filter((f) => f.id !== board.id),
     );
 
-    const res = await fetch(`/api/boards/${board.id}/favorite`, {
+    const res = await apiFetch(`/api/boards/${board.id}/favorite`, {
       method: "PUT",
       headers: {
-        Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ favorite }),

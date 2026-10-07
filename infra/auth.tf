@@ -51,7 +51,7 @@ resource "aws_cognito_user_pool_client" "skipli" {
   user_pool_id = aws_cognito_user_pool.skipli.id
 
   explicit_auth_flows   = ["ALLOW_USER_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]
-  id_token_validity     = 24
+  id_token_validity     = 1
   auth_session_validity = 10
 }
 

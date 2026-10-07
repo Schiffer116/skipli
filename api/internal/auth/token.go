@@ -4,11 +4,36 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/golang-jwt/jwt/v5"
 )
+
+const (
+	idTokenCookie      = "id_token"
+	refreshTokenCookie = "refresh_token"
+	refreshPath        = "/api/auth/refresh"
+)
+
+func setCookie(w http.ResponseWriter, name, value, path string, maxAge int) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     name,
+		Value:    value,
+		Path:     path,
+		MaxAge:   maxAge,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+	})
+}
+
+func cookieValue(req *http.Request, name string) (string, bool) {
+	c, err := req.Cookie(name)
+	if err != nil || c.Value == "" {
+		return "", false
+	}
+	return c.Value, true
+}
 
 type TokenVerifier struct {
 	keys     keyfunc.Keyfunc
@@ -60,9 +85,9 @@ func EmailFromContext(ctx context.Context) (string, bool) {
 
 func (t *TokenVerifier) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		tokenString, ok := strings.CutPrefix(req.Header.Get("Authorization"), "Bearer ")
+		tokenString, ok := cookieValue(req, idTokenCookie)
 		if !ok {
-			http.Error(w, "missing bearer token", http.StatusUnauthorized)
+			http.Error(w, "missing token", http.StatusUnauthorized)
 			return
 		}
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Check, Loader2, XCircle } from "lucide-react";
 import { useSearchParams } from "react-router";
+import { apiFetch } from "@/utils/apiFetch";
 
 export default function SpinnerToCheckPage() {
   const [status, setStatus] = useState<"loading" | "success" | "failure">(
@@ -16,11 +17,10 @@ export default function SpinnerToCheckPage() {
         return;
       }
 
-      const res = await fetch(`/api/boards/invite/accept`, {
+      const res = await apiFetch(`/api/boards/invite/accept`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
         },
         body: JSON.stringify({
           token,

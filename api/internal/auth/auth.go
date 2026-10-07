@@ -30,6 +30,7 @@ func NewHandler(idp *cip.Client, poolID, clientID string, tokens *TokenVerifier)
 func (h *Handler) RegisterRoutes(router *http.ServeMux) {
 	router.HandleFunc("POST /auth/send", h.sendVerificationEmail)
 	router.HandleFunc("POST /auth/verify", h.verify)
+	router.HandleFunc("POST /auth/refresh", h.refresh)
 	router.HandleFunc("GET /auth/email", h.getEmailFromJwt)
 }
 
@@ -128,10 +129,6 @@ type VerifyRequest struct {
 	Session string `json:"session"`
 }
 
-type VerifyResponse struct {
-	AccessToken string `json:"accessToken"`
-}
-
 func (h *Handler) verify(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 
@@ -168,14 +165,44 @@ func (h *Handler) verify(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(VerifyResponse{AccessToken: *out.AuthenticationResult.IdToken})
+	setCookie(w, idTokenCookie, *out.AuthenticationResult.IdToken, "/api", 60*60)
+	setCookie(w, refreshTokenCookie, *out.AuthenticationResult.RefreshToken, refreshPath, 30*24*60*60)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) refresh(w http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+
+	refreshToken, ok := cookieValue(req, refreshTokenCookie)
+	if !ok {
+		http.Error(w, "missing refresh token", http.StatusUnauthorized)
+		return
+	}
+
+	out, err := h.idp.InitiateAuth(ctx, &cip.InitiateAuthInput{
+		ClientId:       aws.String(h.clientID),
+		AuthFlow:       types.AuthFlowTypeRefreshTokenAuth,
+		AuthParameters: map[string]string{"REFRESH_TOKEN": refreshToken},
+	})
+	var notAuthorized *types.NotAuthorizedException
+	if errors.As(err, &notAuthorized) || out.AuthenticationResult == nil {
+		http.Error(w, "invalid refresh token", http.StatusUnauthorized)
+		return
+	}
+	if err != nil {
+		log.Printf("failed to refresh token: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	setCookie(w, idTokenCookie, *out.AuthenticationResult.IdToken, "/api", 60*60)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) getEmailFromJwt(w http.ResponseWriter, req *http.Request) {
-	tokenString, ok := strings.CutPrefix(req.Header.Get("Authorization"), "Bearer ")
+	tokenString, ok := cookieValue(req, idTokenCookie)
 	if !ok {
-		http.Error(w, "missing bearer token", http.StatusUnauthorized)
+		http.Error(w, "missing token", http.StatusUnauthorized)
 		return
 	}
 

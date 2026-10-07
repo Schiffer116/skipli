@@ -31,6 +31,7 @@ import { socket } from "@/main";
 import { BoardContext } from "../../BoardContext";
 import type { TaskType } from "./Task";
 import { deleteTask, updateTask } from "@/utils/updateCard";
+import { apiFetch } from "@/utils/apiFetch";
 
 export default function EditTaskDialog(props: TaskType) {
   const { id, cardId, name, description, status } = props;
@@ -50,13 +51,12 @@ export default function EditTaskDialog(props: TaskType) {
       return;
     }
 
-    const res = await fetch(
+    const res = await apiFetch(
       `/api/boards/${boardId}/cards/${cardId}/tasks/${id}`,
       {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
         },
         body: JSON.stringify({
           name,
@@ -76,13 +76,10 @@ export default function EditTaskDialog(props: TaskType) {
   };
 
   const handleDelete = async () => {
-    const res = await fetch(
+    const res = await apiFetch(
       `/api/boards/${boardId}/cards/${cardId}/tasks/${id}`,
       {
         method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-        },
       },
     );
 

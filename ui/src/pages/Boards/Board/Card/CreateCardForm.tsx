@@ -9,6 +9,7 @@ import { socket } from "@/main";
 import { BoardContext } from "../BoardContext";
 import { createCard } from "@/utils/updateCard";
 import useEscape from "@/hooks/useEscape";
+import { apiFetch } from "@/utils/apiFetch";
 
 export default function CreateCard() {
   const boardId = useParams().boardId!;
@@ -25,11 +26,10 @@ export default function CreateCard() {
       return;
     }
 
-    const data = await fetch(`/api/boards/${boardId}/cards`, {
+    const data = await apiFetch(`/api/boards/${boardId}/cards`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
       },
       body: JSON.stringify({
         name,

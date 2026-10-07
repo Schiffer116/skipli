@@ -24,6 +24,7 @@ import {
   DialogTitle,
 } from "@radix-ui/react-dialog";
 import type { boardViewLoader } from "../loaders";
+import { apiFetch } from "@/utils/apiFetch";
 
 // Per-browser preference; storage can be unavailable (private mode etc.).
 const COLLAPSED_KEY = "skipli:membersCollapsed";
@@ -38,7 +39,9 @@ function readCollapsed() {
 
 export default function Sidebar() {
   const { boardId } = useParams();
-  const { members } = useLoaderData<typeof boardViewLoader>();
+  const [members, setMembers] = useState(
+    useLoaderData<typeof boardViewLoader>().members,
+  );
   const [collapsed, setCollapsed] = useState(readCollapsed);
 
   useEffect(() => {
@@ -58,20 +61,26 @@ export default function Sidebar() {
     e.preventDefault();
 
     const formData = new FormData(e.currentTarget);
-    const email = formData.get("email");
+    const email = (formData.get("email") as string).trim();
     if (!email) {
       return;
     }
-    await fetch(`/api/boards/${boardId}/invite`, {
+    const res = await apiFetch(`/api/boards/${boardId}/invite`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         email,
       }),
     });
+    if (!res.ok) {
+      return;
+    }
+
+    setMembers((members) =>
+      members.includes(email) ? members : [...members, email],
+    );
   };
 
   const toggleLabel = collapsed ? "Expand member list" : "Collapse member list";

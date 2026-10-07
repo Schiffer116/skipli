@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 
 import type { Board } from "./BoardList";
 import useEscape from "@/hooks/useEscape";
+import { apiFetch } from "@/utils/apiFetch";
 
 type BoardFormProps = {
   setBoards: React.Dispatch<React.SetStateAction<Board[]>>;
@@ -24,11 +25,10 @@ export default function CreateBoardForm(props: BoardFormProps) {
       return;
     }
 
-    const data = await fetch("/api/boards", {
+    const data = await apiFetch("/api/boards", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
       },
       body: JSON.stringify({
         name,

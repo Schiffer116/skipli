@@ -67,8 +67,6 @@ export default function Verify() {
         return;
       }
 
-      const { accessToken } = await res.json();
-      localStorage.setItem("accessToken", accessToken);
       navigate("/boards");
     } catch {
       fail({

@@ -1,12 +1,14 @@
 package board
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -40,6 +42,8 @@ func (h *Handler) RegisterRoutes(router *http.ServeMux) {
 	router.HandleFunc("PUT /boards/order", h.tokens.RequireAuth(h.order))
 	router.HandleFunc("PUT /boards/{id}", h.tokens.RequireAuth(h.put))
 	router.HandleFunc("PUT /boards/{id}/favorite", h.tokens.RequireAuth(h.favorite))
+	router.HandleFunc("POST /boards/{id}/invite", h.tokens.RequireAuth(h.invite))
+	router.HandleFunc("DELETE /boards/{id}", h.tokens.RequireAuth(h.delete))
 }
 
 type CreateRequest struct {
@@ -483,20 +487,159 @@ func (h *Handler) favorite(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *Handler) isMember(ctx context.Context, boardID, email string) (bool, error) {
+	out, err := h.db.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String(h.table),
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: boardID},
+			"SK": &types.AttributeValueMemberS{Value: "MEMBER#" + email},
+		},
+		ProjectionExpression: aws.String("PK"),
+	})
+	if err != nil {
+		return false, err
+	}
+	return out.Item != nil, nil
+}
+
+type InviteRequest struct {
+	Email string `json:"email"`
+}
+
+func (h *Handler) invite(w http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+	id := req.PathValue("id")
+
+	email, ok := auth.EmailFromContext(ctx)
+	if !ok {
+		http.Error(w, "missing email in context", http.StatusInternalServerError)
+		return
+	}
+
+	var r InviteRequest
+	if err := json.NewDecoder(req.Body).Decode(&r); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	defer req.Body.Close()
+
+	invitee := strings.TrimSpace(r.Email)
+	if invitee == "" {
+		http.Error(w, "missing email", http.StatusBadRequest)
+		return
+	}
+
+	member, err := h.isMember(ctx, id, email)
+	if err != nil {
+		log.Printf("failed to check membership: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !member {
+		http.Error(w, "not a member of this board", http.StatusForbidden)
+		return
+	}
+
+	_, err = h.db.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName: aws.String(h.table),
+		Item: map[string]types.AttributeValue{
+			"PK":     &types.AttributeValueMemberS{Value: id},
+			"SK":     &types.AttributeValueMemberS{Value: "MEMBER#" + invitee},
+			"Member": &types.AttributeValueMemberS{Value: invitee},
+			"Order":  &types.AttributeValueMemberN{Value: strconv.FormatInt(time.Now().UnixMilli(), 10)},
+		},
+		ConditionExpression: aws.String("attribute_not_exists(PK)"),
+	})
+	var alreadyMember *types.ConditionalCheckFailedException
+	if err != nil && !errors.As(err, &alreadyMember) {
+		log.Printf("failed to invite member: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) delete(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
-
 	id := req.PathValue("id")
-	_, err := h.db.DeleteItem(ctx, &dynamodb.DeleteItemInput{
+
+	email, ok := auth.EmailFromContext(ctx)
+	if !ok {
+		http.Error(w, "missing email in context", http.StatusInternalServerError)
+		return
+	}
+
+	meta, err := h.db.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(h.table),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: id},
+			"SK": &types.AttributeValueMemberS{Value: "META"},
 		},
 	})
 	if err != nil {
-		log.Printf("failed to delete item: %v", err)
+		log.Printf("failed to get board: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	if meta.Item == nil {
+		http.NotFound(w, req)
+		return
+	}
+	var board Board
+	if err := attributevalue.UnmarshalMap(meta.Item, &board); err != nil {
+		log.Printf("failed to unmarshal board: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if board.Owner != email {
+		http.Error(w, "only the owner can delete this board", http.StatusForbidden)
+		return
+	}
+
+	keyEx := expression.Key("PK").Equal(expression.Value(id))
+	expr, err := expression.NewBuilder().WithKeyCondition(keyEx).Build()
+	if err != nil {
+		log.Printf("failed to build query expression: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	pages := dynamodb.NewQueryPaginator(h.db, &dynamodb.QueryInput{
+		TableName:                 aws.String(h.table),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		KeyConditionExpression:    expr.KeyCondition(),
+		ProjectionExpression:      aws.String("PK, SK"),
+	})
+
+	var deletes []types.WriteRequest
+	for pages.HasMorePages() {
+		page, err := pages.NextPage(ctx)
+		if err != nil {
+			log.Printf("failed to list board items: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		for _, item := range page.Items {
+			deletes = append(deletes, types.WriteRequest{
+				DeleteRequest: &types.DeleteRequest{Key: item},
+			})
+		}
+	}
+
+	for len(deletes) > 0 {
+		batch := deletes[:min(25, len(deletes))]
+		deletes = deletes[len(batch):]
+
+		out, err := h.db.BatchWriteItem(ctx, &dynamodb.BatchWriteItemInput{
+			RequestItems: map[string][]types.WriteRequest{h.table: batch},
+		})
+		if err != nil {
+			log.Printf("failed to delete board items: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		deletes = append(deletes, out.UnprocessedItems[h.table]...)
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -526,19 +669,35 @@ func (h *Handler) put(w http.ResponseWriter, req *http.Request) {
 	}
 	defer req.Body.Close()
 
-	_, err := h.db.PutItem(ctx, &dynamodb.PutItemInput{
+	member, err := h.isMember(ctx, id, email)
+	if err != nil {
+		log.Printf("failed to check membership: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !member {
+		http.Error(w, "not a member of this board", http.StatusForbidden)
+		return
+	}
+
+	_, err = h.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName: aws.String(h.table),
-		Item: map[string]types.AttributeValue{
-			"PK":          &types.AttributeValueMemberS{Value: id},
-			"SK":          &types.AttributeValueMemberS{Value: "META"},
-			"ID":          &types.AttributeValueMemberS{Value: id},
-			"Name":        &types.AttributeValueMemberS{Value: r.Name},
-			"Description": &types.AttributeValueMemberS{Value: r.Description},
-			"Owner":       &types.AttributeValueMemberS{Value: email},
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: id},
+			"SK": &types.AttributeValueMemberS{Value: "META"},
+		},
+		UpdateExpression: aws.String("SET #name = :name, #description = :description"),
+		ExpressionAttributeNames: map[string]string{
+			"#name":        "Name",
+			"#description": "Description",
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":name":        &types.AttributeValueMemberS{Value: r.Name},
+			":description": &types.AttributeValueMemberS{Value: r.Description},
 		},
 	})
 	if err != nil {
-		log.Printf("failed to put item: %v", err)
+		log.Printf("failed to update board: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

@@ -10,6 +10,7 @@ import { useParams } from "react-router";
 import { socket } from "@/main";
 import { updateTask } from "@/utils/updateCard";
 import { BoardContext } from "../../BoardContext";
+import { apiFetch } from "@/utils/apiFetch";
 
 export type TaskType = {
   id: string;
@@ -61,12 +62,11 @@ export const DummyTask = forwardRef<HTMLDivElement, DummyTaskProps>(
     const { setCards } = useContext(BoardContext)!;
 
     const toggleStatus = async () => {
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/boards/${boardId}/cards/${cardId}/tasks/${id}`,
         {
           method: "PUT",
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
