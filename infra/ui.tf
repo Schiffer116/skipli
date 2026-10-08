@@ -29,8 +29,9 @@ resource "aws_s3_bucket_policy" "b" {
 }
 
 locals {
-  s3_origin_id    = "S3Origin"
-  apigw_origin_id = "APIGatewayOrigin"
+  s3_origin_id       = "S3Origin"
+  apigw_origin_id    = "APIGatewayOrigin"
+  realtime_origin_id = "RealtimeOrigin"
 }
 
 variable "ui_domain" {
@@ -95,6 +96,19 @@ resource "aws_cloudfront_function" "redirect_to_index" {
   EOF
 }
 
+resource "aws_cloudfront_function" "realtime_path" {
+  name    = "RealtimePath"
+  runtime = "cloudfront-js-2.0"
+  publish = true
+  code    = <<-EOF
+    function handler(event) {
+      var req = event.request;
+      req.uri = '/${aws_apigatewayv2_stage.realtime.name}';
+      return req;
+    }
+  EOF
+}
+
 resource "aws_cloudfront_distribution" "skipli" {
   origin {
     domain_name              = aws_s3_bucket.skipli.bucket_regional_domain_name
@@ -106,6 +120,18 @@ resource "aws_cloudfront_distribution" "skipli" {
   origin {
     domain_name = trimprefix(aws_apigatewayv2_api.skipli.api_endpoint, "https://")
     origin_id   = local.apigw_origin_id
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "https-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
+  origin {
+    domain_name = trimprefix(aws_apigatewayv2_api.realtime.api_endpoint, "wss://")
+    origin_id   = local.realtime_origin_id
 
     custom_origin_config {
       http_port              = 80
@@ -142,6 +168,22 @@ resource "aws_cloudfront_distribution" "skipli" {
     function_association {
       event_type   = "viewer-request"
       function_arn = aws_cloudfront_function.redirect_to_index.arn
+    }
+  }
+
+  ordered_cache_behavior {
+    path_pattern     = "/api/ws"
+    allowed_methods  = ["GET", "HEAD"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = local.realtime_origin_id
+
+    viewer_protocol_policy   = "https-only"
+    cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+    origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.realtime_path.arn
     }
   }
 

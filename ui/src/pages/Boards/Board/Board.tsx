@@ -76,7 +76,7 @@ export default function Board() {
     setActiveTask,
   );
 
-  useSocket(setCards);
+  useSocket(boardId!, setCards);
 
   return (
     <BoardContext.Provider value={boardContextValue}>

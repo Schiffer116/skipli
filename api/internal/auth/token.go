@@ -75,6 +75,15 @@ func (t *TokenVerifier) Verify(tokenString string) (User, error) {
 	return User{ID: id, Email: email}, nil
 }
 
+func (t *TokenVerifier) VerifyCookies(cookieHeader string) (User, error) {
+	req := &http.Request{Header: http.Header{"Cookie": {cookieHeader}}}
+	tokenString, ok := cookieValue(req, idTokenCookie)
+	if !ok {
+		return User{}, fmt.Errorf("missing token")
+	}
+	return t.Verify(tokenString)
+}
+
 type contextKey int
 
 const userContextKey contextKey = iota

@@ -4,7 +4,7 @@ import { useParams } from "react-router";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
-import { socket } from "@/main";
+import { socket } from "@/utils/socket";
 import type { TaskType } from "./Task";
 import { BoardContext } from "../../BoardContext";
 import useEscape from "@/hooks/useEscape";

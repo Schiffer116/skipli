@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/utils/apiFetch";
+import { socket } from "@/utils/socket";
+import { cleanUp as removeDoneTasks } from "@/utils/updateCard";
 
 import type { CardType } from "./Card/Card";
 
@@ -39,12 +41,8 @@ export default function CleanUpButton({
       return;
     }
 
-    setCards((cards) =>
-      cards.map((card) => ({
-        ...card,
-        tasks: card.tasks.filter((task) => task.status !== "done"),
-      })),
-    );
+    socket.emit("clean up");
+    setCards(removeDoneTasks());
   };
 
   return (

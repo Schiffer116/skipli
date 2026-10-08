@@ -14,7 +14,7 @@ import {
 import { useEffect, useRef } from "react";
 import { useParams } from "react-router";
 
-import { socket } from "@/main";
+import { socket } from "@/utils/socket";
 import { moveCard, moveTask } from "@/utils/updateCard";
 import { apiFetch } from "@/utils/apiFetch";
 

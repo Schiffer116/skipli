@@ -7,7 +7,7 @@ import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities";
 import { CheckCircle2, Circle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useParams } from "react-router";
-import { socket } from "@/main";
+import { socket } from "@/utils/socket";
 import { updateTask } from "@/utils/updateCard";
 import { BoardContext } from "../../BoardContext";
 import { apiFetch } from "@/utils/apiFetch";

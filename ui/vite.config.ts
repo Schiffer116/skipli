@@ -13,7 +13,10 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      "/api": process.env.API_URL ?? "http://localhost:3000",
+      "/api": {
+        target: process.env.API_URL ?? "http://localhost:3000",
+        ws: true,
+      },
     },
   },
 });
