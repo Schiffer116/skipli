@@ -1,5 +1,7 @@
 .PHONY: build run dev test smoke fmt vet clean
 
+run dev: export AWS_REGION ?= $(shell terraform -chdir=../infra output -raw region)
+
 build:
 	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
 	go build -tags lambda.norpc -trimpath -ldflags="-s -w" \

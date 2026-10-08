@@ -3,13 +3,18 @@ provider "github" {
 }
 
 provider "aws" {
-  region = "ap-southeast-7"
+  region = var.region
   default_tags {
     tags = {
       Project   = "Skipli"
       ManagedBy = "terraform"
     }
   }
+}
+
+variable "region" {
+  type    = string
+  default = "ap-southeast-7"
 }
 
 variable "github_token" {
@@ -20,12 +25,23 @@ variable "github_token" {
 
 locals {
   github_repository_name = "skipli"
+  state_region           = "ap-southeast-7"
+}
+
+output "region" {
+  value = var.region
 }
 
 resource "github_actions_variable" "github_actions_role_arn" {
   repository    = local.github_repository_name
   variable_name = "AWS_GITHUB_ACTIONS_ROLE_ARN"
   value         = aws_iam_role.github_actions.arn
+}
+
+resource "github_actions_variable" "aws_region" {
+  repository    = local.github_repository_name
+  variable_name = "AWS_REGION"
+  value         = local.state_region
 }
 
 resource "github_actions_variable" "skipli_bucket_name" {
@@ -35,10 +51,10 @@ resource "github_actions_variable" "skipli_bucket_name" {
 }
 
 data "aws_caller_identity" "current" {}
-data "aws_region" "current" {}
 
 resource "aws_s3_bucket" "skipli" {
-  bucket           = "skipli-${data.aws_caller_identity.current.account_id}-${data.aws_region.current.region}-an"
+  region           = local.state_region
+  bucket           = "skipli-${data.aws_caller_identity.current.account_id}-${local.state_region}-an"
   bucket_namespace = "account-regional"
   lifecycle {
     prevent_destroy = true
@@ -46,6 +62,7 @@ resource "aws_s3_bucket" "skipli" {
 }
 
 resource "aws_s3_bucket_versioning" "skipli" {
+  region = local.state_region
   bucket = aws_s3_bucket.skipli.id
   versioning_configuration {
     status = "Enabled"

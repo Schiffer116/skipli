@@ -23,6 +23,7 @@ data "aws_iam_policy_document" "origin_bucket_policy" {
 }
 
 resource "aws_s3_bucket_policy" "b" {
+  region = local.state_region
   bucket = aws_s3_bucket.skipli.id
   policy = data.aws_iam_policy_document.origin_bucket_policy.json
 }

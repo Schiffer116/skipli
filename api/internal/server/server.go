@@ -34,7 +34,7 @@ func NewServer() *Server {
 		tableName = "Skipli"
 	}
 
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("ap-southeast-7"))
+	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		log.Fatalf("unable to load SDK config: %v", err)
 	}
