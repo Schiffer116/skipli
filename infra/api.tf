@@ -113,7 +113,7 @@ resource "aws_iam_role_policy" "dynamodb_access" {
 data "aws_iam_policy_document" "cognito_access" {
   statement {
     effect    = "Allow"
-    actions   = ["cognito-idp:AdminCreateUser", "cognito-idp:AdminSetUserPassword"]
+    actions   = ["cognito-idp:AdminCreateUser", "cognito-idp:AdminSetUserPassword", "cognito-idp:AdminGetUser"]
     resources = [aws_cognito_user_pool.skipli.arn]
   }
 }

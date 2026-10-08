@@ -50,8 +50,10 @@ func NewServer() *Server {
 	}
 	router := http.NewServeMux()
 
-	board.NewHandler(db, tableName, tokens).RegisterRoutes(router)
-	auth.NewHandler(idp, poolID, clientID, tokens).RegisterRoutes(router)
+	users := auth.NewDirectory(idp, poolID)
+
+	board.NewHandler(db, tableName, tokens, users).RegisterRoutes(router)
+	auth.NewHandler(idp, clientID, users, tokens).RegisterRoutes(router)
 	card.NewHandler(db, tableName).RegisterRoutes(router)
 	task.NewHandler(db, tableName).RegisterRoutes(router)
 

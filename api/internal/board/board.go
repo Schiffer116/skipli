@@ -28,10 +28,11 @@ type Handler struct {
 	db     *dynamodb.Client
 	table  string
 	tokens *auth.TokenVerifier
+	users  *auth.Directory
 }
 
-func NewHandler(db *dynamodb.Client, table string, tokens *auth.TokenVerifier) *Handler {
-	return &Handler{db: db, table: table, tokens: tokens}
+func NewHandler(db *dynamodb.Client, table string, tokens *auth.TokenVerifier, users *auth.Directory) *Handler {
+	return &Handler{db: db, table: table, tokens: tokens, users: users}
 }
 
 func (h *Handler) RegisterRoutes(router *http.ServeMux) {
@@ -55,12 +56,12 @@ type CreateRequest struct {
 func (h *Handler) create(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 
-	owner, ok := auth.EmailFromContext(ctx)
+	user, ok := auth.UserFromContext(ctx)
 	if !ok {
-		http.Error(w, "missing email in context", http.StatusInternalServerError)
+		http.Error(w, "missing user in context", http.StatusInternalServerError)
 		return
 	}
-	log.Println("owner's email:", owner)
+	log.Println("owner's email:", user.Email)
 
 	var r CreateRequest
 	if err := json.NewDecoder(req.Body).Decode(&r); err != nil {
@@ -80,7 +81,7 @@ func (h *Handler) create(w http.ResponseWriter, req *http.Request) {
 					Item: map[string]types.AttributeValue{
 						"PK":          &types.AttributeValueMemberS{Value: id},
 						"SK":          &types.AttributeValueMemberS{Value: "META"},
-						"Owner":       &types.AttributeValueMemberS{Value: owner},
+						"Owner":       &types.AttributeValueMemberS{Value: user.ID},
 						"ID":          &types.AttributeValueMemberS{Value: id},
 						"Name":        &types.AttributeValueMemberS{Value: r.Name},
 						"Description": &types.AttributeValueMemberS{Value: r.Description},
@@ -92,8 +93,9 @@ func (h *Handler) create(w http.ResponseWriter, req *http.Request) {
 					TableName: aws.String(h.table),
 					Item: map[string]types.AttributeValue{
 						"PK":     &types.AttributeValueMemberS{Value: id},
-						"SK":     &types.AttributeValueMemberS{Value: "MEMBER#" + owner},
-						"Member": &types.AttributeValueMemberS{Value: owner},
+						"SK":     &types.AttributeValueMemberS{Value: "MEMBER#" + user.ID},
+						"Member": &types.AttributeValueMemberS{Value: user.ID},
+						"Email":  &types.AttributeValueMemberS{Value: user.Email},
 						"Order":  &types.AttributeValueMemberN{Value: strconv.FormatInt(time.Now().UnixMilli(), 10)},
 					},
 				},
@@ -193,14 +195,14 @@ func (h *Handler) members(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		var pageMembers []struct{ Member string }
+		var pageMembers []struct{ Email string }
 		if err := attributevalue.UnmarshalListOfMaps(page.Items, &pageMembers); err != nil {
 			log.Printf("failed to unmarshal members: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		for _, m := range pageMembers {
-			members = append(members, m.Member)
+			members = append(members, m.Email)
 		}
 	}
 
@@ -233,13 +235,13 @@ type ListResponse struct {
 func (h *Handler) list(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 
-	email, ok := auth.EmailFromContext(ctx)
+	user, ok := auth.UserFromContext(ctx)
 	if !ok {
-		http.Error(w, "missing email in context", http.StatusInternalServerError)
+		http.Error(w, "missing user in context", http.StatusInternalServerError)
 		return
 	}
 
-	keyEx := expression.Key("Member").Equal(expression.Value(email))
+	keyEx := expression.Key("Member").Equal(expression.Value(user.ID))
 	expr, err := expression.NewBuilder().WithKeyCondition(keyEx).Build()
 	if err != nil {
 		log.Printf("failed to build query expression: %v", err)
@@ -273,7 +275,7 @@ func (h *Handler) list(w http.ResponseWriter, req *http.Request) {
 				},
 				map[string]types.AttributeValue{
 					"PK": item["PK"],
-					"SK": &types.AttributeValueMemberS{Value: "MEMBER#" + email},
+					"SK": &types.AttributeValueMemberS{Value: "MEMBER#" + user.ID},
 				},
 			)
 		}
@@ -335,7 +337,7 @@ func (h *Handler) list(w http.ResponseWriter, req *http.Request) {
 	boards := []Board{}
 	teamBoards := []Board{}
 	for _, b := range memberBoards {
-		if b.Owner == email {
+		if b.Owner == user.ID {
 			boards = append(boards, b)
 		} else {
 			teamBoards = append(teamBoards, b)
@@ -360,9 +362,9 @@ type OrderRequest struct {
 func (h *Handler) order(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 
-	email, ok := auth.EmailFromContext(ctx)
+	user, ok := auth.UserFromContext(ctx)
 	if !ok {
-		http.Error(w, "missing email in context", http.StatusInternalServerError)
+		http.Error(w, "missing user in context", http.StatusInternalServerError)
 		return
 	}
 
@@ -404,7 +406,7 @@ func (h *Handler) order(w http.ResponseWriter, req *http.Request) {
 				TableName: aws.String(h.table),
 				Key: map[string]types.AttributeValue{
 					"PK": &types.AttributeValueMemberS{Value: id},
-					"SK": &types.AttributeValueMemberS{Value: "MEMBER#" + email},
+					"SK": &types.AttributeValueMemberS{Value: "MEMBER#" + user.ID},
 				},
 				UpdateExpression:    aws.String("SET #order = :order"),
 				ConditionExpression: aws.String("attribute_exists(PK)"),
@@ -446,9 +448,9 @@ type FavoriteRequest struct {
 func (h *Handler) favorite(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 
-	email, ok := auth.EmailFromContext(ctx)
+	user, ok := auth.UserFromContext(ctx)
 	if !ok {
-		http.Error(w, "missing email in context", http.StatusInternalServerError)
+		http.Error(w, "missing user in context", http.StatusInternalServerError)
 		return
 	}
 
@@ -463,7 +465,7 @@ func (h *Handler) favorite(w http.ResponseWriter, req *http.Request) {
 		TableName: aws.String(h.table),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: req.PathValue("id")},
-			"SK": &types.AttributeValueMemberS{Value: "MEMBER#" + email},
+			"SK": &types.AttributeValueMemberS{Value: "MEMBER#" + user.ID},
 		},
 		UpdateExpression:    aws.String("SET #favorite = :favorite"),
 		ConditionExpression: aws.String("attribute_exists(PK)"),
@@ -488,12 +490,12 @@ func (h *Handler) favorite(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *Handler) isMember(ctx context.Context, boardID, email string) (bool, error) {
+func (h *Handler) isMember(ctx context.Context, boardID, userID string) (bool, error) {
 	out, err := h.db.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(h.table),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: boardID},
-			"SK": &types.AttributeValueMemberS{Value: "MEMBER#" + email},
+			"SK": &types.AttributeValueMemberS{Value: "MEMBER#" + userID},
 		},
 		ProjectionExpression: aws.String("PK"),
 	})
@@ -511,9 +513,9 @@ func (h *Handler) invite(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 	id := req.PathValue("id")
 
-	email, ok := auth.EmailFromContext(ctx)
+	user, ok := auth.UserFromContext(ctx)
 	if !ok {
-		http.Error(w, "missing email in context", http.StatusInternalServerError)
+		http.Error(w, "missing user in context", http.StatusInternalServerError)
 		return
 	}
 
@@ -524,13 +526,13 @@ func (h *Handler) invite(w http.ResponseWriter, req *http.Request) {
 	}
 	defer req.Body.Close()
 
-	invitee := strings.TrimSpace(r.Email)
-	if invitee == "" {
+	inviteeEmail := strings.TrimSpace(r.Email)
+	if inviteeEmail == "" {
 		http.Error(w, "missing email", http.StatusBadRequest)
 		return
 	}
 
-	member, err := h.isMember(ctx, id, email)
+	member, err := h.isMember(ctx, id, user.ID)
 	if err != nil {
 		log.Printf("failed to check membership: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -541,12 +543,20 @@ func (h *Handler) invite(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	invitee, err := h.users.Ensure(ctx, inviteeEmail)
+	if err != nil {
+		log.Printf("failed to look up invitee: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	_, err = h.db.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String(h.table),
 		Item: map[string]types.AttributeValue{
 			"PK":     &types.AttributeValueMemberS{Value: id},
-			"SK":     &types.AttributeValueMemberS{Value: "MEMBER#" + invitee},
-			"Member": &types.AttributeValueMemberS{Value: invitee},
+			"SK":     &types.AttributeValueMemberS{Value: "MEMBER#" + invitee.ID},
+			"Member": &types.AttributeValueMemberS{Value: invitee.ID},
+			"Email":  &types.AttributeValueMemberS{Value: invitee.Email},
 			"Order":  &types.AttributeValueMemberN{Value: strconv.FormatInt(time.Now().UnixMilli(), 10)},
 		},
 		ConditionExpression: aws.String("attribute_not_exists(PK)"),
@@ -565,9 +575,9 @@ func (h *Handler) delete(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 	id := req.PathValue("id")
 
-	email, ok := auth.EmailFromContext(ctx)
+	user, ok := auth.UserFromContext(ctx)
 	if !ok {
-		http.Error(w, "missing email in context", http.StatusInternalServerError)
+		http.Error(w, "missing user in context", http.StatusInternalServerError)
 		return
 	}
 
@@ -593,7 +603,7 @@ func (h *Handler) delete(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if board.Owner != email {
+	if board.Owner != user.ID {
 		http.Error(w, "only the owner can delete this board", http.StatusForbidden)
 		return
 	}
@@ -612,13 +622,13 @@ func (h *Handler) cleanup(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 	id := req.PathValue("id")
 
-	email, ok := auth.EmailFromContext(ctx)
+	user, ok := auth.UserFromContext(ctx)
 	if !ok {
-		http.Error(w, "missing email in context", http.StatusInternalServerError)
+		http.Error(w, "missing user in context", http.StatusInternalServerError)
 		return
 	}
 
-	member, err := h.isMember(ctx, id, email)
+	member, err := h.isMember(ctx, id, user.ID)
 	if err != nil {
 		log.Printf("failed to check membership: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -695,9 +705,9 @@ func (h *Handler) put(w http.ResponseWriter, req *http.Request) {
 
 	id := req.PathValue("id")
 
-	email, ok := auth.EmailFromContext(ctx)
+	user, ok := auth.UserFromContext(ctx)
 	if !ok {
-		http.Error(w, "missing email in context", http.StatusInternalServerError)
+		http.Error(w, "missing user in context", http.StatusInternalServerError)
 		return
 	}
 
@@ -709,7 +719,7 @@ func (h *Handler) put(w http.ResponseWriter, req *http.Request) {
 	}
 	defer req.Body.Close()
 
-	member, err := h.isMember(ctx, id, email)
+	member, err := h.isMember(ctx, id, user.ID)
 	if err != nil {
 		log.Printf("failed to check membership: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
