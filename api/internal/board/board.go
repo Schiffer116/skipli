@@ -20,19 +20,21 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
 	"github.com/Schiffer116/skipli/api/internal/auth"
+	"github.com/Schiffer116/skipli/api/internal/profile"
 )
 
 const memberIndexName = "Member"
 
 type Handler struct {
-	db     *dynamodb.Client
-	table  string
-	tokens *auth.TokenVerifier
-	users  *auth.Directory
+	db       *dynamodb.Client
+	table    string
+	tokens   *auth.TokenVerifier
+	users    *auth.Directory
+	profiles *profile.Store
 }
 
-func NewHandler(db *dynamodb.Client, table string, tokens *auth.TokenVerifier, users *auth.Directory) *Handler {
-	return &Handler{db: db, table: table, tokens: tokens, users: users}
+func NewHandler(db *dynamodb.Client, table string, tokens *auth.TokenVerifier, users *auth.Directory, profiles *profile.Store) *Handler {
+	return &Handler{db: db, table: table, tokens: tokens, users: users, profiles: profiles}
 }
 
 func (h *Handler) RegisterRoutes(router *http.ServeMux) {
@@ -186,7 +188,7 @@ func (h *Handler) members(w http.ResponseWriter, req *http.Request) {
 		KeyConditionExpression:    expr.KeyCondition(),
 	})
 
-	members := []string{}
+	var users []auth.User
 	for queryOutput.HasMorePages() {
 		page, err := queryOutput.NextPage(ctx)
 		if err != nil {
@@ -195,20 +197,38 @@ func (h *Handler) members(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		var pageMembers []struct{ Email string }
+		var pageMembers []struct{ Member, Email string }
 		if err := attributevalue.UnmarshalListOfMaps(page.Items, &pageMembers); err != nil {
 			log.Printf("failed to unmarshal members: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		for _, m := range pageMembers {
-			members = append(members, m.Email)
+			users = append(users, auth.User{ID: m.Member, Email: m.Email})
 		}
+	}
+
+	names, err := h.profiles.Names(ctx, users)
+	if err != nil {
+		log.Printf("failed to get member names: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	members := []Member{}
+	for _, u := range users {
+		members = append(members, Member{ID: u.ID, Email: u.Email, Name: names[u.ID]})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(members)
+}
+
+type Member struct {
+	ID    string `json:"id"`
+	Email string `json:"email"`
+	Name  string `json:"name"`
 }
 
 type Board struct {

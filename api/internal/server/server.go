@@ -14,6 +14,7 @@ import (
 	"github.com/Schiffer116/skipli/api/internal/auth"
 	"github.com/Schiffer116/skipli/api/internal/board"
 	"github.com/Schiffer116/skipli/api/internal/card"
+	"github.com/Schiffer116/skipli/api/internal/profile"
 	"github.com/Schiffer116/skipli/api/internal/realtime"
 	"github.com/Schiffer116/skipli/api/internal/task"
 )
@@ -57,7 +58,9 @@ func NewServer() *Server {
 	rt := realtime.NewHandler(cfg, db, tableName, tokens)
 	router.HandleFunc("GET /ws", rt.ServeLocal)
 
-	board.NewHandler(db, tableName, tokens, users).RegisterRoutes(router)
+	profiles := profile.NewStore(db, tableName)
+	profile.NewHandler(profiles, tokens).RegisterRoutes(router)
+	board.NewHandler(db, tableName, tokens, users, profiles).RegisterRoutes(router)
 	auth.NewHandler(idp, clientID, users, tokens).RegisterRoutes(router)
 	card.NewHandler(db, tableName).RegisterRoutes(router)
 	task.NewHandler(db, tableName).RegisterRoutes(router)

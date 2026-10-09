@@ -73,7 +73,9 @@ export default function Sidebar() {
     }
 
     setMembers((members) =>
-      members.includes(email) ? members : [...members, email],
+      members.some((member) => member.email === email)
+        ? members
+        : [...members, { id: email, email, name: email.split("@")[0] }],
     );
   };
 
@@ -116,17 +118,17 @@ export default function Sidebar() {
         <div className="space-y-1 mt-1">
           {members.map((member) => (
             <div
-              key={member}
-              title={collapsed ? member : undefined}
+              key={member.id}
+              title={collapsed ? member.name : member.email}
               className={`flex items-center gap-2 py-1.5 rounded-md hover:bg-sidebar-accent ${collapsed ? "justify-center" : "px-2"}`}
             >
               <UserAvatar
-                email={member}
+                email={member.email}
                 className="ring-1 ring-border size-7"
               />
               {!collapsed && (
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-link truncate">{member}</p>
+                  <p className="text-sm text-link truncate">{member.name}</p>
                 </div>
               )}
             </div>

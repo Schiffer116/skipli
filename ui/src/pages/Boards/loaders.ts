@@ -11,24 +11,32 @@ import { apiFetch } from "@/utils/apiFetch";
 
 export type Favorite = Pick<Board, "id" | "name">;
 
+export type Me = {
+  id: string;
+  email: string;
+  name: string;
+};
+
+export type Member = Me;
+
 export async function boardsLoader() {
-  const [emailRes, boardsRes] = await Promise.all([
-    apiFetch("/api/auth/email"),
+  const [meRes, boardsRes] = await Promise.all([
+    apiFetch("/api/me"),
     apiFetch("/api/boards"),
   ]);
 
-  if (emailRes.status === 401 || boardsRes.status === 401) {
+  if (meRes.status === 401 || boardsRes.status === 401) {
     throw redirect("/login");
   }
 
-  const { email }: { email: string } = await emailRes.json();
+  const me: Me = await meRes.json();
   const { boards, teamBoards }: { boards: Board[]; teamBoards: Board[] } =
     await boardsRes.json();
   const favorites: Favorite[] = [...boards, ...teamBoards]
     .filter((board) => board.favorite)
     .map(({ id, name }) => ({ id, name }));
 
-  return { email, favorites };
+  return { me, favorites };
 }
 
 export const boardListLoader = async (): Promise<{
@@ -86,7 +94,7 @@ export async function boardViewLoader({ params }: LoaderFunctionArgs) {
   const res = await apiFetch(`/api/boards/${boardId}/members`);
   throwIfNotOk(res);
 
-  const members: string[] = await res.json();
+  const members: Member[] = await res.json();
 
   return { cardsWithTasks, name, description, members };
 }
