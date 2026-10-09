@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router";
-import { Star } from "lucide-react";
+import { Star, UsersRound } from "lucide-react";
 
 import UserAvatar from "@/components/UserAvatar";
 import { Button } from "@/components/ui/button";
@@ -124,10 +124,17 @@ export default function Header({ me, setMe, favorites }: HeaderProps) {
             to={`/boards/${board.id}`}
             className="flex shrink-0 items-center gap-1.5 rounded px-2 py-1 hover:bg-nav-muted/15 hover:text-nav-foreground"
           >
-            <Star
-              className="size-3.5 fill-current text-amber-400"
-              aria-hidden
-            />
+            {board.owner === me.id ? (
+              <Star
+                className="size-3.5 fill-current text-amber-400"
+                aria-label="Your board"
+              />
+            ) : (
+              <UsersRound
+                className="size-3.5 text-sky-400"
+                aria-label="Shared with you"
+              />
+            )}
             {board.name}
           </Link>
         ))}

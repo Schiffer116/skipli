@@ -9,7 +9,7 @@ import type { CardType } from "./Board/Card";
 import type { TaskType } from "./Board/Card/Task";
 import { apiFetch } from "@/utils/apiFetch";
 
-export type Favorite = Pick<Board, "id" | "name">;
+export type Favorite = Pick<Board, "id" | "name" | "owner">;
 
 export type Me = {
   id: string;
@@ -34,7 +34,7 @@ export async function boardsLoader() {
     await boardsRes.json();
   const favorites: Favorite[] = [...boards, ...teamBoards]
     .filter((board) => board.favorite)
-    .map(({ id, name }) => ({ id, name }));
+    .map(({ id, name, owner }) => ({ id, name, owner }));
 
   return { me, favorites };
 }
@@ -81,7 +81,7 @@ export async function boardViewLoader({ params }: LoaderFunctionArgs) {
   // Board first, so a bad id is a clean 404 rather than a failed card fetch.
   const boardRes = await apiFetch(`/api/boards/${boardId}`);
   throwIfNotOk(boardRes);
-  const { name, description } = await boardRes.json();
+  const { name, description, owner } = await boardRes.json();
 
   const cards = await fetchCards(boardId);
   const cardsWithTasks = await Promise.all(
@@ -96,5 +96,5 @@ export async function boardViewLoader({ params }: LoaderFunctionArgs) {
 
   const members: Member[] = await res.json();
 
-  return { cardsWithTasks, name, description, members };
+  return { cardsWithTasks, name, description, owner, members };
 }

@@ -32,7 +32,7 @@ export default function Board() {
   const [cards, setCards] = useState(
     useLoaderData<typeof boardViewLoader>().cardsWithTasks,
   );
-  const { name, description } = useLoaderData<typeof boardViewLoader>();
+  const { name, description, owner } = useLoaderData<typeof boardViewLoader>();
   const { boardId } = useParams();
 
   const [activeTask, setActiveTask] = useState<TaskType | null>(null);
@@ -85,7 +85,7 @@ export default function Board() {
           <header className="mb-6">
             <div className="flex items-center gap-1 mb-1">
               <h1 className="text-2xl font-bold">{name}</h1>
-              <FavoriteButton board={{ id: boardId!, name }} />
+              <FavoriteButton board={{ id: boardId!, name, owner }} />
               <div className="ml-auto">
                 <CleanUpButton
                   boardId={boardId!}
