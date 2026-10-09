@@ -11,9 +11,11 @@ import type { boardListLoader } from "../loaders";
 export type Board = {
   id: string;
   name: string;
-  owenr: string;
+  owner: string;
   description: string;
   favorite: boolean;
+  taskCount: number;
+  doneCount: number;
 };
 
 export default function BoardList() {

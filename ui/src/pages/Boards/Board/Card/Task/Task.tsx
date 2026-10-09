@@ -95,7 +95,7 @@ export const DummyTask = forwardRef<HTMLDivElement, DummyTaskProps>(
       >
         <CardHeader className="relative group flex items-center p-0 pr-2 h-full">
           <Button
-            className={`size-6 ml-2 ${status === "done" ? "flex" : "hidden group-hover:flex"}`}
+            className={`size-6 ml-2 transition-colors ${status === "done" ? "visible" : "invisible group-hover:visible"}`}
             variant="ghost"
             size="icon"
             onClick={toggleStatus}
@@ -107,7 +107,7 @@ export const DummyTask = forwardRef<HTMLDivElement, DummyTaskProps>(
             )}
           </Button>
           <CardTitle
-            className={`h-full ${status === "done" ? "ml-1" : "ml-4"} group-hover:ml-1 flex-1 min-w-0 py-2 text-sm font-normal flex items-center ${status === "done" ? "text-muted-foreground line-through" : ""}`}
+            className={`h-full ml-1 flex-1 min-w-0 py-2 text-sm font-normal flex items-center ${status === "done" ? "text-muted-foreground line-through" : ""}`}
             {...listeners}
           >
             <span className="break-words">{name}</span>

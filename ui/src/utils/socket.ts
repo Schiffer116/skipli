@@ -25,7 +25,7 @@ function open(id: string) {
   conn.onclose = () => {
     if (ws !== conn) return;
     retry = setTimeout(async () => {
-      await apiFetch("/api/auth/email");
+      await apiFetch("/api/me");
       if (ws === conn) open(id);
     }, 3000);
   };

@@ -20,19 +20,21 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
 	"github.com/Schiffer116/skipli/api/internal/auth"
+	"github.com/Schiffer116/skipli/api/internal/profile"
 )
 
 const memberIndexName = "Member"
 
 type Handler struct {
-	db     *dynamodb.Client
-	table  string
-	tokens *auth.TokenVerifier
-	users  *auth.Directory
+	db       *dynamodb.Client
+	table    string
+	tokens   *auth.TokenVerifier
+	users    *auth.Directory
+	profiles *profile.Store
 }
 
-func NewHandler(db *dynamodb.Client, table string, tokens *auth.TokenVerifier, users *auth.Directory) *Handler {
-	return &Handler{db: db, table: table, tokens: tokens, users: users}
+func NewHandler(db *dynamodb.Client, table string, tokens *auth.TokenVerifier, users *auth.Directory, profiles *profile.Store) *Handler {
+	return &Handler{db: db, table: table, tokens: tokens, users: users, profiles: profiles}
 }
 
 func (h *Handler) RegisterRoutes(router *http.ServeMux) {
@@ -111,7 +113,7 @@ func (h *Handler) create(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(r)
+	json.NewEncoder(w).Encode(Board{ID: id, Owner: user.ID, Name: r.Name, Description: r.Description})
 }
 
 func (h *Handler) get(w http.ResponseWriter, req *http.Request) {
@@ -186,7 +188,7 @@ func (h *Handler) members(w http.ResponseWriter, req *http.Request) {
 		KeyConditionExpression:    expr.KeyCondition(),
 	})
 
-	members := []string{}
+	var users []auth.User
 	for queryOutput.HasMorePages() {
 		page, err := queryOutput.NextPage(ctx)
 		if err != nil {
@@ -195,20 +197,38 @@ func (h *Handler) members(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		var pageMembers []struct{ Email string }
+		var pageMembers []struct{ Member, Email string }
 		if err := attributevalue.UnmarshalListOfMaps(page.Items, &pageMembers); err != nil {
 			log.Printf("failed to unmarshal members: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		for _, m := range pageMembers {
-			members = append(members, m.Email)
+			users = append(users, auth.User{ID: m.Member, Email: m.Email})
 		}
+	}
+
+	names, err := h.profiles.Names(ctx, users)
+	if err != nil {
+		log.Printf("failed to get member names: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	members := []Member{}
+	for _, u := range users {
+		members = append(members, Member{ID: u.ID, Email: u.Email, Name: names[u.ID]})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(members)
+}
+
+type Member struct {
+	ID    string `json:"id"`
+	Email string `json:"email"`
+	Name  string `json:"name"`
 }
 
 type Board struct {
@@ -217,6 +237,44 @@ type Board struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Favorite    bool   `json:"favorite" dynamodbav:"-"`
+	TaskCount   int    `json:"taskCount" dynamodbav:"-"`
+	DoneCount   int    `json:"doneCount" dynamodbav:"-"`
+}
+
+func (h *Handler) countTasks(ctx context.Context, board *Board) error {
+	expr, err := expression.NewBuilder().
+		WithKeyCondition(expression.Key("PK").Equal(expression.Value(board.ID)).
+			And(expression.Key("SK").BeginsWith("TASK#"))).
+		WithProjection(expression.NamesList(expression.Name("Status"))).
+		Build()
+	if err != nil {
+		return err
+	}
+
+	pages := dynamodb.NewQueryPaginator(h.db, &dynamodb.QueryInput{
+		TableName:                 aws.String(h.table),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		KeyConditionExpression:    expr.KeyCondition(),
+		ProjectionExpression:      expr.Projection(),
+	})
+	for pages.HasMorePages() {
+		page, err := pages.NextPage(ctx)
+		if err != nil {
+			return err
+		}
+		var tasks []struct{ Status string }
+		if err := attributevalue.UnmarshalListOfMaps(page.Items, &tasks); err != nil {
+			return err
+		}
+		for _, t := range tasks {
+			board.TaskCount++
+			if t.Status == "done" {
+				board.DoneCount++
+			}
+		}
+	}
+	return nil
 }
 
 type boardItem struct {
@@ -319,6 +377,11 @@ func (h *Handler) list(w http.ResponseWriter, req *http.Request) {
 	}
 	for i := range memberBoards {
 		memberBoards[i].Favorite = favorites[memberBoards[i].ID]
+		if err := h.countTasks(ctx, &memberBoards[i]); err != nil {
+			log.Printf("failed to count tasks: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 
 	// Memberships from before Order existed read as 0 and sort first; name

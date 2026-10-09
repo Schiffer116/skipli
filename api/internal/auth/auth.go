@@ -30,7 +30,6 @@ func (h *Handler) RegisterRoutes(router *http.ServeMux) {
 	router.HandleFunc("POST /auth/send", h.sendVerificationEmail)
 	router.HandleFunc("POST /auth/verify", h.verify)
 	router.HandleFunc("POST /auth/refresh", h.refresh)
-	router.HandleFunc("GET /auth/email", h.getEmailFromJwt)
 }
 
 type SendVerificationEmailRequest struct {
@@ -169,23 +168,4 @@ func (h *Handler) refresh(w http.ResponseWriter, req *http.Request) {
 
 	setCookie(w, idTokenCookie, *out.AuthenticationResult.IdToken, "/api", 60*60)
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func (h *Handler) getEmailFromJwt(w http.ResponseWriter, req *http.Request) {
-	tokenString, ok := cookieValue(req, idTokenCookie)
-	if !ok {
-		http.Error(w, "missing token", http.StatusUnauthorized)
-		return
-	}
-
-	user, err := h.tokens.Verify(tokenString)
-	if err != nil {
-		log.Printf("invalid token: %v", err)
-		http.Error(w, "invalid token", http.StatusUnauthorized)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"email": user.Email})
 }
