@@ -143,6 +143,11 @@ function BoardTile({ board, setBoards, editable }: BoardTileProps) {
           {editable && <EditBoardDialog {...board} setBoards={setBoards} />}
         </div>
       </CardHeader>
+      {board.description && (
+        <p className="text-sm text-muted-foreground line-clamp-2 break-words">
+          {board.description}
+        </p>
+      )}
     </Card>
   );
 }

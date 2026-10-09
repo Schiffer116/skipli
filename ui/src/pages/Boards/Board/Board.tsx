@@ -32,7 +32,7 @@ export default function Board() {
   const [cards, setCards] = useState(
     useLoaderData<typeof boardViewLoader>().cardsWithTasks,
   );
-  const { name } = useLoaderData<typeof boardViewLoader>();
+  const { name, description } = useLoaderData<typeof boardViewLoader>();
   const { boardId } = useParams();
 
   const [activeTask, setActiveTask] = useState<TaskType | null>(null);
@@ -94,9 +94,11 @@ export default function Board() {
                 />
               </div>
             </div>
-            <p className="text-sm text-muted-foreground">
-              Organize your tasks with drag and drop
-            </p>
+            {description && (
+              <p className="text-sm text-muted-foreground max-w-prose break-words">
+                {description}
+              </p>
+            )}
           </header>
 
           <DndContext

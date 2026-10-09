@@ -73,7 +73,7 @@ export async function boardViewLoader({ params }: LoaderFunctionArgs) {
   // Board first, so a bad id is a clean 404 rather than a failed card fetch.
   const boardRes = await apiFetch(`/api/boards/${boardId}`);
   throwIfNotOk(boardRes);
-  const { name } = await boardRes.json();
+  const { name, description } = await boardRes.json();
 
   const cards = await fetchCards(boardId);
   const cardsWithTasks = await Promise.all(
@@ -88,5 +88,5 @@ export async function boardViewLoader({ params }: LoaderFunctionArgs) {
 
   const members: string[] = await res.json();
 
-  return { cardsWithTasks, name, members };
+  return { cardsWithTasks, name, description, members };
 }
