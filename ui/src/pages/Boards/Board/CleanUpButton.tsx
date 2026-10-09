@@ -1,4 +1,4 @@
-import { Sparkles } from "lucide-react";
+import { BrushCleaning } from "lucide-react";
 
 import {
   AlertDialog,
@@ -49,7 +49,7 @@ export default function CleanUpButton({
     <AlertDialog>
       <AlertDialogTrigger asChild>
         <Button variant="outline" disabled={doneCount === 0}>
-          <Sparkles />
+          <BrushCleaning />
           Clean up
         </Button>
       </AlertDialogTrigger>
