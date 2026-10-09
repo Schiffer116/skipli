@@ -107,7 +107,7 @@ export default function Board() {
             onDragEnd={onDragEnd}
             onDragCancel={onDragCancel}
           >
-            <div className="flex gap-4 pb-6 flex-1 min-h-0 items-start overflow-auto">
+            <div className="flex gap-4 pb-6 flex-1 min-h-0 items-start -mx-8 px-8 overflow-auto">
               <SortableContext
                 items={cards}
                 strategy={horizontalListSortingStrategy}
