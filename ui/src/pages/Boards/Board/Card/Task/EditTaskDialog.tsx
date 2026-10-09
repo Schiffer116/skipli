@@ -111,7 +111,7 @@ export default function EditTaskDialog(props: TaskType) {
         className="sm:max-w-[425px]"
         onClick={(e) => e.stopPropagation()}
       >
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} autoComplete="off">
           <DialogHeader>
             <DialogTitle>Edit task</DialogTitle>
           </DialogHeader>

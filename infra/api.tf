@@ -68,9 +68,12 @@ data "aws_iam_policy_document" "assume_role" {
       identifiers = ["lambda.amazonaws.com"]
     }
 
-    principals {
-      type        = "AWS"
-      identifiers = [data.aws_caller_identity.current.arn]
+    dynamic "principals" {
+      for_each = length(var.local_dev_principals) > 0 ? [1] : []
+      content {
+        type        = "AWS"
+        identifiers = var.local_dev_principals
+      }
     }
 
     actions = ["sts:AssumeRole"]

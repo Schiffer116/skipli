@@ -1,0 +1,3 @@
+bucket = "skipli-797848269974-ap-southeast-7-an"
+key    = "infra/terraform.tfstate"
+region = "ap-southeast-7"

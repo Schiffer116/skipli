@@ -1,0 +1,7 @@
+environment     = "prod"
+region          = "ap-southeast-1"
+state_bucket    = "skipli-077296715280-ap-southeast-1-an"
+state_region    = "ap-southeast-1"
+ui_domain       = "skipli.schifferarchitecture.com"
+dns_role_arn    = "arn:aws:iam::797848269974:role/SkipliDns"
+email_from_name = "Skipli"

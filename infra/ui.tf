@@ -11,7 +11,7 @@ data "aws_iam_policy_document" "origin_bucket_policy" {
     actions = ["s3:GetObject"]
 
     resources = [
-      "${aws_s3_bucket.skipli.arn}/ui/*",
+      "${data.aws_s3_bucket.skipli.arn}/ui/*",
     ]
 
     condition {
@@ -23,8 +23,8 @@ data "aws_iam_policy_document" "origin_bucket_policy" {
 }
 
 resource "aws_s3_bucket_policy" "b" {
-  region = local.state_region
-  bucket = aws_s3_bucket.skipli.id
+  region = var.state_region
+  bucket = data.aws_s3_bucket.skipli.id
   policy = data.aws_iam_policy_document.origin_bucket_policy.json
 }
 
@@ -49,11 +49,13 @@ resource "aws_acm_certificate" "ui_domain" {
 }
 
 data "aws_route53_zone" "hosted_zone" {
+  provider     = aws.dns
   name         = "schifferarchitecture.com"
   private_zone = false
 }
 
 resource "aws_route53_record" "domain_record" {
+  provider = aws.dns
   for_each = {
     for dvo in aws_acm_certificate.ui_domain.domain_validation_options : dvo.domain_name => {
       name   = dvo.resource_record_name
@@ -111,7 +113,7 @@ resource "aws_cloudfront_function" "realtime_path" {
 
 resource "aws_cloudfront_distribution" "skipli" {
   origin {
-    domain_name              = aws_s3_bucket.skipli.bucket_regional_domain_name
+    domain_name              = data.aws_s3_bucket.skipli.bucket_regional_domain_name
     origin_access_control_id = aws_cloudfront_origin_access_control.default.id
     origin_id                = local.s3_origin_id
     origin_path              = "/ui"
@@ -207,10 +209,6 @@ resource "aws_cloudfront_distribution" "skipli" {
     }
   }
 
-  tags = {
-    Environment = "production"
-  }
-
   viewer_certificate {
     acm_certificate_arn = aws_acm_certificate_validation.certificate_validation.certificate_arn
     ssl_support_method  = "sni-only"
@@ -218,6 +216,7 @@ resource "aws_cloudfront_distribution" "skipli" {
 }
 
 resource "aws_route53_record" "cloudfront" {
+  provider = aws.dns
   for_each = aws_cloudfront_distribution.skipli.aliases
   zone_id  = data.aws_route53_zone.hosted_zone.zone_id
   name     = each.value

@@ -1,0 +1,3 @@
+bucket = "skipli-PRODUCTION_ACCOUNT_ID-ap-southeast-1-an"
+key    = "bootstrap/terraform.tfstate"
+region = "ap-southeast-1"

@@ -58,7 +58,7 @@ export default function CreateTaskForm(props: TaskFormProps) {
   };
 
   return (
-    <form className="w-full" onSubmit={handleSubmit}>
+    <form className="w-full" onSubmit={handleSubmit} autoComplete="off">
       <div className="space-y-3 rounded-md w-full">
         <Input
           name="name"
