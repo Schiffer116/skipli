@@ -14,6 +14,8 @@ export type Board = {
   owenr: string;
   description: string;
   favorite: boolean;
+  taskCount: number;
+  doneCount: number;
 };
 
 export default function BoardList() {

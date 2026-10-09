@@ -148,6 +148,9 @@ function BoardTile({ board, setBoards, editable }: BoardTileProps) {
           {board.description}
         </p>
       )}
+      <p className="mt-auto text-xs text-muted-foreground tabular-nums">
+        {board.doneCount} / {board.taskCount} done
+      </p>
     </Card>
   );
 }

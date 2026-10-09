@@ -217,6 +217,44 @@ type Board struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Favorite    bool   `json:"favorite" dynamodbav:"-"`
+	TaskCount   int    `json:"taskCount" dynamodbav:"-"`
+	DoneCount   int    `json:"doneCount" dynamodbav:"-"`
+}
+
+func (h *Handler) countTasks(ctx context.Context, board *Board) error {
+	expr, err := expression.NewBuilder().
+		WithKeyCondition(expression.Key("PK").Equal(expression.Value(board.ID)).
+			And(expression.Key("SK").BeginsWith("TASK#"))).
+		WithProjection(expression.NamesList(expression.Name("Status"))).
+		Build()
+	if err != nil {
+		return err
+	}
+
+	pages := dynamodb.NewQueryPaginator(h.db, &dynamodb.QueryInput{
+		TableName:                 aws.String(h.table),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		KeyConditionExpression:    expr.KeyCondition(),
+		ProjectionExpression:      expr.Projection(),
+	})
+	for pages.HasMorePages() {
+		page, err := pages.NextPage(ctx)
+		if err != nil {
+			return err
+		}
+		var tasks []struct{ Status string }
+		if err := attributevalue.UnmarshalListOfMaps(page.Items, &tasks); err != nil {
+			return err
+		}
+		for _, t := range tasks {
+			board.TaskCount++
+			if t.Status == "done" {
+				board.DoneCount++
+			}
+		}
+	}
+	return nil
 }
 
 type boardItem struct {
@@ -319,6 +357,11 @@ func (h *Handler) list(w http.ResponseWriter, req *http.Request) {
 	}
 	for i := range memberBoards {
 		memberBoards[i].Favorite = favorites[memberBoards[i].ID]
+		if err := h.countTasks(ctx, &memberBoards[i]); err != nil {
+			log.Printf("failed to count tasks: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 
 	// Memberships from before Order existed read as 0 and sort first; name
