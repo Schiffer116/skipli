@@ -111,7 +111,7 @@ func (h *Handler) create(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(r)
+	json.NewEncoder(w).Encode(Board{ID: id, Owner: user.ID, Name: r.Name, Description: r.Description})
 }
 
 func (h *Handler) get(w http.ResponseWriter, req *http.Request) {
