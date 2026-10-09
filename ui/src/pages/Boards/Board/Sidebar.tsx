@@ -1,4 +1,4 @@
-import { Avatar, AvatarImage } from "@/components/ui/avatar";
+import UserAvatar from "@/components/UserAvatar";
 import {
   PanelLeftClose,
   PanelLeftOpen,
@@ -8,7 +8,6 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLoaderData, useParams } from "react-router";
-import md5 from "md5";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -51,11 +50,6 @@ export default function Sidebar() {
       // Not remembered this time; the toggle still works.
     }
   }, [collapsed]);
-
-  const avatarUrls = members.map((member) => {
-    const hash = md5(member);
-    return `https://www.gravatar.com/avatar/${hash}?d=identicon`;
-  });
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -120,15 +114,16 @@ export default function Sidebar() {
       </div>
       <div className={collapsed ? "px-2" : "px-4"}>
         <div className="space-y-1 mt-1">
-          {members.map((member, idx) => (
+          {members.map((member) => (
             <div
               key={member}
               title={collapsed ? member : undefined}
               className={`flex items-center gap-2 py-1.5 rounded-md hover:bg-sidebar-accent ${collapsed ? "justify-center" : "px-2"}`}
             >
-              <Avatar className="ring-1 ring-border size-7">
-                <AvatarImage src={avatarUrls[idx]} alt={member} />
-              </Avatar>
+              <UserAvatar
+                email={member}
+                className="ring-1 ring-border size-7"
+              />
               {!collapsed && (
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-link truncate">{member}</p>

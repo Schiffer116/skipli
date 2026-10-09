@@ -1,8 +1,6 @@
 import { Link } from "react-router";
 import { Star } from "lucide-react";
-import { Avatar, AvatarImage } from "@/components/ui/avatar";
-
-import md5 from "md5";
+import UserAvatar from "@/components/UserAvatar";
 
 import type { Favorite } from "./loaders";
 
@@ -12,9 +10,6 @@ type HeaderProps = {
 };
 
 export default function Header({ email, favorites }: HeaderProps) {
-  const hash = md5(email);
-  const avatarUrl = `https://www.gravatar.com/avatar/${hash}?d=identicon`;
-
   return (
     <header className="sticky top-0 z-20">
       <div className="bg-nav text-nav-foreground h-12 px-4 w-full flex items-center gap-2 justify-between">
@@ -25,9 +20,10 @@ export default function Header({ email, favorites }: HeaderProps) {
 
         <div className="flex items-center gap-3 text-sm text-nav-muted">
           <p>{email}</p>
-          <Avatar className="size-7 ring-1 ring-nav-muted/40">
-            <AvatarImage src={avatarUrl} alt={email} />
-          </Avatar>
+          <UserAvatar
+            email={email}
+            className="size-7 ring-1 ring-nav-muted/40"
+          />
         </div>
       </div>
 
