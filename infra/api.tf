@@ -49,6 +49,11 @@ resource "aws_dynamodb_table" "skipli" {
     enabled = true
   }
 
+  ttl {
+    attribute_name = "ExpiresAt"
+    enabled        = true
+  }
+
   lifecycle {
     prevent_destroy = true
   }
@@ -63,9 +68,12 @@ data "aws_iam_policy_document" "assume_role" {
       identifiers = ["lambda.amazonaws.com"]
     }
 
-    principals {
-      type        = "AWS"
-      identifiers = [data.aws_caller_identity.current.arn]
+    dynamic "principals" {
+      for_each = length(var.local_dev_principals) > 0 ? [1] : []
+      content {
+        type        = "AWS"
+        identifiers = var.local_dev_principals
+      }
     }
 
     actions = ["sts:AssumeRole"]
@@ -113,7 +121,7 @@ resource "aws_iam_role_policy" "dynamodb_access" {
 data "aws_iam_policy_document" "cognito_access" {
   statement {
     effect    = "Allow"
-    actions   = ["cognito-idp:AdminCreateUser", "cognito-idp:AdminSetUserPassword"]
+    actions   = ["cognito-idp:AdminCreateUser", "cognito-idp:AdminSetUserPassword", "cognito-idp:AdminGetUser"]
     resources = [aws_cognito_user_pool.skipli.arn]
   }
 }
@@ -122,6 +130,20 @@ resource "aws_iam_role_policy" "cognito_access" {
   name   = "SkipliCognitoAccess"
   role   = aws_iam_role.lambda.id
   policy = data.aws_iam_policy_document.cognito_access.json
+}
+
+data "aws_iam_policy_document" "realtime_access" {
+  statement {
+    effect    = "Allow"
+    actions   = ["execute-api:ManageConnections"]
+    resources = ["${aws_apigatewayv2_api.realtime.execution_arn}/*"]
+  }
+}
+
+resource "aws_iam_role_policy" "realtime_access" {
+  name   = "SkipliRealtimeAccess"
+  role   = aws_iam_role.lambda.id
+  policy = data.aws_iam_policy_document.realtime_access.json
 }
 
 data "archive_file" "zip_archive" {
@@ -160,4 +182,57 @@ resource "aws_lambda_permission" "apigw" {
   function_name = aws_lambda_function.skipli.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.skipli.execution_arn}/*/*"
+}
+
+resource "aws_lambda_function" "realtime" {
+  filename      = data.archive_file.zip_archive.output_path
+  function_name = "SkipliRealtime"
+  role          = aws_iam_role.lambda.arn
+
+  handler          = "bootstrap"
+  runtime          = "provided.al2023"
+  architectures    = ["arm64"]
+  source_code_hash = data.archive_file.zip_archive.output_base64sha256
+
+  environment {
+    variables = {
+      WEBSOCKET           = "1"
+      USER_POOL_ID        = aws_cognito_user_pool.skipli.id
+      USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.skipli.id
+      TABLE_NAME          = aws_dynamodb_table.skipli.name
+    }
+  }
+}
+
+resource "aws_apigatewayv2_api" "realtime" {
+  name                       = "skipli-realtime"
+  protocol_type              = "WEBSOCKET"
+  route_selection_expression = "$request.body.action"
+}
+
+resource "aws_apigatewayv2_integration" "realtime" {
+  api_id             = aws_apigatewayv2_api.realtime.id
+  integration_type   = "AWS_PROXY"
+  integration_method = "POST"
+  integration_uri    = aws_lambda_function.realtime.invoke_arn
+}
+
+resource "aws_apigatewayv2_route" "realtime" {
+  for_each  = toset(["$connect", "$default"])
+  api_id    = aws_apigatewayv2_api.realtime.id
+  route_key = each.key
+  target    = "integrations/${aws_apigatewayv2_integration.realtime.id}"
+}
+
+resource "aws_apigatewayv2_stage" "realtime" {
+  api_id      = aws_apigatewayv2_api.realtime.id
+  name        = "ws"
+  auto_deploy = true
+}
+
+resource "aws_lambda_permission" "realtime" {
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.realtime.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.realtime.execution_arn}/*"
 }

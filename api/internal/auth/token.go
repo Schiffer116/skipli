@@ -50,7 +50,7 @@ func NewTokenVerifier(ctx context.Context, region, poolID, clientID string) (*To
 	return &TokenVerifier{keys: keys, issuer: issuer, clientID: clientID}, nil
 }
 
-func (t *TokenVerifier) Verify(tokenString string) (string, error) {
+func (t *TokenVerifier) Verify(tokenString string) (User, error) {
 	token, err := jwt.Parse(tokenString, t.keys.Keyfunc,
 		jwt.WithValidMethods([]string{"RS256"}),
 		jwt.WithIssuer(t.issuer),
@@ -58,29 +58,39 @@ func (t *TokenVerifier) Verify(tokenString string) (string, error) {
 		jwt.WithExpirationRequired(),
 	)
 	if err != nil || !token.Valid {
-		return "", fmt.Errorf("invalid token: %w", err)
+		return User{}, fmt.Errorf("invalid token: %w", err)
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok || claims["token_use"] != "id" {
-		return "", fmt.Errorf("invalid token claims")
+		return User{}, fmt.Errorf("invalid token claims")
 	}
 
-	email, ok := claims["email"].(string)
+	id, _ := claims["sub"].(string)
+	email, _ := claims["email"].(string)
+	if id == "" || email == "" {
+		return User{}, fmt.Errorf("invalid token claims")
+	}
+
+	return User{ID: id, Email: email}, nil
+}
+
+func (t *TokenVerifier) VerifyCookies(cookieHeader string) (User, error) {
+	req := &http.Request{Header: http.Header{"Cookie": {cookieHeader}}}
+	tokenString, ok := cookieValue(req, idTokenCookie)
 	if !ok {
-		return "", fmt.Errorf("invalid token claims")
+		return User{}, fmt.Errorf("missing token")
 	}
-
-	return email, nil
+	return t.Verify(tokenString)
 }
 
 type contextKey int
 
-const emailContextKey contextKey = iota
+const userContextKey contextKey = iota
 
-func EmailFromContext(ctx context.Context) (string, bool) {
-	email, ok := ctx.Value(emailContextKey).(string)
-	return email, ok
+func UserFromContext(ctx context.Context) (User, bool) {
+	user, ok := ctx.Value(userContextKey).(User)
+	return user, ok
 }
 
 func (t *TokenVerifier) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
@@ -91,13 +101,13 @@ func (t *TokenVerifier) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		email, err := t.Verify(tokenString)
+		user, err := t.Verify(tokenString)
 		if err != nil {
 			http.Error(w, "invalid token", http.StatusUnauthorized)
 			return
 		}
 
-		ctx := context.WithValue(req.Context(), emailContextKey, email)
+		ctx := context.WithValue(req.Context(), userContextKey, user)
 		next(w, req.WithContext(ctx))
 	}
 }

@@ -4,7 +4,7 @@ import { useParams } from "react-router";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
-import { socket } from "@/main";
+import { socket } from "@/utils/socket";
 import type { TaskType } from "./Task";
 import { BoardContext } from "../../BoardContext";
 import useEscape from "@/hooks/useEscape";
@@ -58,7 +58,7 @@ export default function CreateTaskForm(props: TaskFormProps) {
   };
 
   return (
-    <form className="w-full" onSubmit={handleSubmit}>
+    <form className="w-full" onSubmit={handleSubmit} autoComplete="off">
       <div className="space-y-3 rounded-md w-full">
         <Input
           name="name"

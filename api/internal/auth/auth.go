@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"log"
@@ -18,13 +17,13 @@ import (
 
 type Handler struct {
 	idp      *cip.Client
-	poolID   string
 	clientID string
+	users    *Directory
 	tokens   *TokenVerifier
 }
 
-func NewHandler(idp *cip.Client, poolID, clientID string, tokens *TokenVerifier) *Handler {
-	return &Handler{idp: idp, poolID: poolID, clientID: clientID, tokens: tokens}
+func NewHandler(idp *cip.Client, clientID string, users *Directory, tokens *TokenVerifier) *Handler {
+	return &Handler{idp: idp, clientID: clientID, users: users, tokens: tokens}
 }
 
 func (h *Handler) RegisterRoutes(router *http.ServeMux) {
@@ -57,7 +56,7 @@ func (h *Handler) sendVerificationEmail(w http.ResponseWriter, req *http.Request
 		return
 	}
 
-	if err := h.ensureUser(ctx, r.Email); err != nil {
+	if _, err := h.users.Ensure(ctx, r.Email); err != nil {
 		log.Printf("failed to create user: %v", err)
 		http.Error(w, "failed to send verification email", http.StatusInternalServerError)
 		return
@@ -94,33 +93,6 @@ func canReceiveMail(ctx context.Context, email string) bool {
 		return true
 	}
 	return err == nil && len(mx) > 0 && mx[0].Host != "."
-}
-
-func (h *Handler) ensureUser(ctx context.Context, email string) error {
-	_, err := h.idp.AdminCreateUser(ctx, &cip.AdminCreateUserInput{
-		UserPoolId:    aws.String(h.poolID),
-		Username:      aws.String(email),
-		MessageAction: types.MessageActionTypeSuppress,
-		UserAttributes: []types.AttributeType{
-			{Name: aws.String("email"), Value: aws.String(email)},
-			{Name: aws.String("email_verified"), Value: aws.String("true")},
-		},
-	})
-	var exists *types.UsernameExistsException
-	if errors.As(err, &exists) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-
-	_, err = h.idp.AdminSetUserPassword(ctx, &cip.AdminSetUserPasswordInput{
-		UserPoolId: aws.String(h.poolID),
-		Username:   aws.String(email),
-		Password:   aws.String(rand.Text() + "Aa1!"),
-		Permanent:  true,
-	})
-	return err
 }
 
 type VerifyRequest struct {
@@ -206,7 +178,7 @@ func (h *Handler) getEmailFromJwt(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	email, err := h.tokens.Verify(tokenString)
+	user, err := h.tokens.Verify(tokenString)
 	if err != nil {
 		log.Printf("invalid token: %v", err)
 		http.Error(w, "invalid token", http.StatusUnauthorized)
@@ -215,5 +187,5 @@ func (h *Handler) getEmailFromJwt(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"email": email})
+	json.NewEncoder(w).Encode(map[string]string{"email": user.Email})
 }

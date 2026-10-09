@@ -1,0 +1,108 @@
+name: deploy
+run-name: ${{ github.actor }} is deploying ${{ github.ref_name }}
+on:
+  push:
+    branches: [dev, master]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  TF_INPUT: 0
+  TF_IN_AUTOMATION: 1
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yaml
+
+  dev:
+    if: github.ref_name == 'dev'
+    needs: ci
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/build
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.9
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.DEV_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.DEV_AWS_REGION }}
+          role-skip-session-tagging: true
+
+      - working-directory: infra
+        run: |
+          terraform init -backend-config=env/dev.s3.tfbackend
+          terraform apply -auto-approve -var-file=env/dev.tfvars
+
+      - run: aws s3 sync ui/dist "s3://${{ vars.DEV_UI_BUCKET }}/ui" --delete
+
+  prod-plan:
+    if: github.ref_name == 'master'
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/build
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.9
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.PROD_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.PROD_AWS_REGION }}
+          role-skip-session-tagging: true
+
+      - working-directory: infra
+        run: |
+          terraform init -backend-config=env/prod.s3.tfbackend
+          terraform plan -var-file=env/prod.tfvars -out=tfplan
+          {
+            echo '```'
+            terraform show -no-color tfplan
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prod-plan
+          retention-days: 1
+          path: |
+            infra/tfplan
+            api/bin/api.zip
+            ui/dist
+
+  prod-apply:
+    needs: prod-plan
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: prod-plan
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.9
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.PROD_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.PROD_AWS_REGION }}
+          role-skip-session-tagging: true
+
+      - working-directory: infra
+        run: |
+          terraform init -backend-config=env/prod.s3.tfbackend
+          terraform apply tfplan
+
+      - run: aws s3 sync ui/dist "s3://${{ vars.PROD_UI_BUCKET }}/ui" --delete

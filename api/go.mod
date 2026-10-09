@@ -9,9 +9,11 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.38
 	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.20.62
 	github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression v1.8.62
+	github.com/aws/aws-sdk-go-v2/service/apigatewaymanagementapi v1.40.0
 	github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider v1.75.0
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.63.4
 	github.com/awslabs/aws-lambda-go-api-proxy v0.16.2
+	github.com/coder/websocket v1.8.15
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 )

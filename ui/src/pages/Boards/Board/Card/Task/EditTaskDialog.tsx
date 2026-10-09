@@ -27,7 +27,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { DialogDescription } from "@radix-ui/react-dialog";
 
-import { socket } from "@/main";
+import { socket } from "@/utils/socket";
 import { BoardContext } from "../../BoardContext";
 import type { TaskType } from "./Task";
 import { deleteTask, updateTask } from "@/utils/updateCard";
@@ -111,7 +111,7 @@ export default function EditTaskDialog(props: TaskType) {
         className="sm:max-w-[425px]"
         onClick={(e) => e.stopPropagation()}
       >
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} autoComplete="off">
           <DialogHeader>
             <DialogTitle>Edit task</DialogTitle>
           </DialogHeader>

@@ -2,3 +2,5 @@
 .envrc
 .*.env
 *parameters.json
+docs
+CONTEXT.md

@@ -14,11 +14,13 @@ import (
 	"github.com/Schiffer116/skipli/api/internal/auth"
 	"github.com/Schiffer116/skipli/api/internal/board"
 	"github.com/Schiffer116/skipli/api/internal/card"
+	"github.com/Schiffer116/skipli/api/internal/realtime"
 	"github.com/Schiffer116/skipli/api/internal/task"
 )
 
 type Server struct {
-	Router http.Handler
+	Router   http.Handler
+	Realtime *realtime.Handler
 }
 
 func NewServer() *Server {
@@ -34,7 +36,7 @@ func NewServer() *Server {
 		tableName = "Skipli"
 	}
 
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("ap-southeast-7"))
+	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		log.Fatalf("unable to load SDK config: %v", err)
 	}
@@ -50,13 +52,21 @@ func NewServer() *Server {
 	}
 	router := http.NewServeMux()
 
-	board.NewHandler(db, tableName, tokens).RegisterRoutes(router)
-	auth.NewHandler(idp, poolID, clientID, tokens).RegisterRoutes(router)
+	users := auth.NewDirectory(idp, poolID)
+
+	rt := realtime.NewHandler(cfg, db, tableName, tokens)
+	router.HandleFunc("GET /ws", rt.ServeLocal)
+
+	board.NewHandler(db, tableName, tokens, users).RegisterRoutes(router)
+	auth.NewHandler(idp, clientID, users, tokens).RegisterRoutes(router)
 	card.NewHandler(db, tableName).RegisterRoutes(router)
 	task.NewHandler(db, tableName).RegisterRoutes(router)
 
 	api := http.NewServeMux()
 	api.Handle("/api/", http.StripPrefix("/api", router))
 
-	return &Server{Router: withCORS(api)}
+	return &Server{
+		Router:   withCORS(api),
+		Realtime: rt,
+	}
 }

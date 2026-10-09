@@ -40,6 +40,12 @@ export const deleteTask = (id: string) => (cards: CardType[]) =>
     tasks: card.tasks.filter((task) => task.id !== id),
   }));
 
+export const cleanUp = () => (cards: CardType[]) =>
+  cards.map((card) => ({
+    ...card,
+    tasks: card.tasks.filter((task) => task.status !== "done"),
+  }));
+
 export const moveTask =
   (
     taskId: UniqueIdentifier,

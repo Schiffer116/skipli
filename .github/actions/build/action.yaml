@@ -1,0 +1,26 @@
+name: build
+description: Build the API Lambda binary and the UI
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v7
+      with:
+        go-version-file: api/go.mod
+        cache-dependency-path: api/go.sum
+    - shell: bash
+      run: make -C api build
+
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 11
+    - uses: actions/setup-node@v7
+      with:
+        cache: pnpm
+        cache-dependency-path: ui/pnpm-lock.yaml
+        node-version: "26"
+    - shell: bash
+      working-directory: ui
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm build

@@ -7,7 +7,7 @@ import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities";
 import { CheckCircle2, Circle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useParams } from "react-router";
-import { socket } from "@/main";
+import { socket } from "@/utils/socket";
 import { updateTask } from "@/utils/updateCard";
 import { BoardContext } from "../../BoardContext";
 import { apiFetch } from "@/utils/apiFetch";
@@ -91,7 +91,7 @@ export const DummyTask = forwardRef<HTMLDivElement, DummyTaskProps>(
       <Card
         ref={ref}
         {...rest}
-        className="h-10 p-0 cursor-grab shadow-none rounded-md hover:border-link hover:bg-accent/40"
+        className="min-h-10 p-0 cursor-grab shadow-none rounded-md hover:border-link hover:bg-accent/40"
       >
         <CardHeader className="relative group flex items-center p-0 pr-2 h-full">
           <Button
@@ -107,10 +107,10 @@ export const DummyTask = forwardRef<HTMLDivElement, DummyTaskProps>(
             )}
           </Button>
           <CardTitle
-            className={`h-full ${status === "done" ? "ml-1" : "ml-4"} group-hover:ml-1 flex-1 text-sm font-normal flex items-center ${status === "done" ? "text-muted-foreground line-through" : ""}`}
+            className={`h-full ${status === "done" ? "ml-1" : "ml-4"} group-hover:ml-1 flex-1 min-w-0 py-2 text-sm font-normal flex items-center ${status === "done" ? "text-muted-foreground line-through" : ""}`}
             {...listeners}
           >
-            {name}
+            <span className="break-words">{name}</span>
           </CardTitle>
           <EditTaskDialog {...props} />
         </CardHeader>

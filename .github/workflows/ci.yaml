@@ -1,9 +1,13 @@
 name: ci
 run-name: ${{ github.actor }} is running CI
-on: [push, workflow_dispatch]
+on:
+  push:
+    branches-ignore: [dev, master]
+  pull_request:
+    branches: [dev, master]
+  workflow_call:
 
 permissions:
-  id-token: write
   contents: read
 
 jobs:
@@ -29,9 +33,6 @@ jobs:
 
   infra:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: infra
     env:
       TF_INPUT: 0
       TF_IN_AUTOMATION: 1
@@ -43,15 +44,16 @@ jobs:
           terraform_version: 1.15.9
           terraform_wrapper: false
 
-      - uses: aws-actions/configure-aws-credentials@v5
-        with:
-          role-to-assume: ${{ vars.AWS_GITHUB_ACTIONS_ROLE_ARN }}
-          aws-region: ap-southeast-7
-          role-skip-session-tagging: true
+      - run: terraform fmt -check -recursive infra
 
-      - run: |
-          terraform fmt -check -recursive
-          terraform init -input=false
+      - working-directory: infra
+        run: |
+          terraform init -backend=false
+          terraform validate -no-color
+
+      - working-directory: infra/bootstrap
+        run: |
+          terraform init -backend=false
           terraform validate -no-color
 
   api:
@@ -69,3 +71,17 @@ jobs:
       - run: make vet
       - run: make test
       - run: make build
+
+  pr-source:
+    if: github.event_name == 'pull_request' && github.base_ref == 'master'
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ "$HEAD_REF" != dev ] || [ "$HEAD_REPO" != "$REPO" ]; then
+            echo "Pull requests into master must come from this repo's dev branch."
+            exit 1
+          fi

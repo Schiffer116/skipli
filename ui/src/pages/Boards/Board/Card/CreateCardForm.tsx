@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
-import { socket } from "@/main";
+import { socket } from "@/utils/socket";
 import { BoardContext } from "../BoardContext";
 import { createCard } from "@/utils/updateCard";
 import useEscape from "@/hooks/useEscape";

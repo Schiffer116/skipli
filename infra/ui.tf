@@ -11,7 +11,7 @@ data "aws_iam_policy_document" "origin_bucket_policy" {
     actions = ["s3:GetObject"]
 
     resources = [
-      "${aws_s3_bucket.skipli.arn}/ui/*",
+      "${data.aws_s3_bucket.skipli.arn}/ui/*",
     ]
 
     condition {
@@ -23,13 +23,15 @@ data "aws_iam_policy_document" "origin_bucket_policy" {
 }
 
 resource "aws_s3_bucket_policy" "b" {
-  bucket = aws_s3_bucket.skipli.id
+  region = var.state_region
+  bucket = data.aws_s3_bucket.skipli.id
   policy = data.aws_iam_policy_document.origin_bucket_policy.json
 }
 
 locals {
-  s3_origin_id    = "S3Origin"
-  apigw_origin_id = "APIGatewayOrigin"
+  s3_origin_id       = "S3Origin"
+  apigw_origin_id    = "APIGatewayOrigin"
+  realtime_origin_id = "RealtimeOrigin"
 }
 
 variable "ui_domain" {
@@ -47,11 +49,13 @@ resource "aws_acm_certificate" "ui_domain" {
 }
 
 data "aws_route53_zone" "hosted_zone" {
+  provider     = aws.dns
   name         = "schifferarchitecture.com"
   private_zone = false
 }
 
 resource "aws_route53_record" "domain_record" {
+  provider = aws.dns
   for_each = {
     for dvo in aws_acm_certificate.ui_domain.domain_validation_options : dvo.domain_name => {
       name   = dvo.resource_record_name
@@ -94,9 +98,22 @@ resource "aws_cloudfront_function" "redirect_to_index" {
   EOF
 }
 
+resource "aws_cloudfront_function" "realtime_path" {
+  name    = "RealtimePath"
+  runtime = "cloudfront-js-2.0"
+  publish = true
+  code    = <<-EOF
+    function handler(event) {
+      var req = event.request;
+      req.uri = '/${aws_apigatewayv2_stage.realtime.name}';
+      return req;
+    }
+  EOF
+}
+
 resource "aws_cloudfront_distribution" "skipli" {
   origin {
-    domain_name              = aws_s3_bucket.skipli.bucket_regional_domain_name
+    domain_name              = data.aws_s3_bucket.skipli.bucket_regional_domain_name
     origin_access_control_id = aws_cloudfront_origin_access_control.default.id
     origin_id                = local.s3_origin_id
     origin_path              = "/ui"
@@ -105,6 +122,18 @@ resource "aws_cloudfront_distribution" "skipli" {
   origin {
     domain_name = trimprefix(aws_apigatewayv2_api.skipli.api_endpoint, "https://")
     origin_id   = local.apigw_origin_id
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "https-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
+  origin {
+    domain_name = trimprefix(aws_apigatewayv2_api.realtime.api_endpoint, "wss://")
+    origin_id   = local.realtime_origin_id
 
     custom_origin_config {
       http_port              = 80
@@ -145,6 +174,22 @@ resource "aws_cloudfront_distribution" "skipli" {
   }
 
   ordered_cache_behavior {
+    path_pattern     = "/api/ws"
+    allowed_methods  = ["GET", "HEAD"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = local.realtime_origin_id
+
+    viewer_protocol_policy   = "https-only"
+    cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+    origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.realtime_path.arn
+    }
+  }
+
+  ordered_cache_behavior {
     path_pattern     = "/api/*"
     allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
     cached_methods   = ["GET", "HEAD"]
@@ -164,10 +209,6 @@ resource "aws_cloudfront_distribution" "skipli" {
     }
   }
 
-  tags = {
-    Environment = "production"
-  }
-
   viewer_certificate {
     acm_certificate_arn = aws_acm_certificate_validation.certificate_validation.certificate_arn
     ssl_support_method  = "sni-only"
@@ -175,6 +216,7 @@ resource "aws_cloudfront_distribution" "skipli" {
 }
 
 resource "aws_route53_record" "cloudfront" {
+  provider = aws.dns
   for_each = aws_cloudfront_distribution.skipli.aliases
   zone_id  = data.aws_route53_zone.hosted_zone.zone_id
   name     = each.value

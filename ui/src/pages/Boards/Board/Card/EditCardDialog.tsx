@@ -26,7 +26,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { DialogDescription } from "@radix-ui/react-dialog";
 
-import { socket } from "@/main";
+import { socket } from "@/utils/socket";
 import type { CardType } from "./Card";
 import { BoardContext } from "../BoardContext";
 import { useParams } from "react-router";

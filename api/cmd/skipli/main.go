@@ -18,6 +18,10 @@ func main() {
 	// On Lambda (behind an API Gateway HTTP API, which sends v2 payloads)
 	// serve the same router through the adapter instead of a port.
 	if os.Getenv("AWS_LAMBDA_RUNTIME_API") != "" {
+		if os.Getenv("WEBSOCKET") != "" {
+			lambda.Start(server.Realtime.Handle)
+			return
+		}
 		lambda.Start(httpadapter.NewV2(server.Router).ProxyWithContext)
 		return
 	}
