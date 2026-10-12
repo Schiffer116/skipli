@@ -10,7 +10,6 @@ import {
 import { KeyboardSensor, useSensor, useSensors } from "@dnd-kit/core";
 import {
   horizontalListSortingStrategy,
-  rectSortingStrategy,
   SortableContext,
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
@@ -47,6 +46,7 @@ export default function Board() {
   const [createTaskFormId, setCreateTaskFormId] = useState<string | null>(null);
 
   const boardContextValue = {
+    masonry: layout === "masonry",
     cards,
     setCards,
     showCreateCardForm,
@@ -164,13 +164,14 @@ export default function Board() {
             >
               <SortableContext
                 items={cards}
-                strategy={
-                  masonry ? rectSortingStrategy : horizontalListSortingStrategy
-                }
+                strategy={masonry ? () => null : horizontalListSortingStrategy}
               >
                 {masonry
                   ? columns.map((column, i) => (
-                      <div key={i} className="flex flex-col gap-4 max-md:w-full max-md:*:w-full">
+                      <div
+                        key={i}
+                        className="flex flex-1 min-w-0 flex-col gap-4 *:w-full"
+                      >
                         {column}
                       </div>
                     ))

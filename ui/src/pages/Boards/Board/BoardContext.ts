@@ -3,6 +3,7 @@ import { createContext } from "react";
 import type { CardType } from "./Card";
 
 type BoardContextType = {
+  masonry: boolean;
   cards: CardType[];
   setCards: React.Dispatch<React.SetStateAction<CardType[]>>;
   showCreateCardForm: boolean;
