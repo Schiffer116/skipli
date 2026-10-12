@@ -84,7 +84,7 @@ export default function Board() {
   useSocket(boardId!, setCards);
 
   const createCard = (
-    <div key="create-card" className="flex-shrink-0 w-80">
+    <div key="create-card" className="flex-shrink-0 w-80 snap-start">
       {showCreateCardForm ? (
         <CreateCardForm />
       ) : (
@@ -158,7 +158,7 @@ export default function Board() {
           >
             <div
               ref={setListElement}
-              className={`flex gap-4 pb-6 flex-1 min-h-0 items-start -mx-8 px-8 ${masonry ? "overflow-y-auto" : "overflow-auto"}`}
+              className={`flex gap-4 pb-6 flex-1 min-h-0 items-start -mx-8 px-8 ${masonry ? "overflow-y-auto" : "overflow-auto"} ${masonry || activeCard || activeTask ? "" : "max-md:snap-x max-md:snap-mandatory max-md:scroll-px-8"}`}
             >
               <SortableContext
                 items={cards}

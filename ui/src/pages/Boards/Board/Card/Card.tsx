@@ -77,7 +77,7 @@ export const DummyCard = forwardRef<HTMLDivElement, DummyCardProps>(
       useContext(BoardContext)!;
 
     return (
-      <div ref={ref} {...rest} className="flex-shrink-0 w-80">
+      <div ref={ref} {...rest} className="flex-shrink-0 w-80 snap-start">
         <Card className="bg-card gap-0 py-0 overflow-hidden">
           <CardHeader
             className="cursor-grab flex items-center justify-between px-4 py-3 bg-muted border-b"
