@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -51,6 +52,14 @@ func NewServer() *Server {
 	if err != nil {
 		log.Fatalf("unable to load user pool keys: %v", err)
 	}
+
+	return newServer(cfg, db, idp, tokens, poolID, clientID, tableName, auth.CanReceiveMail)
+}
+
+// newServer wires the routes onto already-built clients, so tests can run the
+// real router against fakes. canReceiveMail stands in for the invite
+// address's DNS check.
+func newServer(cfg aws.Config, db *dynamodb.Client, idp *cognitoidentityprovider.Client, tokens *auth.TokenVerifier, poolID, clientID, tableName string, canReceiveMail func(context.Context, string) bool) *Server {
 	router := http.NewServeMux()
 
 	users := auth.NewDirectory(idp, poolID)
@@ -60,10 +69,10 @@ func NewServer() *Server {
 
 	profiles := profile.NewStore(db, tableName)
 	profile.NewHandler(profiles, tokens).RegisterRoutes(router)
-	board.NewHandler(db, tableName, tokens, users, profiles).RegisterRoutes(router)
+	board.NewHandler(db, tableName, tokens, users, profiles, canReceiveMail).RegisterRoutes(router)
 	auth.NewHandler(idp, clientID, users, tokens, auth.NewCooldown(db, tableName)).RegisterRoutes(router)
-	card.NewHandler(db, tableName).RegisterRoutes(router)
-	task.NewHandler(db, tableName).RegisterRoutes(router)
+	card.NewHandler(db, tableName, tokens).RegisterRoutes(router)
+	task.NewHandler(db, tableName, tokens).RegisterRoutes(router)
 
 	api := http.NewServeMux()
 	api.Handle("/api/", http.StripPrefix("/api", router))

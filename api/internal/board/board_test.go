@@ -25,7 +25,7 @@ func newInviteTest(t *testing.T) (*awsfake.Server, *Handler) {
 		return 200, map[string]any{}
 	})
 	idp := fake.Cognito()
-	return fake, NewHandler(fake.DynamoDB(), "Skipli", nil, auth.NewDirectory(idp, "pool"), nil)
+	return fake, NewHandler(fake.DynamoDB(), "Skipli", nil, auth.NewDirectory(idp, "pool"), nil, auth.CanReceiveMail)
 }
 
 func invite(h *Handler, email string) *httptest.ResponseRecorder {
