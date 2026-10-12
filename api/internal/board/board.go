@@ -39,15 +39,76 @@ func NewHandler(db *dynamodb.Client, table string, tokens *auth.TokenVerifier, u
 
 func (h *Handler) RegisterRoutes(router *http.ServeMux) {
 	router.HandleFunc("GET /boards", h.tokens.RequireAuth(h.list))
-	router.HandleFunc("GET /boards/{id}", h.get)
-	router.HandleFunc("GET /boards/{id}/members", h.tokens.RequireAuth(h.members))
+	router.HandleFunc("GET /boards/{id}", h.member(h.get))
+	router.HandleFunc("GET /boards/{id}/members", h.member(h.members))
 	router.HandleFunc("POST /boards", h.tokens.RequireAuth(h.create))
 	router.HandleFunc("PUT /boards/order", h.tokens.RequireAuth(h.order))
-	router.HandleFunc("PUT /boards/{id}", h.tokens.RequireAuth(h.put))
-	router.HandleFunc("PUT /boards/{id}/favorite", h.tokens.RequireAuth(h.favorite))
-	router.HandleFunc("POST /boards/{id}/invite", h.tokens.RequireAuth(h.invite))
-	router.HandleFunc("DELETE /boards/{id}", h.tokens.RequireAuth(h.delete))
-	router.HandleFunc("POST /boards/{id}/cleanup", h.tokens.RequireAuth(h.cleanup))
+	router.HandleFunc("PUT /boards/{id}", h.member(h.put))
+	router.HandleFunc("PUT /boards/{id}/favorite", h.member(h.favorite))
+	router.HandleFunc("POST /boards/{id}/invite", h.member(h.invite))
+	router.HandleFunc("DELETE /boards/{id}", h.member(h.delete))
+	router.HandleFunc("POST /boards/{id}/cleanup", h.member(h.cleanup))
+}
+
+func (h *Handler) member(next http.HandlerFunc) http.HandlerFunc {
+	return RequireMember(h.db, h.table, h.tokens, "id", next)
+}
+
+// RequireMember is tokens.RequireAuth plus a check that the caller is a
+// member of the board named by the {param} path value. Every route under a
+// board goes through it: a non-member gets 403, and a board that doesn't
+// exist gets 404.
+func RequireMember(db *dynamodb.Client, table string, tokens *auth.TokenVerifier, param string, next http.HandlerFunc) http.HandlerFunc {
+	return tokens.RequireAuth(func(w http.ResponseWriter, req *http.Request) {
+		ctx := req.Context()
+		boardID := req.PathValue(param)
+
+		user, ok := auth.UserFromContext(ctx)
+		if !ok {
+			http.Error(w, "missing user in context", http.StatusInternalServerError)
+			return
+		}
+
+		member, err := itemExists(ctx, db, table, boardID, "MEMBER#"+user.ID)
+		if err != nil {
+			log.Printf("failed to check membership: %v", err)
+			http.Error(w, "failed to check membership", http.StatusInternalServerError)
+			return
+		}
+		if member {
+			next(w, req)
+			return
+		}
+
+		// Members are deleted along with their board, so this read only
+		// happens for callers who are about to be turned away.
+		exists, err := itemExists(ctx, db, table, boardID, "META")
+		if err != nil {
+			log.Printf("failed to get board: %v", err)
+			http.Error(w, "failed to check membership", http.StatusInternalServerError)
+			return
+		}
+		if !exists {
+			http.NotFound(w, req)
+			return
+		}
+		http.Error(w, "not a member of this board", http.StatusForbidden)
+	})
+}
+
+func itemExists(ctx context.Context, db *dynamodb.Client, table, pk, sk string) (bool, error) {
+	out, err := db.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String(table),
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: pk},
+			"SK": &types.AttributeValueMemberS{Value: sk},
+		},
+		ProjectionExpression: aws.String("PK"),
+	})
+	if err != nil {
+		return false, err
+	}
+	return out.Item != nil, nil
 }
 
 type CreateRequest struct {
@@ -553,21 +614,6 @@ func (h *Handler) favorite(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *Handler) isMember(ctx context.Context, boardID, userID string) (bool, error) {
-	out, err := h.db.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(h.table),
-		Key: map[string]types.AttributeValue{
-			"PK": &types.AttributeValueMemberS{Value: boardID},
-			"SK": &types.AttributeValueMemberS{Value: "MEMBER#" + userID},
-		},
-		ProjectionExpression: aws.String("PK"),
-	})
-	if err != nil {
-		return false, err
-	}
-	return out.Item != nil, nil
-}
-
 type InviteRequest struct {
 	Email string `json:"email"`
 }
@@ -575,12 +621,6 @@ type InviteRequest struct {
 func (h *Handler) invite(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 	id := req.PathValue("id")
-
-	user, ok := auth.UserFromContext(ctx)
-	if !ok {
-		http.Error(w, "missing user in context", http.StatusInternalServerError)
-		return
-	}
 
 	var r InviteRequest
 	if err := json.NewDecoder(req.Body).Decode(&r); err != nil {
@@ -592,17 +632,6 @@ func (h *Handler) invite(w http.ResponseWriter, req *http.Request) {
 	inviteeEmail := strings.TrimSpace(r.Email)
 	if inviteeEmail == "" {
 		http.Error(w, "missing email", http.StatusBadRequest)
-		return
-	}
-
-	member, err := h.isMember(ctx, id, user.ID)
-	if err != nil {
-		log.Printf("failed to check membership: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if !member {
-		http.Error(w, "not a member of this board", http.StatusForbidden)
 		return
 	}
 
@@ -685,23 +714,6 @@ func (h *Handler) cleanup(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 	id := req.PathValue("id")
 
-	user, ok := auth.UserFromContext(ctx)
-	if !ok {
-		http.Error(w, "missing user in context", http.StatusInternalServerError)
-		return
-	}
-
-	member, err := h.isMember(ctx, id, user.ID)
-	if err != nil {
-		log.Printf("failed to check membership: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if !member {
-		http.Error(w, "not a member of this board", http.StatusForbidden)
-		return
-	}
-
 	if err := h.deleteItems(ctx, expression.NewBuilder().
 		WithKeyCondition(expression.Key("PK").Equal(expression.Value(id)).
 			And(expression.Key("SK").BeginsWith("TASK#"))).
@@ -768,12 +780,6 @@ func (h *Handler) put(w http.ResponseWriter, req *http.Request) {
 
 	id := req.PathValue("id")
 
-	user, ok := auth.UserFromContext(ctx)
-	if !ok {
-		http.Error(w, "missing user in context", http.StatusInternalServerError)
-		return
-	}
-
 	var r PutBoardRequest
 	if err := json.NewDecoder(req.Body).Decode(&r); err != nil {
 		log.Printf("failed to decode request body: %v", err)
@@ -782,18 +788,7 @@ func (h *Handler) put(w http.ResponseWriter, req *http.Request) {
 	}
 	defer req.Body.Close()
 
-	member, err := h.isMember(ctx, id, user.ID)
-	if err != nil {
-		log.Printf("failed to check membership: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if !member {
-		http.Error(w, "not a member of this board", http.StatusForbidden)
-		return
-	}
-
-	_, err = h.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+	_, err := h.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName: aws.String(h.table),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: id},
