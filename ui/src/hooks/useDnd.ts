@@ -164,8 +164,14 @@ export default function useDnd(
     delta: DragMoveEvent["delta"];
   } | null>(null);
 
+  const handledOverId = useRef<UniqueIdentifier | null>(null);
+
   const onDragMove = ({ active, over, delta }: DragMoveEvent) => {
-    if (!masonry || !activeCard || !over || over.id === active.id) return;
+    if (!masonry || !activeCard || !over || over.id === active.id) {
+      handledOverId.current = null;
+      return;
+    }
+    if (over.id === handledOverId.current) return;
 
     const from = cards.findIndex((card) => card.id === active.id);
     const to = cards.findIndex((card) => card.id === over.id);
@@ -180,12 +186,14 @@ export default function useDnd(
       return;
     }
 
+    handledOverId.current = over.id;
     lastCardMove.current = { from, delta };
     setCards(moveCard(from, to));
   };
 
   const endDrag = () => {
     lastCardMove.current = null;
+    handledOverId.current = null;
     lastOverId.current = null;
     setActiveTask(null);
     setActiveCard(null);

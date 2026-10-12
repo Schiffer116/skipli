@@ -106,7 +106,9 @@ export default function Board() {
   );
 
   const items = [
-    ...cards.map((card) => <Card key={card.id} {...card} />),
+    ...cards.map((card) => (
+      <Card key={card.id} {...card} staticTasks={activeCard !== null} />
+    )),
     createCard,
   ];
   const columns = Array.from({ length: columnCount }, (_, column) =>

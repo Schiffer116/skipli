@@ -1,4 +1,4 @@
-import { forwardRef, useContext } from "react";
+import { forwardRef, memo, useContext } from "react";
 import { Plus } from "lucide-react";
 
 import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities";
@@ -30,7 +30,7 @@ export type CardType = {
   tasks: TaskType[];
 };
 
-export default function CardView(props: CardType) {
+export default function CardView(props: CardType & { staticTasks?: boolean }) {
   const { id } = props;
 
   const {
@@ -67,13 +67,23 @@ type DummyCardProps = CardType & {
   // or they'd share ids with the real ones and dnd-kit would re-measure the
   // pair against each other forever.
   overlay?: boolean;
+  // While a card is dragged, its tasks aren't drop targets; skipping their
+  // sortables saves re-rendering and re-measuring every task on each move.
+  staticTasks?: boolean;
 } & React.HTMLAttributes<HTMLDivElement>;
 
 export const DummyCard = forwardRef<HTMLDivElement, DummyCardProps>(
   (props, ref) => {
-    const { id, name, description, tasks, listeners, overlay, ...rest } = props;
-    const { createTaskFormId, setCreateTaskFormId, setShowCreateCardForm } =
-      useContext(BoardContext)!;
+    const {
+      id,
+      name,
+      description,
+      tasks,
+      listeners,
+      overlay,
+      staticTasks,
+      ...rest
+    } = props;
 
     return (
       <div
@@ -81,60 +91,87 @@ export const DummyCard = forwardRef<HTMLDivElement, DummyCardProps>(
         {...rest}
         className={overlay ? "w-full" : "flex-shrink-0 w-80"}
       >
-        <Card className="bg-card gap-0 py-0 overflow-hidden">
-          <CardHeader
-            className="cursor-grab flex items-center justify-between px-4 py-3 bg-muted border-b"
-            {...listeners}
-          >
-            <CardTitle className="text-base font-bold text-card-foreground w-full">
-              {name}
-              <span className="ml-2 font-normal text-muted-foreground">
-                ({tasks.length})
-              </span>
-            </CardTitle>
-            <EditCardDialog {...props} />
-          </CardHeader>
-          <CardContent className={tasks.length ? "px-3 pt-3" : "px-3"}>
-            {overlay ? (
-              <div className="space-y-2">
-                {tasks.map((task) => (
-                  <DummyTask key={task.id} {...task} />
-                ))}
-              </div>
-            ) : (
-              <SortableContext
-                id={id}
-                items={tasks}
-                strategy={verticalListSortingStrategy}
-              >
-                <div className="space-y-2">
-                  {tasks.map((task) => (
-                    <Task key={task.id} {...task} />
-                  ))}
-                </div>
-              </SortableContext>
-            )}
-          </CardContent>
-          <CardFooter className="px-3 py-2">
-            {createTaskFormId === id ? (
-              <CreateTaskForm cardId={id} />
-            ) : (
-              <Button
-                variant="ghost"
-                className="h-9 w-full justify-start rounded-md font-bold text-link hover:text-link hover:bg-accent p-0"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setCreateTaskFormId(id);
-                  setShowCreateCardForm(false);
-                }}
-              >
-                <Plus className="h-4 w-4 mr-2 ml-2" />
-                Create a task
-              </Button>
-            )}
-          </CardFooter>
-        </Card>
+        <CardBody
+          id={id}
+          name={name}
+          description={description}
+          tasks={tasks}
+          listeners={listeners}
+          staticTasks={overlay || staticTasks}
+        />
       </div>
     );
   },
 );
+
+const CardBody = memo(function CardBody(
+  props: CardType & {
+    listeners?: SyntheticListenerMap;
+    staticTasks?: boolean;
+  },
+) {
+  const { id, name, description, tasks, listeners, staticTasks } = props;
+  const { createTaskFormId, setCreateTaskFormId, setShowCreateCardForm } =
+    useContext(BoardContext)!;
+
+  return (
+    <Card className="bg-card gap-0 py-0 overflow-hidden">
+      <CardHeader
+        className="cursor-grab flex items-center justify-between px-4 py-3 bg-muted border-b"
+        {...listeners}
+      >
+        <CardTitle className="text-base font-bold text-card-foreground w-full">
+          {name}
+          <span className="ml-2 font-normal text-muted-foreground">
+            ({tasks.length})
+          </span>
+        </CardTitle>
+        <EditCardDialog
+          id={id}
+          name={name}
+          description={description}
+          tasks={tasks}
+        />
+      </CardHeader>
+      <CardContent className={tasks.length ? "px-3 pt-3" : "px-3"}>
+        {staticTasks ? (
+          <div className="space-y-2">
+            {tasks.map((task) => (
+              <DummyTask key={task.id} {...task} />
+            ))}
+          </div>
+        ) : (
+          <SortableContext
+            id={id}
+            items={tasks}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="space-y-2">
+              {tasks.map((task) => (
+                <Task key={task.id} {...task} />
+              ))}
+            </div>
+          </SortableContext>
+        )}
+      </CardContent>
+      <CardFooter className="px-3 py-2">
+        {createTaskFormId === id ? (
+          <CreateTaskForm cardId={id} />
+        ) : (
+          <Button
+            variant="ghost"
+            className="h-9 w-full justify-start rounded-md font-bold text-link hover:text-link hover:bg-accent p-0"
+            onClick={(e) => {
+              e.stopPropagation();
+              setCreateTaskFormId(id);
+              setShowCreateCardForm(false);
+            }}
+          >
+            <Plus className="h-4 w-4 mr-2 ml-2" />
+            Create a task
+          </Button>
+        )}
+      </CardFooter>
+    </Card>
+  );
+});
