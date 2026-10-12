@@ -147,6 +147,50 @@ func TestSendWithinCooldownIsRejected(t *testing.T) {
 	}
 }
 
+func TestSendAliasesOfOneInboxShareCooldown(t *testing.T) {
+	for _, tc := range []struct{ first, alias string }{
+		{"alice@example.com", "alice+news@example.com"},
+		{"alice+a@example.com", "alice+b@example.com"},
+		{"alice@gmail.com", "a.l.ice+x@gmail.com"},
+		{"alice@gmail.com", "Al.ice@GoogleMail.com"},
+	} {
+		st := newSendTest(t)
+		st.handler.canReceiveMail = func(context.Context, string) bool { return true }
+
+		if rec := st.send(tc.first); rec.Code != http.StatusOK {
+			t.Fatalf("%s: got %d, want 200", tc.first, rec.Code)
+		}
+		if rec := st.send(tc.alias); rec.Code != http.StatusTooManyRequests {
+			t.Errorf("%s after %s: got %d, want 429", tc.alias, tc.first, rec.Code)
+		}
+	}
+}
+
+func TestSendDeliversToAliasAsGiven(t *testing.T) {
+	st := newSendTest(t)
+	st.handler.canReceiveMail = func(context.Context, string) bool { return true }
+
+	if rec := st.send("A.lice+x@Gmail.com"); rec.Code != http.StatusOK {
+		t.Fatalf("got %d %q, want 200", rec.Code, rec.Body.String())
+	}
+	for _, c := range st.fake.Calls("AdminCreateUser", "InitiateAuth") {
+		got := c.Body["Username"]
+		if c.Op == "InitiateAuth" {
+			got = c.Body["AuthParameters"].(map[string]any)["USERNAME"]
+		}
+		if got != "a.lice+x@gmail.com" {
+			t.Errorf("%s username = %v, want a.lice+x@gmail.com", c.Op, got)
+		}
+	}
+
+	if rec := st.send("bob.smith@example.com"); rec.Code != http.StatusOK {
+		t.Errorf("dots outside gmail: got %d, want 200", rec.Code)
+	}
+	if rec := st.send("bobsmith@example.com"); rec.Code != http.StatusOK {
+		t.Errorf("dotless address on non-gmail domain shares cooldown: got %d, want 200", rec.Code)
+	}
+}
+
 func TestSendRejectsUndeliverableEmail(t *testing.T) {
 	st := newSendTest(t)
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -14,7 +15,7 @@ import (
 // SendCooldown is how long an address must wait between sign-in emails.
 const SendCooldown = time.Minute
 
-// Cooldown records when each address was last sent a sign-in email, as a
+// Cooldown records when each inbox was last sent a sign-in email, as a
 // DynamoDB item that the table's TTL eventually removes.
 type Cooldown struct {
 	db     *dynamodb.Client
@@ -26,9 +27,26 @@ func NewCooldown(db *dynamodb.Client, table string) *Cooldown {
 	return &Cooldown{db: db, table: table, window: SendCooldown}
 }
 
+// inbox maps a normalized address to the mailbox it delivers to, so aliases of
+// one inbox share a cooldown: a "+tag" is dropped for every domain, and Gmail
+// also ignores dots and treats googlemail.com as gmail.com.
+func inbox(email string) string {
+	at := strings.LastIndex(email, "@")
+	if at < 0 {
+		return email
+	}
+	local, domain := email[:at], email[at+1:]
+	local, _, _ = strings.Cut(local, "+")
+	if domain == "gmail.com" || domain == "googlemail.com" {
+		local = strings.ReplaceAll(local, ".", "")
+		domain = "gmail.com"
+	}
+	return local + "@" + domain
+}
+
 func cooldownKey(email string) map[string]types.AttributeValue {
 	return map[string]types.AttributeValue{
-		"PK": &types.AttributeValueMemberS{Value: "EMAIL#" + email},
+		"PK": &types.AttributeValueMemberS{Value: "EMAIL#" + inbox(email)},
 		"SK": &types.AttributeValueMemberS{Value: "SEND_COOLDOWN"},
 	}
 }
