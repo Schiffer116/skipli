@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
@@ -154,7 +155,8 @@ func TestBoardRoutesRequireMembership(t *testing.T) {
 		return &key.PublicKey, nil
 	}, testIssuer, testClientID)
 
-	router := newServer(aws.Config{}, db, idp, tokens, "us-east-1_test", testClientID, "Skipli").Router
+	canReceiveMail := func(context.Context, string) bool { return true }
+	router := newServer(aws.Config{}, db, idp, tokens, "us-east-1_test", testClientID, "Skipli", canReceiveMail).Router
 
 	// {board} is replaced with the board under test; routes without it
 	// aren't scoped to a board and only need a signed-in caller.
