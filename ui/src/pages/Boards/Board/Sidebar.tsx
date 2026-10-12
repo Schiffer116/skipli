@@ -30,6 +30,7 @@ const COLLAPSED_KEY = "skipli:membersCollapsed";
 
 function readCollapsed() {
   try {
+    if (matchMedia("(max-width: 767px)").matches) return true;
     return localStorage.getItem(COLLAPSED_KEY) === "true";
   } catch {
     return false;
@@ -82,109 +83,117 @@ export default function Sidebar() {
   const toggleLabel = collapsed ? "Expand member list" : "Collapse member list";
 
   return (
-    <aside
-      id="member-list"
-      aria-label="Members"
-      className={`z-10 h-full shrink-0 py-4 bg-sidebar border-r border-sidebar-border flex flex-col overflow-hidden transition-[width] duration-200 ${collapsed ? "w-14" : "w-xs"}`}
-    >
-      <div
-        className={`flex items-center gap-2 pb-3 mb-2 border-b border-sidebar-border ${collapsed ? "justify-center px-2" : "px-6 pr-3"}`}
+    <div className="relative z-20 h-full shrink-0 max-md:w-14">
+      {!collapsed && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/40"
+          onClick={() => setCollapsed(true)}
+        />
+      )}
+      <aside
+        id="member-list"
+        aria-label="Members"
+        className={`relative h-full max-md:absolute max-md:inset-y-0 max-md:left-0 py-4 bg-sidebar border-r border-sidebar-border flex flex-col overflow-hidden transition-[width] duration-200 ${collapsed ? "w-14" : "w-xs"}`}
       >
-        {!collapsed && (
-          <>
-            <SquareKanban className="size-5 shrink-0 text-primary" />
-            <h2 className="flex-1 text-lg font-bold">
-              Members
-              <span className="ml-2 font-normal text-muted-foreground">
-                ({members.length})
-              </span>
-            </h2>
-          </>
-        )}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-8 shrink-0 text-muted-foreground"
-          aria-label={toggleLabel}
-          title={toggleLabel}
-          aria-expanded={!collapsed}
-          aria-controls="member-list"
-          onClick={() => setCollapsed((collapsed) => !collapsed)}
+        <div
+          className={`flex items-center gap-2 pb-3 mb-2 border-b border-sidebar-border ${collapsed ? "justify-center px-2" : "px-6 pr-3"}`}
         >
-          {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
-        </Button>
-      </div>
-      <div className={collapsed ? "px-2" : "px-4"}>
-        <div className="space-y-1 mt-1">
-          {members.map((member) => (
-            <div
-              key={member.id}
-              title={collapsed ? member.name : member.email}
-              className={`flex items-center gap-2 py-1.5 rounded-md hover:bg-sidebar-accent ${collapsed ? "justify-center" : "px-2"}`}
-            >
-              <UserAvatar
-                email={member.email}
-                className="ring-1 ring-border size-7"
-              />
-              {!collapsed && (
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-link truncate">{member.name}</p>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div
-        className={`mt-auto pt-4 border-t border-sidebar-border ${collapsed ? "px-2" : "px-4"}`}
-      >
-        <Dialog>
-          <DialogTrigger asChild>
-            {collapsed ? (
-              <Button
-                variant="outline"
-                size="icon"
-                className="w-full"
-                aria-label="Invite"
-                title="Invite"
-              >
-                <Plus className="size-3" />
-              </Button>
-            ) : (
-              <Button variant="outline" className="w-full">
-                <span className="flex items-center">
-                  <Plus className="size-3" />
-                  <User className="size-4" />
+          {!collapsed && (
+            <>
+              <SquareKanban className="size-5 shrink-0 text-primary" />
+              <h2 className="flex-1 text-lg font-bold">
+                Members
+                <span className="ml-2 font-normal text-muted-foreground">
+                  ({members.length})
                 </span>
-                Invite
-              </Button>
-            )}
-          </DialogTrigger>
-          <DialogContent>
-            <form onSubmit={handleSubmit}>
-              <DialogHeader className="mb-2">
-                <DialogTitle>Invite people to your board</DialogTitle>
-                <DialogDescription></DialogDescription>
-              </DialogHeader>
-              <Input
-                type="email"
-                required
-                name="email"
-                placeholder="Email address"
-              />
-              <DialogFooter className="mt-4">
-                <DialogClose asChild>
-                  <Button type="submit">Invite</Button>
-                </DialogClose>
-                <DialogClose asChild>
-                  <Button variant="outline">Cancel</Button>
-                </DialogClose>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
-    </aside>
+              </h2>
+            </>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8 shrink-0 text-muted-foreground"
+            aria-label={toggleLabel}
+            title={toggleLabel}
+            aria-expanded={!collapsed}
+            aria-controls="member-list"
+            onClick={() => setCollapsed((collapsed) => !collapsed)}
+          >
+            {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+          </Button>
+        </div>
+        <div className={collapsed ? "px-2" : "px-4"}>
+          <div className="space-y-1 mt-1">
+            {members.map((member) => (
+              <div
+                key={member.id}
+                title={collapsed ? member.name : member.email}
+                className={`flex items-center gap-2 py-1.5 rounded-md hover:bg-sidebar-accent ${collapsed ? "justify-center" : "px-2"}`}
+              >
+                <UserAvatar
+                  email={member.email}
+                  className="ring-1 ring-border size-7"
+                />
+                {!collapsed && (
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-link truncate">{member.name}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div
+          className={`mt-auto pt-4 border-t border-sidebar-border ${collapsed ? "px-2" : "px-4"}`}
+        >
+          <Dialog>
+            <DialogTrigger asChild>
+              {collapsed ? (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="w-full"
+                  aria-label="Invite"
+                  title="Invite"
+                >
+                  <Plus className="size-3" />
+                </Button>
+              ) : (
+                <Button variant="outline" className="w-full">
+                  <span className="flex items-center">
+                    <Plus className="size-3" />
+                    <User className="size-4" />
+                  </span>
+                  Invite
+                </Button>
+              )}
+            </DialogTrigger>
+            <DialogContent>
+              <form onSubmit={handleSubmit}>
+                <DialogHeader className="mb-2">
+                  <DialogTitle>Invite people to your board</DialogTitle>
+                  <DialogDescription></DialogDescription>
+                </DialogHeader>
+                <Input
+                  type="email"
+                  required
+                  name="email"
+                  placeholder="Email address"
+                />
+                <DialogFooter className="mt-4">
+                  <DialogClose asChild>
+                    <Button type="submit">Invite</Button>
+                  </DialogClose>
+                  <DialogClose asChild>
+                    <Button variant="outline">Cancel</Button>
+                  </DialogClose>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </aside>
+    </div>
   );
 }

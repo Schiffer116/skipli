@@ -18,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 
 import useDnd from "@/hooks/useDnd";
+import { useSwipeSnap } from "@/hooks/useSwipeSnap";
 import useSocket from "@/hooks/useSocket";
 import { useBoardLayout, useColumnCount } from "@/hooks/useBoardLayout";
 
@@ -90,7 +91,7 @@ export default function Board() {
       ) : (
         <Button
           variant="ghost"
-          className="w-80 h-12 rounded-lg border-2 border-dashed border-border bg-card/60 hover:border-link hover:bg-accent text-muted-foreground hover:text-link"
+          className="w-full h-12 rounded-lg border-2 border-dashed border-border bg-card/60 hover:border-link hover:bg-accent text-muted-foreground hover:text-link"
           onClick={() => {
             setShowCreateCardForm(true);
             setCreateTaskFormId(null);
@@ -112,13 +113,14 @@ export default function Board() {
   );
 
   const masonry = layout === "masonry";
+  useSwipeSnap(listElement, !masonry && !activeCard && !activeTask);
   const toggleLabel = masonry
     ? "Show cards in one scrolling row"
     : "Show cards in columns";
 
   return (
     <BoardContext.Provider value={boardContextValue}>
-      <div className="flex-1 min-w-0 px-8 pt-6">
+      <div className="flex-1 min-w-0 px-4 md:px-8 pt-6">
         <div className="flex flex-col h-full">
           <header className="mb-6">
             <div className="flex items-center gap-1 mb-1">
@@ -158,7 +160,7 @@ export default function Board() {
           >
             <div
               ref={setListElement}
-              className={`flex gap-4 pb-6 flex-1 min-h-0 items-start -mx-8 px-8 ${masonry ? "overflow-y-auto" : "overflow-auto"}`}
+              className={`flex gap-4 pb-6 flex-1 min-h-0 items-start -mx-4 px-4 md:-mx-8 md:px-8 ${masonry ? "overflow-y-auto" : "overflow-auto touch-pan-y max-md:*:w-full"}`}
             >
               <SortableContext
                 items={cards}
@@ -168,7 +170,7 @@ export default function Board() {
               >
                 {masonry
                   ? columns.map((column, i) => (
-                      <div key={i} className="flex flex-col gap-4">
+                      <div key={i} className="flex flex-col gap-4 max-md:w-full max-md:*:w-full">
                         {column}
                       </div>
                     ))

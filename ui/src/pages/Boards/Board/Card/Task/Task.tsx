@@ -95,7 +95,7 @@ export const DummyTask = forwardRef<HTMLDivElement, DummyTaskProps>(
       >
         <CardHeader className="relative group flex items-center p-0 pr-2 h-full">
           <Button
-            className={`size-6 ml-2 transition-colors ${status === "done" ? "visible" : "invisible group-hover:visible"}`}
+            className={`size-6 ml-2 transition-colors ${status === "done" ? "visible" : "invisible group-hover:visible pointer-coarse:visible"}`}
             variant="ghost"
             size="icon"
             onClick={toggleStatus}

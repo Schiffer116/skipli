@@ -97,7 +97,7 @@ export default function EditTaskDialog(props: TaskType) {
         <Button
           variant="ghost"
           size="icon"
-          className="invisible group-hover:visible transition-colors"
+          className="invisible group-hover:visible pointer-coarse:visible transition-colors"
           onClick={(e) => {
             e.stopPropagation();
             setCreateTaskFormId(null);
