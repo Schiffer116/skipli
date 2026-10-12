@@ -61,7 +61,7 @@ func NewServer() *Server {
 	profiles := profile.NewStore(db, tableName)
 	profile.NewHandler(profiles, tokens).RegisterRoutes(router)
 	board.NewHandler(db, tableName, tokens, users, profiles).RegisterRoutes(router)
-	auth.NewHandler(idp, clientID, users, tokens).RegisterRoutes(router)
+	auth.NewHandler(idp, clientID, users, tokens, auth.NewCooldown(db, tableName)).RegisterRoutes(router)
 	card.NewHandler(db, tableName).RegisterRoutes(router)
 	task.NewHandler(db, tableName).RegisterRoutes(router)
 

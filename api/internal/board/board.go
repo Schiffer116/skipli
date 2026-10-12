@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -26,15 +25,16 @@ import (
 const memberIndexName = "Member"
 
 type Handler struct {
-	db       *dynamodb.Client
-	table    string
-	tokens   *auth.TokenVerifier
-	users    *auth.Directory
-	profiles *profile.Store
+	db             *dynamodb.Client
+	table          string
+	tokens         *auth.TokenVerifier
+	users          *auth.Directory
+	profiles       *profile.Store
+	canReceiveMail func(context.Context, string) bool
 }
 
 func NewHandler(db *dynamodb.Client, table string, tokens *auth.TokenVerifier, users *auth.Directory, profiles *profile.Store) *Handler {
-	return &Handler{db: db, table: table, tokens: tokens, users: users, profiles: profiles}
+	return &Handler{db: db, table: table, tokens: tokens, users: users, profiles: profiles, canReceiveMail: auth.CanReceiveMail}
 }
 
 func (h *Handler) RegisterRoutes(router *http.ServeMux) {
@@ -589,9 +589,13 @@ func (h *Handler) invite(w http.ResponseWriter, req *http.Request) {
 	}
 	defer req.Body.Close()
 
-	inviteeEmail := strings.TrimSpace(r.Email)
+	inviteeEmail := auth.NormalizeEmail(r.Email)
 	if inviteeEmail == "" {
 		http.Error(w, "missing email", http.StatusBadRequest)
+		return
+	}
+	if !h.canReceiveMail(ctx, inviteeEmail) {
+		http.Error(w, "email address can't receive mail", http.StatusBadRequest)
 		return
 	}
 

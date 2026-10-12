@@ -88,6 +88,10 @@ type contextKey int
 
 const userContextKey contextKey = iota
 
+func ContextWithUser(ctx context.Context, user User) context.Context {
+	return context.WithValue(ctx, userContextKey, user)
+}
+
 func UserFromContext(ctx context.Context) (User, bool) {
 	user, ok := ctx.Value(userContextKey).(User)
 	return user, ok
@@ -107,7 +111,6 @@ func (t *TokenVerifier) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(req.Context(), userContextKey, user)
-		next(w, req.WithContext(ctx))
+		next(w, req.WithContext(ContextWithUser(req.Context(), user)))
 	}
 }
