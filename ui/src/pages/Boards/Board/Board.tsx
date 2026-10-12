@@ -170,7 +170,7 @@ export default function Board() {
               >
                 {masonry
                   ? columns.map((column, i) => (
-                      <div key={i} className="flex flex-col gap-4">
+                      <div key={i} className="flex flex-col gap-4 max-md:w-full max-md:*:w-full">
                         {column}
                       </div>
                     ))

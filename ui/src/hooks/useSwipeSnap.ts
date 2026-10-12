@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-const DURATION = 500;
+const DURATION = 350;
 
 function bezier(x1: number, y1: number, x2: number, y2: number) {
   const at = (a: number, b: number, t: number) =>
@@ -18,7 +18,7 @@ function bezier(x1: number, y1: number, x2: number, y2: number) {
   };
 }
 
-const overshot = bezier(0.05, 0.9, 0.1, 1.1);
+const overshot = bezier(0.05, 0.9, 0.1, 1.3);
 
 export function useSwipeSnap(element: HTMLElement | null, enabled: boolean) {
   useEffect(() => {
