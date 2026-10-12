@@ -18,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 
 import useDnd from "@/hooks/useDnd";
+import { useSwipeSnap } from "@/hooks/useSwipeSnap";
 import useSocket from "@/hooks/useSocket";
 import { useBoardLayout, useColumnCount } from "@/hooks/useBoardLayout";
 
@@ -84,7 +85,7 @@ export default function Board() {
   useSocket(boardId!, setCards);
 
   const createCard = (
-    <div key="create-card" className="flex-shrink-0 w-80 snap-start snap-always">
+    <div key="create-card" className="flex-shrink-0 w-80">
       {showCreateCardForm ? (
         <CreateCardForm />
       ) : (
@@ -112,6 +113,7 @@ export default function Board() {
   );
 
   const masonry = layout === "masonry";
+  useSwipeSnap(listElement, !masonry && !activeCard && !activeTask);
   const toggleLabel = masonry
     ? "Show cards in one scrolling row"
     : "Show cards in columns";
@@ -158,7 +160,7 @@ export default function Board() {
           >
             <div
               ref={setListElement}
-              className={`flex gap-4 pb-6 flex-1 min-h-0 items-start -mx-4 px-4 md:-mx-8 md:px-8 ${masonry ? "overflow-y-auto" : "overflow-auto max-md:*:w-full"} ${masonry || activeCard || activeTask ? "" : "max-md:snap-x max-md:snap-mandatory max-md:scroll-px-4"}`}
+              className={`flex gap-4 pb-6 flex-1 min-h-0 items-start -mx-4 px-4 md:-mx-8 md:px-8 ${masonry ? "overflow-y-auto" : "overflow-auto touch-pan-y max-md:*:w-full"}`}
             >
               <SortableContext
                 items={cards}
