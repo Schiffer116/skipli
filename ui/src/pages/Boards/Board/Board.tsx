@@ -84,13 +84,13 @@ export default function Board() {
   useSocket(boardId!, setCards);
 
   const createCard = (
-    <div key="create-card" className="flex-shrink-0 w-80 snap-start">
+    <div key="create-card" className="flex-shrink-0 w-80 snap-start snap-always">
       {showCreateCardForm ? (
         <CreateCardForm />
       ) : (
         <Button
           variant="ghost"
-          className="w-80 h-12 rounded-lg border-2 border-dashed border-border bg-card/60 hover:border-link hover:bg-accent text-muted-foreground hover:text-link"
+          className="w-full h-12 rounded-lg border-2 border-dashed border-border bg-card/60 hover:border-link hover:bg-accent text-muted-foreground hover:text-link"
           onClick={() => {
             setShowCreateCardForm(true);
             setCreateTaskFormId(null);
@@ -118,7 +118,7 @@ export default function Board() {
 
   return (
     <BoardContext.Provider value={boardContextValue}>
-      <div className="flex-1 min-w-0 px-8 pt-6">
+      <div className="flex-1 min-w-0 px-4 md:px-8 pt-6">
         <div className="flex flex-col h-full">
           <header className="mb-6">
             <div className="flex items-center gap-1 mb-1">
@@ -158,7 +158,7 @@ export default function Board() {
           >
             <div
               ref={setListElement}
-              className={`flex gap-4 pb-6 flex-1 min-h-0 items-start -mx-8 px-8 ${masonry ? "overflow-y-auto" : "overflow-auto"} ${masonry || activeCard || activeTask ? "" : "max-md:snap-x max-md:snap-mandatory max-md:scroll-px-8"}`}
+              className={`flex gap-4 pb-6 flex-1 min-h-0 items-start -mx-4 px-4 md:-mx-8 md:px-8 ${masonry ? "overflow-y-auto" : "overflow-auto max-md:*:w-full"} ${masonry || activeCard || activeTask ? "" : "max-md:snap-x max-md:snap-mandatory max-md:scroll-px-4"}`}
             >
               <SortableContext
                 items={cards}
