@@ -8,6 +8,7 @@ import {
   createCard,
   deleteCard,
   moveCard,
+  reorderCards,
   updateCard,
   createTask,
   updateTask,
@@ -43,6 +44,10 @@ export default function useSocket(
       setCards(moveCard(activeCardIndex, overCardIndex));
     }
 
+    function onReorderCards(cardIds: string[]) {
+      setCards(reorderCards(cardIds));
+    }
+
     function onCreateTask(task: TaskType) {
       setCards(createTask(task));
     }
@@ -72,6 +77,7 @@ export default function useSocket(
       ["update card", onUpdateCard],
       ["delete card", onDeleteCard],
       ["move card", onMoveCard],
+      ["reorder cards", onReorderCards],
       ["create task", onCreateTask],
       ["update task", onUpdateTask],
       ["delete task", onDeleteTask],

@@ -29,6 +29,7 @@ import type { boardViewLoader } from "../loaders";
 import { BoardContext } from "./BoardContext";
 import FavoriteButton from "../FavoriteButton";
 import CleanUpButton from "./CleanUpButton";
+import RebalanceButton from "./RebalanceButton";
 
 export default function Board() {
   const [cards, setCards] = useState(
@@ -139,6 +140,14 @@ export default function Board() {
                 >
                   {masonry ? <Columns3 /> : <LayoutDashboard />}
                 </Button>
+                {masonry && columnCount > 1 && (
+                  <RebalanceButton
+                    boardId={boardId!}
+                    cards={cards}
+                    setCards={setCards}
+                    columns={columnCount}
+                  />
+                )}
                 <CleanUpButton
                   boardId={boardId!}
                   cards={cards}
