@@ -7,7 +7,7 @@ import {
   MouseSensor,
   TouchSensor,
 } from "@dnd-kit/core";
-import { KeyboardSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { useSensor, useSensors } from "@dnd-kit/core";
 import {
   horizontalListSortingStrategy,
   SortableContext,
@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 
 import useDnd from "@/hooks/useDnd";
 import { useSwipeSnap } from "@/hooks/useSwipeSnap";
+import { OwnKeyboardSensor } from "@/utils/keyboardSensor";
 import useSocket from "@/hooks/useSocket";
 import {
   measureMasonryTarget,
@@ -68,7 +69,7 @@ export default function Board() {
     useSensor(TouchSensor, {
       activationConstraint: { delay: 250, tolerance: 5 },
     }),
-    useSensor(KeyboardSensor, {
+    useSensor(OwnKeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
