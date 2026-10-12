@@ -21,6 +21,11 @@ export const moveCard =
   (activeCardIndex: number, overCardIndex: number) => (cards: CardType[]) =>
     arrayMove(cards, activeCardIndex, overCardIndex);
 
+export const reorderCards = (cardIds: string[]) => (cards: CardType[]) => [
+  ...cardIds.flatMap((id) => cards.filter((card) => card.id === id)),
+  ...cards.filter((card) => !cardIds.includes(card.id)),
+];
+
 export const createTask = (task: TaskType) => (cards: CardType[]) =>
   cards.map((card) =>
     card.id === task.cardId ? { ...card, tasks: [...card.tasks, task] } : card,

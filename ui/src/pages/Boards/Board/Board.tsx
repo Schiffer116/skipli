@@ -10,7 +10,6 @@ import {
 import { KeyboardSensor, useSensor, useSensors } from "@dnd-kit/core";
 import {
   horizontalListSortingStrategy,
-  rectSortingStrategy,
   SortableContext,
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
@@ -20,7 +19,11 @@ import { Button } from "@/components/ui/button";
 import useDnd from "@/hooks/useDnd";
 import { useSwipeSnap } from "@/hooks/useSwipeSnap";
 import useSocket from "@/hooks/useSocket";
-import { useBoardLayout, useColumnCount } from "@/hooks/useBoardLayout";
+import {
+  measureMasonryTarget,
+  useBoardLayout,
+  useMasonry,
+} from "@/hooks/useBoardLayout";
 
 import Card, { DummyCard, type CardType } from "./Card/Card";
 import { DummyTask, type TaskType } from "./Card/Task/Task";
@@ -30,6 +33,7 @@ import type { boardViewLoader } from "../loaders";
 import { BoardContext } from "./BoardContext";
 import FavoriteButton from "../FavoriteButton";
 import CleanUpButton from "./CleanUpButton";
+import RebalanceButton from "./RebalanceButton";
 
 export default function Board() {
   const [cards, setCards] = useState(
@@ -39,7 +43,9 @@ export default function Board() {
   const { boardId } = useParams();
   const [layout, setLayout] = useBoardLayout();
   const [listElement, setListElement] = useState<HTMLDivElement | null>(null);
-  const columnCount = useColumnCount(layout === "masonry" ? listElement : null);
+  const [masonryElement, setMasonryElement] = useState<HTMLDivElement | null>(
+    null,
+  );
 
   const [activeTask, setActiveTask] = useState<TaskType | null>(null);
   const [activeCard, setActiveCard] = useState<CardType | null>(null);
@@ -71,6 +77,7 @@ export default function Board() {
     collisionDetection,
     onDragStart,
     onDragOver,
+    onDragMove,
     onDragEnd,
     onDragCancel,
   } = useDnd(
@@ -80,6 +87,7 @@ export default function Board() {
     setActiveCard,
     activeTask,
     setActiveTask,
+    layout === "masonry",
   );
 
   useSocket(boardId!, setCards);
@@ -105,12 +113,16 @@ export default function Board() {
   );
 
   const items = [
-    ...cards.map((card) => <Card key={card.id} {...card} />),
+    ...cards.map((card) => (
+      <Card key={card.id} {...card} staticTasks={activeCard !== null} />
+    )),
     createCard,
   ];
-  const columns = Array.from({ length: columnCount }, (_, column) =>
-    items.filter((_, i) => i % columnCount === column),
+  const masonryLayout = useMasonry(
+    masonryElement,
+    items.map((item) => String(item.key)),
   );
+  const columnCount = masonryLayout.columns;
 
   const masonry = layout === "masonry";
   useSwipeSnap(listElement, !masonry && !activeCard && !activeTask);
@@ -136,6 +148,14 @@ export default function Board() {
                 >
                   {masonry ? <Columns3 /> : <LayoutDashboard />}
                 </Button>
+                {masonry && columnCount > 1 && (
+                  <RebalanceButton
+                    boardId={boardId!}
+                    cards={cards}
+                    setCards={setCards}
+                    columns={columnCount}
+                  />
+                )}
                 <CleanUpButton
                   boardId={boardId!}
                   cards={cards}
@@ -153,8 +173,10 @@ export default function Board() {
           <DndContext
             sensors={sensors}
             collisionDetection={collisionDetection}
+            measuring={{ droppable: { measure: measureMasonryTarget } }}
             onDragStart={onDragStart}
             onDragOver={onDragOver}
+            onDragMove={onDragMove}
             onDragEnd={onDragEnd}
             onDragCancel={onDragCancel}
           >
@@ -164,17 +186,35 @@ export default function Board() {
             >
               <SortableContext
                 items={cards}
-                strategy={
-                  masonry ? rectSortingStrategy : horizontalListSortingStrategy
-                }
+                strategy={masonry ? () => null : horizontalListSortingStrategy}
               >
-                {masonry
-                  ? columns.map((column, i) => (
-                      <div key={i} className="flex flex-col gap-4 max-md:w-full max-md:*:w-full">
-                        {column}
-                      </div>
-                    ))
-                  : items}
+                {masonry ? (
+                  <div
+                    ref={setMasonryElement}
+                    className="relative w-full shrink-0"
+                    style={{ height: masonryLayout.height }}
+                  >
+                    {items.map((item, i) => {
+                      const { x, y, width } = masonryLayout.positions[i];
+                      return (
+                        <div
+                          key={item.key}
+                          ref={masonryLayout.measure}
+                          data-key={item.key}
+                          className={`absolute top-0 left-0 *:w-full ${masonryLayout.measured ? "transition-transform duration-200 ease-out" : ""}`}
+                          style={{
+                            width,
+                            transform: `translate(${x}px, ${y}px)`,
+                          }}
+                        >
+                          {item}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  items
+                )}
 
                 <DragOverlay>
                   {activeTask ? (
