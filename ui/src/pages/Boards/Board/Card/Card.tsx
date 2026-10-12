@@ -39,7 +39,6 @@ export default function CardView(props: CardType) {
     transform,
     transition,
     isDragging,
-    isOver,
     setNodeRef,
   } = useSortable({
     id,
@@ -51,13 +50,10 @@ export default function CardView(props: CardType) {
     opacity: isDragging ? 0.5 : 1,
   };
 
-  const { masonry } = useContext(BoardContext)!;
-
   return (
     <DummyCard
       ref={setNodeRef}
       style={style}
-      highlighted={masonry && isOver && !isDragging}
       {...props}
       {...attributes}
       listeners={listeners}
@@ -71,21 +67,11 @@ type DummyCardProps = CardType & {
   // or they'd share ids with the real ones and dnd-kit would re-measure the
   // pair against each other forever.
   overlay?: boolean;
-  highlighted?: boolean;
 } & React.HTMLAttributes<HTMLDivElement>;
 
 export const DummyCard = forwardRef<HTMLDivElement, DummyCardProps>(
   (props, ref) => {
-    const {
-      id,
-      name,
-      description,
-      tasks,
-      listeners,
-      overlay,
-      highlighted,
-      ...rest
-    } = props;
+    const { id, name, description, tasks, listeners, overlay, ...rest } = props;
     const { createTaskFormId, setCreateTaskFormId, setShowCreateCardForm } =
       useContext(BoardContext)!;
 
@@ -95,9 +81,7 @@ export const DummyCard = forwardRef<HTMLDivElement, DummyCardProps>(
         {...rest}
         className={overlay ? "w-full" : "flex-shrink-0 w-80"}
       >
-        <Card
-          className={`bg-card gap-0 py-0 overflow-hidden ${highlighted ? "ring-2 ring-link" : ""}`}
-        >
+        <Card className="bg-card gap-0 py-0 overflow-hidden">
           <CardHeader
             className="cursor-grab flex items-center justify-between px-4 py-3 bg-muted border-b"
             {...listeners}

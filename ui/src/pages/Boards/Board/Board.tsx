@@ -46,7 +46,6 @@ export default function Board() {
   const [createTaskFormId, setCreateTaskFormId] = useState<string | null>(null);
 
   const boardContextValue = {
-    masonry: layout === "masonry",
     cards,
     setCards,
     showCreateCardForm,
@@ -71,6 +70,7 @@ export default function Board() {
     collisionDetection,
     onDragStart,
     onDragOver,
+    onDragMove,
     onDragEnd,
     onDragCancel,
   } = useDnd(
@@ -80,6 +80,7 @@ export default function Board() {
     setActiveCard,
     activeTask,
     setActiveTask,
+    layout === "masonry",
   );
 
   useSocket(boardId!, setCards);
@@ -155,6 +156,7 @@ export default function Board() {
             collisionDetection={collisionDetection}
             onDragStart={onDragStart}
             onDragOver={onDragOver}
+            onDragMove={onDragMove}
             onDragEnd={onDragEnd}
             onDragCancel={onDragCancel}
           >
