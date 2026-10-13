@@ -112,6 +112,13 @@ resource "aws_cloudfront_function" "realtime_path" {
 }
 
 resource "aws_cloudfront_distribution" "skipli" {
+  # Only repoint /api/* once the HTTP API can actually serve requests.
+  depends_on = [
+    aws_apigatewayv2_stage.skipli,
+    aws_apigatewayv2_route.default,
+    aws_lambda_permission.apigw,
+  ]
+
   origin {
     domain_name              = data.aws_s3_bucket.skipli.bucket_regional_domain_name
     origin_access_control_id = aws_cloudfront_origin_access_control.default.id

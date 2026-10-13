@@ -212,20 +212,40 @@ resource "aws_lambda_function" "skipli" {
   }
 }
 
+# The HTTP API is declared piece by piece rather than through quick create
+# (target), because AWS does not let Terraform manage a quick-created $default
+# stage, and that stage is where the throttling lives. Replacing the API gives it
+# a new id and hostname; create_before_destroy keeps the old one serving until
+# CloudFront points at the new one.
 resource "aws_apigatewayv2_api" "skipli" {
   name          = "skipli"
   protocol_type = "HTTP"
-  target        = aws_lambda_function.skipli.arn
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
-# Quick create (target above) made the integration, the $default route and the
-# auto-deployed $default stage. The stage is adopted here so it can carry
-# throttling; dropping target instead would replace the whole API. On a brand
-# new environment, apply aws_apigatewayv2_api.skipli on its own first so the
-# stage exists to import.
-import {
-  to = aws_apigatewayv2_stage.skipli
-  id = "${aws_apigatewayv2_api.skipli.id}/$default"
+resource "aws_apigatewayv2_integration" "skipli" {
+  api_id                 = aws_apigatewayv2_api.skipli.id
+  integration_type       = "AWS_PROXY"
+  integration_method     = "POST"
+  integration_uri        = aws_lambda_function.skipli.invoke_arn
+  payload_format_version = "2.0"
+}
+
+resource "aws_apigatewayv2_route" "default" {
+  api_id    = aws_apigatewayv2_api.skipli.id
+  route_key = "$default"
+  target    = "integrations/${aws_apigatewayv2_integration.skipli.id}"
+}
+
+# Per-route throttling needs a route of its own, so POST /api/auth/send gets one
+# pointing at the same Lambda; every other request still falls to $default.
+resource "aws_apigatewayv2_route" "auth_send" {
+  api_id    = aws_apigatewayv2_api.skipli.id
+  route_key = "POST /api/auth/send"
+  target    = "integrations/${aws_apigatewayv2_integration.skipli.id}"
 }
 
 resource "aws_apigatewayv2_stage" "skipli" {
@@ -245,27 +265,16 @@ resource "aws_apigatewayv2_stage" "skipli" {
   }
 }
 
-# Per-route throttling needs a route of its own, so POST /api/auth/send gets one
-# pointing at the same Lambda; every other request still falls to $default.
-resource "aws_apigatewayv2_integration" "skipli" {
-  api_id                 = aws_apigatewayv2_api.skipli.id
-  integration_type       = "AWS_PROXY"
-  integration_method     = "POST"
-  integration_uri        = aws_lambda_function.skipli.invoke_arn
-  payload_format_version = "2.0"
-}
-
-resource "aws_apigatewayv2_route" "auth_send" {
-  api_id    = aws_apigatewayv2_api.skipli.id
-  route_key = "POST /api/auth/send"
-  target    = "integrations/${aws_apigatewayv2_integration.skipli.id}"
-}
-
 resource "aws_lambda_permission" "apigw" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.skipli.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.skipli.execution_arn}/*/*"
+
+  # The old API keeps invoking the Lambda until CloudFront moves off it.
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_lambda_function" "realtime" {
