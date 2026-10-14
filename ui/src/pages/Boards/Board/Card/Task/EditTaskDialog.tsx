@@ -1,4 +1,4 @@
-import { useContext } from "react";
+import { useContext, useState } from "react";
 import { Edit, Trash } from "lucide-react";
 import { useParams } from "react-router";
 
@@ -91,13 +91,15 @@ export default function EditTaskDialog(props: TaskType) {
     setCards(deleteTask(id));
   };
 
+  const [open, setOpen] = useState(false);
+
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button
           variant="ghost"
           size="icon"
-          className="invisible group-hover:visible transition-colors"
+          className="invisible group-hover:visible pointer-coarse:visible transition-colors"
           onClick={(e) => {
             e.stopPropagation();
             setCreateTaskFormId(null);
@@ -107,67 +109,71 @@ export default function EditTaskDialog(props: TaskType) {
           <Edit />
         </Button>
       </DialogTrigger>
-      <DialogContent
-        className="sm:max-w-[425px]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <form onSubmit={handleSubmit} autoComplete="off">
-          <DialogHeader>
-            <DialogTitle>Edit task</DialogTitle>
-          </DialogHeader>
-          <DialogDescription></DialogDescription>
+      {open && (
+        <DialogContent
+          className="sm:max-w-[425px]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <form onSubmit={handleSubmit} autoComplete="off">
+            <DialogHeader>
+              <DialogTitle>Edit task</DialogTitle>
+            </DialogHeader>
+            <DialogDescription></DialogDescription>
 
-          <div className="grid gap-4 mt-4">
-            <div className="grid gap-3">
-              <Label htmlFor="task-name">Name</Label>
-              <Input id="task-name" name="name" defaultValue={name} />
+            <div className="grid gap-4 mt-4">
+              <div className="grid gap-3">
+                <Label htmlFor="task-name">Name</Label>
+                <Input id="task-name" name="name" defaultValue={name} />
+              </div>
+              <div className="grid gap-3">
+                <Label htmlFor="task-description">Description</Label>
+                <Input
+                  id="task-description"
+                  name="description"
+                  defaultValue={description}
+                />
+              </div>
+              <div className="grid gap-3">
+                <Label htmlFor="task-status">Status</Label>
+                <Input id="task-status" name="status" defaultValue={status} />
+              </div>
             </div>
-            <div className="grid gap-3">
-              <Label htmlFor="task-description">Description</Label>
-              <Input
-                id="task-description"
-                name="description"
-                defaultValue={description}
-              />
-            </div>
-            <div className="grid gap-3">
-              <Label htmlFor="task-status">Status</Label>
-              <Input id="task-status" name="status" defaultValue={status} />
-            </div>
-          </div>
-          <DialogFooter className="mt-4">
-            <DialogClose asChild>
-              <Button type="submit">Save</Button>
-            </DialogClose>
-            <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
-            </DialogClose>
+            <DialogFooter className="mt-4">
+              <DialogClose asChild>
+                <Button type="submit">Save</Button>
+              </DialogClose>
+              <DialogClose asChild>
+                <Button variant="outline">Cancel</Button>
+              </DialogClose>
 
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" className="ml-auto">
-                  <Trash className="h-5 w-5" />
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This action cannot be undone. This will permanently delete
-                    your task
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDelete}>
-                    Delete
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </DialogFooter>
-        </form>
-      </DialogContent>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" className="ml-auto">
+                    <Trash className="h-5 w-5" />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      Are you absolutely sure?
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This action cannot be undone. This will permanently delete
+                      your task
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleDelete}>
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      )}
     </Dialog>
   );
 }

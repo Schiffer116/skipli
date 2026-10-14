@@ -7,6 +7,7 @@ import {
   rectIntersection,
   type CollisionDetection,
   type DragEndEvent,
+  type DragMoveEvent,
   type DragOverEvent,
   type DragStartEvent,
   type UniqueIdentifier,
@@ -25,6 +26,7 @@ export default function useDnd(
   setActiveCard: React.Dispatch<React.SetStateAction<CardType | null>>,
   activeTask: TaskType | null,
   setActiveTask: React.Dispatch<React.SetStateAction<TaskType | null>>,
+  masonry: boolean,
 ) {
   const boardId = useParams().boardId!;
   const oldCards = useRef<CardType[]>(structuredClone(cards));
@@ -71,12 +73,17 @@ export default function useDnd(
   const collisionDetection: CollisionDetection = (args) => {
     // Dragging a card: only other cards are valid targets.
     if (activeCard) {
-      return closestCenter({
+      const cardArgs = {
         ...args,
         droppableContainers: args.droppableContainers.filter((container) =>
           cards.some((card) => card.id === container.id),
         ),
-      });
+      };
+      if (masonry) {
+        const pointerCards = pointerWithin(cardArgs);
+        if (pointerCards.length > 0) return pointerCards;
+      }
+      return closestCenter(cardArgs);
     }
 
     const pointerIntersections = pointerWithin(args);
@@ -149,7 +156,44 @@ export default function useDnd(
     setCards(moveTask(active.id, overCard.id, newTaskIndex));
   };
 
+  // Masonry cards have different heights, so the layout reflows as the card
+  // moves. Moving straight back to the slot it just left waits for the
+  // pointer to travel, or two cards of different heights swap forever.
+  const lastCardMove = useRef<{
+    from: number;
+    delta: DragMoveEvent["delta"];
+  } | null>(null);
+
+  const handledOverId = useRef<UniqueIdentifier | null>(null);
+
+  const onDragMove = ({ active, over, delta }: DragMoveEvent) => {
+    if (!masonry || !activeCard || !over || over.id === active.id) {
+      handledOverId.current = null;
+      return;
+    }
+    if (over.id === handledOverId.current) return;
+
+    const from = cards.findIndex((card) => card.id === active.id);
+    const to = cards.findIndex((card) => card.id === over.id);
+    if (to === -1) return;
+
+    const last = lastCardMove.current;
+    if (
+      last &&
+      to === last.from &&
+      Math.hypot(delta.x - last.delta.x, delta.y - last.delta.y) < 40
+    ) {
+      return;
+    }
+
+    handledOverId.current = over.id;
+    lastCardMove.current = { from, delta };
+    setCards(moveCard(from, to));
+  };
+
   const endDrag = () => {
+    lastCardMove.current = null;
+    handledOverId.current = null;
     lastOverId.current = null;
     setActiveTask(null);
     setActiveCard(null);
@@ -162,15 +206,21 @@ export default function useDnd(
 
   const onDragEnd = async ({ active, over }: DragEndEvent) => {
     if (activeCard) {
-      const oldCardIndex = cards.findIndex((card) => card.id === active.id);
-      const overCard = over ? findCard(over.id) : undefined;
-      const newCardIndex = overCard
-        ? cards.findIndex((card) => card.id === overCard.id)
-        : oldCardIndex;
       endDrag();
+      const oldCardIndex = oldCards.current.findIndex(
+        (card) => card.id === active.id,
+      );
+      const overCard = over ? findCard(over.id) : undefined;
+      const newCards =
+        !masonry && overCard
+          ? moveCard(
+              cards.findIndex((card) => card.id === active.id),
+              cards.findIndex((card) => card.id === overCard.id),
+            )(cards)
+          : cards;
+      const newCardIndex = newCards.findIndex((card) => card.id === active.id);
       if (oldCardIndex === newCardIndex) return;
 
-      const newCards = moveCard(oldCardIndex, newCardIndex)(cards);
       setCards(newCards);
 
       const res = await apiFetch(`/api/boards/${boardId}/cards/${active.id}`, {
@@ -243,6 +293,7 @@ export default function useDnd(
     collisionDetection,
     onDragStart,
     onDragOver,
+    onDragMove,
     onDragEnd,
     onDragCancel,
   };

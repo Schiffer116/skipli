@@ -36,7 +36,7 @@ func cookieValue(req *http.Request, name string) (string, bool) {
 }
 
 type TokenVerifier struct {
-	keys     keyfunc.Keyfunc
+	keys     jwt.Keyfunc
 	issuer   string
 	clientID string
 }
@@ -47,11 +47,18 @@ func NewTokenVerifier(ctx context.Context, region, poolID, clientID string) (*To
 	if err != nil {
 		return nil, err
 	}
-	return &TokenVerifier{keys: keys, issuer: issuer, clientID: clientID}, nil
+	return NewTokenVerifierWithKeyfunc(keys.Keyfunc, issuer, clientID), nil
+}
+
+// NewTokenVerifierWithKeyfunc is NewTokenVerifier with the signing keys
+// supplied directly instead of fetched from the user pool, so tests can
+// verify tokens they sign themselves.
+func NewTokenVerifierWithKeyfunc(keys jwt.Keyfunc, issuer, clientID string) *TokenVerifier {
+	return &TokenVerifier{keys: keys, issuer: issuer, clientID: clientID}
 }
 
 func (t *TokenVerifier) Verify(tokenString string) (User, error) {
-	token, err := jwt.Parse(tokenString, t.keys.Keyfunc,
+	token, err := jwt.Parse(tokenString, t.keys,
 		jwt.WithValidMethods([]string{"RS256"}),
 		jwt.WithIssuer(t.issuer),
 		jwt.WithAudience(t.clientID),
@@ -88,6 +95,10 @@ type contextKey int
 
 const userContextKey contextKey = iota
 
+func ContextWithUser(ctx context.Context, user User) context.Context {
+	return context.WithValue(ctx, userContextKey, user)
+}
+
 func UserFromContext(ctx context.Context) (User, bool) {
 	user, ok := ctx.Value(userContextKey).(User)
 	return user, ok
@@ -107,7 +118,6 @@ func (t *TokenVerifier) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(req.Context(), userContextKey, user)
-		next(w, req.WithContext(ctx))
+		next(w, req.WithContext(ContextWithUser(req.Context(), user)))
 	}
 }

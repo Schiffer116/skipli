@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"net/mail"
+	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -16,21 +18,29 @@ import (
 )
 
 type Handler struct {
-	idp      *cip.Client
-	clientID string
-	users    *Directory
-	tokens   *TokenVerifier
+	idp            *cip.Client
+	clientID       string
+	users          *Directory
+	tokens         *TokenVerifier
+	cooldown       *Cooldown
+	canReceiveMail func(context.Context, string) bool
 }
 
-func NewHandler(idp *cip.Client, clientID string, users *Directory, tokens *TokenVerifier) *Handler {
-	return &Handler{idp: idp, clientID: clientID, users: users, tokens: tokens}
+func NewHandler(idp *cip.Client, clientID string, users *Directory, tokens *TokenVerifier, cooldown *Cooldown) *Handler {
+	return &Handler{
+		idp:            idp,
+		clientID:       clientID,
+		users:          users,
+		tokens:         tokens,
+		cooldown:       cooldown,
+		canReceiveMail: CanReceiveMail,
+	}
 }
 
 func (h *Handler) RegisterRoutes(router *http.ServeMux) {
 	router.HandleFunc("POST /auth/send", h.sendVerificationEmail)
 	router.HandleFunc("POST /auth/verify", h.verify)
 	router.HandleFunc("POST /auth/refresh", h.refresh)
-	router.HandleFunc("GET /auth/email", h.getEmailFromJwt)
 }
 
 type SendVerificationEmailRequest struct {
@@ -51,36 +61,71 @@ func (h *Handler) sendVerificationEmail(w http.ResponseWriter, req *http.Request
 	}
 	defer req.Body.Close()
 
-	if !canReceiveMail(ctx, r.Email) {
+	email := NormalizeEmail(r.Email)
+	if !h.canReceiveMail(ctx, email) {
 		http.Error(w, "email address can't receive mail", http.StatusBadRequest)
 		return
 	}
 
-	if _, err := h.users.Ensure(ctx, r.Email); err != nil {
-		log.Printf("failed to create user: %v", err)
+	started, remaining, err := h.cooldown.Start(ctx, email)
+	if err != nil {
+		log.Printf("failed to start send cooldown: %v", err)
 		http.Error(w, "failed to send verification email", http.StatusInternalServerError)
 		return
+	}
+	if !started {
+		w.Header().Set("Retry-After", strconv.Itoa(int(remaining.Seconds())))
+		http.Error(w, "a verification email was just sent; wait before requesting another", http.StatusTooManyRequests)
+		return
+	}
+
+	session, err := h.startSignIn(ctx, email)
+	if err != nil {
+		log.Printf("failed to send verification email: %v", err)
+		if err := h.cooldown.Cancel(ctx, email); err != nil {
+			log.Printf("failed to cancel send cooldown: %v", err)
+		}
+		http.Error(w, "failed to send verification email", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(SendVerificationEmailResponse{Session: session})
+}
+
+func (h *Handler) startSignIn(ctx context.Context, email string) (string, error) {
+	if _, err := h.users.Ensure(ctx, email); err != nil {
+		return "", fmt.Errorf("create user: %w", err)
 	}
 
 	out, err := h.idp.InitiateAuth(ctx, &cip.InitiateAuthInput{
 		ClientId: aws.String(h.clientID),
 		AuthFlow: types.AuthFlowTypeUserAuth,
 		AuthParameters: map[string]string{
-			"USERNAME":            r.Email,
+			"USERNAME":            email,
 			"PREFERRED_CHALLENGE": string(types.ChallengeNameTypeEmailOtp),
 		},
 	})
-	if err != nil || out.Session == nil {
-		log.Printf("failed to start sign-in: %v", err)
-		http.Error(w, "failed to send verification email", http.StatusInternalServerError)
-		return
+	if err != nil {
+		return "", fmt.Errorf("start sign-in: %w", err)
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(SendVerificationEmailResponse{Session: *out.Session})
+	if out.Session == nil {
+		return "", errors.New("start sign-in: no session returned")
+	}
+	return *out.Session, nil
 }
 
-func canReceiveMail(ctx context.Context, email string) bool {
+// NormalizeEmail trims and lowercases an address. User pool usernames are
+// case-insensitive, so this keeps per-address state such as the send cooldown
+// from being sidestepped by changing case.
+func NormalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+// CanReceiveMail reports whether email is a bare, well-formed address whose
+// domain accepts mail. DNS failures other than "not found" count as
+// deliverable so an outage doesn't block sign-in.
+func CanReceiveMail(ctx context.Context, email string) bool {
 	addr, err := mail.ParseAddress(email)
 	if err != nil || addr.Address != email {
 		return false
@@ -169,23 +214,4 @@ func (h *Handler) refresh(w http.ResponseWriter, req *http.Request) {
 
 	setCookie(w, idTokenCookie, *out.AuthenticationResult.IdToken, "/api", 60*60)
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func (h *Handler) getEmailFromJwt(w http.ResponseWriter, req *http.Request) {
-	tokenString, ok := cookieValue(req, idTokenCookie)
-	if !ok {
-		http.Error(w, "missing token", http.StatusUnauthorized)
-		return
-	}
-
-	user, err := h.tokens.Verify(tokenString)
-	if err != nil {
-		log.Printf("invalid token: %v", err)
-		http.Error(w, "invalid token", http.StatusUnauthorized)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"email": user.Email})
 }

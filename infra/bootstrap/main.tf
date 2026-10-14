@@ -212,7 +212,7 @@ resource "aws_iam_role_policy" "dns" {
 resource "aws_route53_record" "dmarc" {
   count   = local.is_dev ? 1 : 0
   zone_id = data.aws_route53_zone.zone[0].zone_id
-  name    = "_dmarc"
+  name    = "_dmarc.${var.hosted_zone}"
   type    = "TXT"
   ttl     = 600
   records = ["v=DMARC1; p=none;"]

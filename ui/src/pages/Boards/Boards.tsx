@@ -9,6 +9,7 @@ import { apiFetch } from "@/utils/apiFetch";
 export default function Boards() {
   const loaderData = useLoaderData<typeof boardsLoader>();
   const [favorites, setFavorites] = useState(loaderData.favorites);
+  const [me, setMe] = useState(loaderData.me);
 
   const toggleFavorite = async (board: Favorite) => {
     const old = favorites;
@@ -32,7 +33,7 @@ export default function Boards() {
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
-      <Header email={loaderData.email} favorites={favorites} />
+      <Header me={me} setMe={setMe} favorites={favorites} />
       <Outlet
         context={{ favorites, toggleFavorite } satisfies FavoritesContext}
       />

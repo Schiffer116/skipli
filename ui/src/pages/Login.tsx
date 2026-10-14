@@ -32,6 +32,12 @@ export default function Login() {
       setError("That email address can't receive mail. Check it for typos.");
       return;
     }
+    if (res.status === 429) {
+      setError(
+        "A code was just sent. Wait a minute before requesting another.",
+      );
+      return;
+    }
     if (!res.ok) {
       setError("Couldn't send the code. Please try again.");
       return;

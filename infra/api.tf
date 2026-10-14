@@ -1,3 +1,42 @@
+# Abuse limits for the public API. API Gateway throttles are account-wide per
+# route rather than per client, and reserved concurrency caps how many copies of
+# each Lambda can run at once, which bounds cost if the API is flooded.
+variable "api_throttle_rate_limit" {
+  description = "Steady-state requests per second allowed across every HTTP API route."
+  type        = number
+  default     = 25
+}
+
+variable "api_throttle_burst_limit" {
+  description = "Burst of requests allowed across every HTTP API route."
+  type        = number
+  default     = 50
+}
+
+variable "auth_send_throttle_rate_limit" {
+  description = "Steady-state requests per second allowed on POST /api/auth/send, which sends a sign-in email."
+  type        = number
+  default     = 1
+}
+
+variable "auth_send_throttle_burst_limit" {
+  description = "Burst of requests allowed on POST /api/auth/send."
+  type        = number
+  default     = 5
+}
+
+variable "api_reserved_concurrency" {
+  description = "Maximum concurrent executions of the HTTP API Lambda."
+  type        = number
+  default     = null
+}
+
+variable "realtime_reserved_concurrency" {
+  description = "Maximum concurrent executions of the WebSocket Lambda."
+  type        = number
+  default     = null
+}
+
 resource "aws_dynamodb_table" "skipli" {
   name         = "Skipli"
   billing_mode = "PAY_PER_REQUEST"
@@ -162,6 +201,8 @@ resource "aws_lambda_function" "skipli" {
   architectures    = ["arm64"]
   source_code_hash = data.archive_file.zip_archive.output_base64sha256
 
+  reserved_concurrent_executions = var.api_reserved_concurrency
+
   environment {
     variables = {
       USER_POOL_ID        = aws_cognito_user_pool.skipli.id
@@ -171,10 +212,57 @@ resource "aws_lambda_function" "skipli" {
   }
 }
 
+# The HTTP API is declared piece by piece rather than through quick create
+# (target), because AWS does not let Terraform manage a quick-created $default
+# stage, and that stage is where the throttling lives. Replacing the API gives it
+# a new id and hostname; create_before_destroy keeps the old one serving until
+# CloudFront points at the new one.
 resource "aws_apigatewayv2_api" "skipli" {
   name          = "skipli"
   protocol_type = "HTTP"
-  target        = aws_lambda_function.skipli.arn
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_apigatewayv2_integration" "skipli" {
+  api_id                 = aws_apigatewayv2_api.skipli.id
+  integration_type       = "AWS_PROXY"
+  integration_method     = "POST"
+  integration_uri        = aws_lambda_function.skipli.invoke_arn
+  payload_format_version = "2.0"
+}
+
+resource "aws_apigatewayv2_route" "default" {
+  api_id    = aws_apigatewayv2_api.skipli.id
+  route_key = "$default"
+  target    = "integrations/${aws_apigatewayv2_integration.skipli.id}"
+}
+
+# Per-route throttling needs a route of its own, so POST /api/auth/send gets one
+# pointing at the same Lambda; every other request still falls to $default.
+resource "aws_apigatewayv2_route" "auth_send" {
+  api_id    = aws_apigatewayv2_api.skipli.id
+  route_key = "POST /api/auth/send"
+  target    = "integrations/${aws_apigatewayv2_integration.skipli.id}"
+}
+
+resource "aws_apigatewayv2_stage" "skipli" {
+  api_id      = aws_apigatewayv2_api.skipli.id
+  name        = "$default"
+  auto_deploy = true
+
+  default_route_settings {
+    throttling_rate_limit  = var.api_throttle_rate_limit
+    throttling_burst_limit = var.api_throttle_burst_limit
+  }
+
+  route_settings {
+    route_key              = aws_apigatewayv2_route.auth_send.route_key
+    throttling_rate_limit  = var.auth_send_throttle_rate_limit
+    throttling_burst_limit = var.auth_send_throttle_burst_limit
+  }
 }
 
 resource "aws_lambda_permission" "apigw" {
@@ -182,6 +270,11 @@ resource "aws_lambda_permission" "apigw" {
   function_name = aws_lambda_function.skipli.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.skipli.execution_arn}/*/*"
+
+  # The old API keeps invoking the Lambda until CloudFront moves off it.
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_lambda_function" "realtime" {
@@ -193,6 +286,8 @@ resource "aws_lambda_function" "realtime" {
   runtime          = "provided.al2023"
   architectures    = ["arm64"]
   source_code_hash = data.archive_file.zip_archive.output_base64sha256
+
+  reserved_concurrent_executions = var.realtime_reserved_concurrency
 
   environment {
     variables = {

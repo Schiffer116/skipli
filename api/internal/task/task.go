@@ -15,26 +15,34 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+
+	"github.com/Schiffer116/skipli/api/internal/auth"
+	"github.com/Schiffer116/skipli/api/internal/board"
 )
 
 const orderGap = 1000
 
 type Handler struct {
-	db    *dynamodb.Client
-	table string
+	db     *dynamodb.Client
+	table  string
+	tokens *auth.TokenVerifier
 }
 
-func NewHandler(db *dynamodb.Client, table string) *Handler {
-	return &Handler{db: db, table: table}
+func NewHandler(db *dynamodb.Client, table string, tokens *auth.TokenVerifier) *Handler {
+	return &Handler{db: db, table: table, tokens: tokens}
+}
+
+func (h *Handler) member(next http.HandlerFunc) http.HandlerFunc {
+	return board.RequireMember(h.db, h.table, h.tokens, "boardId", next)
 }
 
 func (h *Handler) RegisterRoutes(router *http.ServeMux) {
-	router.HandleFunc("GET /boards/{boardId}/cards/{cardId}/tasks", h.list)
-	router.HandleFunc("POST /boards/{boardId}/cards/{cardId}/tasks", h.create)
-	router.HandleFunc("GET /boards/{boardId}/cards/{cardId}/tasks/{taskId}", h.get)
-	router.HandleFunc("PUT /boards/{boardId}/cards/{cardId}/tasks/{taskId}", h.update)
-	router.HandleFunc("PATCH /boards/{boardId}/cards/{cardId}/tasks/{taskId}", h.move)
-	router.HandleFunc("DELETE /boards/{boardId}/cards/{cardId}/tasks/{taskId}", h.delete)
+	router.HandleFunc("GET /boards/{boardId}/cards/{cardId}/tasks", h.member(h.list))
+	router.HandleFunc("POST /boards/{boardId}/cards/{cardId}/tasks", h.member(h.create))
+	router.HandleFunc("GET /boards/{boardId}/cards/{cardId}/tasks/{taskId}", h.member(h.get))
+	router.HandleFunc("PUT /boards/{boardId}/cards/{cardId}/tasks/{taskId}", h.member(h.update))
+	router.HandleFunc("PATCH /boards/{boardId}/cards/{cardId}/tasks/{taskId}", h.member(h.move))
+	router.HandleFunc("DELETE /boards/{boardId}/cards/{cardId}/tasks/{taskId}", h.member(h.delete))
 }
 
 // Task is the internal shape, including Order for sorting; Response is what

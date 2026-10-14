@@ -1,7 +1,7 @@
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { forwardRef, useContext } from "react";
+import { forwardRef, memo, useContext } from "react";
 import EditTaskDialog from "./EditTaskDialog";
 import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities";
 import { CheckCircle2, Circle } from "lucide-react";
@@ -58,34 +58,6 @@ type DummyTaskProps = TaskType & {
 export const DummyTask = forwardRef<HTMLDivElement, DummyTaskProps>(
   (props, ref) => {
     const { id, name, description, status, listeners, cardId, ...rest } = props;
-    const { boardId } = useParams();
-    const { setCards } = useContext(BoardContext)!;
-
-    const toggleStatus = async () => {
-      const res = await apiFetch(
-        `/api/boards/${boardId}/cards/${cardId}/tasks/${id}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            id,
-            name,
-            description,
-            status: status === "done" ? "pending" : "done",
-          }),
-        },
-      );
-
-      if (!res.ok) {
-        return;
-      }
-
-      const updatedTask = await res.json();
-      socket.emit("update task", updatedTask);
-      setCards(updateTask(updatedTask));
-    };
 
     return (
       <Card
@@ -93,28 +65,79 @@ export const DummyTask = forwardRef<HTMLDivElement, DummyTaskProps>(
         {...rest}
         className="min-h-10 p-0 cursor-grab shadow-none rounded-md hover:border-link hover:bg-accent/40"
       >
-        <CardHeader className="relative group flex items-center p-0 pr-2 h-full">
-          <Button
-            className={`size-6 ml-2 ${status === "done" ? "flex" : "hidden group-hover:flex"}`}
-            variant="ghost"
-            size="icon"
-            onClick={toggleStatus}
-          >
-            {status === "done" ? (
-              <CheckCircle2 className="size-4 text-success" />
-            ) : (
-              <Circle className="size-4 text-muted-foreground" />
-            )}
-          </Button>
-          <CardTitle
-            className={`h-full ${status === "done" ? "ml-1" : "ml-4"} group-hover:ml-1 flex-1 min-w-0 py-2 text-sm font-normal flex items-center ${status === "done" ? "text-muted-foreground line-through" : ""}`}
-            {...listeners}
-          >
-            <span className="break-words">{name}</span>
-          </CardTitle>
-          <EditTaskDialog {...props} />
-        </CardHeader>
+        <TaskBody
+          id={id}
+          cardId={cardId}
+          name={name}
+          description={description}
+          status={status}
+          listeners={listeners}
+        />
       </Card>
     );
   },
 );
+
+const TaskBody = memo(function TaskBody(
+  props: TaskType & { listeners?: SyntheticListenerMap },
+) {
+  const { id, name, description, status, listeners, cardId } = props;
+  const { boardId } = useParams();
+  const { setCards } = useContext(BoardContext)!;
+
+  const toggleStatus = async () => {
+    const res = await apiFetch(
+      `/api/boards/${boardId}/cards/${cardId}/tasks/${id}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id,
+          name,
+          description,
+          status: status === "done" ? "pending" : "done",
+        }),
+      },
+    );
+
+    if (!res.ok) {
+      return;
+    }
+
+    const updatedTask = await res.json();
+    socket.emit("update task", updatedTask);
+    setCards(updateTask(updatedTask));
+  };
+
+  return (
+    <CardHeader className="relative group flex items-center p-0 pr-2 h-full">
+      <Button
+        className={`size-6 ml-2 transition-colors ${status === "done" ? "visible" : "invisible group-hover:visible pointer-coarse:visible"}`}
+        variant="ghost"
+        size="icon"
+        onClick={toggleStatus}
+      >
+        {status === "done" ? (
+          <CheckCircle2 className="size-4 text-success" />
+        ) : (
+          <Circle className="size-4 text-muted-foreground" />
+        )}
+      </Button>
+      <CardTitle
+        className={`h-full ml-1 flex-1 min-w-0 py-2 text-sm font-normal flex items-center ${status === "done" ? "text-muted-foreground line-through" : ""}`}
+        {...listeners}
+      >
+        <span className="break-words">{name}</span>
+      </CardTitle>
+      <EditTaskDialog
+        id={id}
+        cardId={cardId}
+        name={name}
+        description={description}
+        status={status}
+      />
+    </CardHeader>
+  );
+});
