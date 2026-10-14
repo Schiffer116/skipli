@@ -28,13 +28,13 @@ variable "auth_send_throttle_burst_limit" {
 variable "api_reserved_concurrency" {
   description = "Maximum concurrent executions of the HTTP API Lambda."
   type        = number
-  default     = 10
+  default     = null
 }
 
 variable "realtime_reserved_concurrency" {
   description = "Maximum concurrent executions of the WebSocket Lambda."
   type        = number
-  default     = 10
+  default     = null
 }
 
 resource "aws_dynamodb_table" "skipli" {
