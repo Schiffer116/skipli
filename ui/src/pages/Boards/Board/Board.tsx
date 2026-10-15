@@ -21,6 +21,7 @@ import { useSwipeSnap } from "@/hooks/useSwipeSnap";
 import { OwnKeyboardSensor } from "@/utils/keyboardSensor";
 import useSocket from "@/hooks/useSocket";
 import {
+  CREATE_CARD_KEY,
   measureMasonryTarget,
   useBoardLayout,
   useMasonry,
@@ -34,7 +35,6 @@ import type { boardViewLoader } from "../loaders";
 import { BoardContext } from "./BoardContext";
 import FavoriteButton from "../FavoriteButton";
 import CleanUpButton from "./CleanUpButton";
-import RebalanceButton from "./RebalanceButton";
 
 export default function Board() {
   const [cards, setCards] = useState(
@@ -94,7 +94,7 @@ export default function Board() {
   useSocket(boardId!, setCards);
 
   const createCard = (
-    <div key="create-card" className="flex-shrink-0 w-80">
+    <div key={CREATE_CARD_KEY} className="flex-shrink-0 w-80">
       {showCreateCardForm ? (
         <CreateCardForm />
       ) : (
@@ -119,13 +119,8 @@ export default function Board() {
     )),
     createCard,
   ];
-  const masonryLayout = useMasonry(
-    masonryElement,
-    items.map((item) => String(item.key)),
-  );
-  const columnCount = masonryLayout.columns;
-
   const masonry = layout === "masonry";
+  const masonryLayout = useMasonry(masonry ? masonryElement : null, cards);
   useSwipeSnap(listElement, !masonry && !activeCard && !activeTask);
   const toggleLabel = masonry
     ? "Show cards in one scrolling row"
@@ -149,14 +144,6 @@ export default function Board() {
                 >
                   {masonry ? <Columns3 /> : <LayoutDashboard />}
                 </Button>
-                {masonry && columnCount > 1 && (
-                  <RebalanceButton
-                    boardId={boardId!}
-                    cards={cards}
-                    setCards={setCards}
-                    columns={columnCount}
-                  />
-                )}
                 <CleanUpButton
                   boardId={boardId!}
                   cards={cards}
@@ -183,7 +170,7 @@ export default function Board() {
           >
             <div
               ref={setListElement}
-              className={`flex gap-4 pb-6 flex-1 min-h-0 items-start -mx-4 px-4 md:-mx-8 md:px-8 ${masonry ? "overflow-y-auto" : "overflow-auto touch-pan-y max-md:*:w-full"}`}
+              className={`flex gap-4 pb-6 flex-1 min-h-0 items-start -mx-4 px-4 md:-mx-8 md:px-8 ${masonry ? "overflow-y-auto [scrollbar-gutter:stable]" : "overflow-auto touch-pan-y max-md:*:w-full"}`}
             >
               <SortableContext
                 items={cards}
@@ -195,23 +182,29 @@ export default function Board() {
                     className="relative w-full shrink-0"
                     style={{ height: masonryLayout.height }}
                   >
-                    {items.map((item, i) => {
-                      const { x, y, width } = masonryLayout.positions[i];
-                      return (
-                        <div
-                          key={item.key}
-                          ref={masonryLayout.measure}
-                          data-key={item.key}
-                          className={`absolute top-0 left-0 *:w-full ${masonryLayout.measured ? "transition-transform duration-200 ease-out" : ""}`}
-                          style={{
-                            width,
-                            transform: `translate(${x}px, ${y}px)`,
-                          }}
-                        >
-                          {item}
-                        </div>
-                      );
-                    })}
+                    {/* Cards mount once the width is known: measured at no
+                        width their text wraps tall, and they would slide
+                        to their real heights a frame later. Each stays
+                        hidden until its own height is known. */}
+                    {masonryLayout.count > 0 &&
+                      items.map((item) => {
+                        const key = String(item.key);
+                        const { x, y, width } = masonryLayout.positions[key];
+                        return (
+                          <div
+                            key={item.key}
+                            ref={masonryLayout.measure}
+                            data-key={item.key}
+                            className={`absolute top-0 left-0 *:w-full ${masonryLayout.ready ? "transition-transform duration-225 ease-out" : ""} ${masonryLayout.measured(key) ? "" : "invisible"}`}
+                            style={{
+                              width,
+                              transform: `translate(${x}px, ${y}px)`,
+                            }}
+                          >
+                            {item}
+                          </div>
+                        );
+                      })}
                   </div>
                 ) : (
                   items

@@ -40,7 +40,7 @@ export TABLE_NAME=Skipli
 1. Start the API (port 3000, override with `PORT`):
 
 ```bash
-cd app && make run
+cd api && make run
 ```
 
 1. Start the frontend (proxies `/api` to the API, override with `API_URL`):
@@ -70,8 +70,8 @@ requires) and creates the DNS records in the domain's Route 53 zone. Set
 
 ## CI/CD
 
-`.github/workflows/pipeline.yml` runs on every push and pull request:
-frontend lint + typecheck + build, backend `gofmt`/`vet`/`test`/Lambda build, and
+`.github/workflows/ci.yaml` runs on every push and pull request:
+frontend lint + unit tests + typecheck + build, backend `gofmt`/`vet`/`test`/Lambda build, and
 lint for the CloudFormation templates and deploy script. Pushes to `master`
 that pass then deploy with `infra/deploy.sh`.
 
