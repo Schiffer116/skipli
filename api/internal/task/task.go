@@ -3,12 +3,11 @@ package task
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"sort"
 	"strconv"
-
-	"github.com/google/uuid"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/Schiffer116/skipli/api/internal/auth"
 	"github.com/Schiffer116/skipli/api/internal/board"
+	"github.com/Schiffer116/skipli/api/internal/clientid"
 )
 
 const orderGap = 1000
@@ -69,6 +69,13 @@ type Response struct {
 
 func toResponse(t Task) Response {
 	return Response{ID: t.ID, CardID: t.CardID, Name: t.Name, Description: t.Description, Status: t.Status}
+}
+
+// cardSK mirrors internal/card's SK format, duplicated (not imported) like
+// card's taskPrefix, so creating a task can check its card exists without
+// coupling the two packages.
+func cardSK(cardID string) string {
+	return "CARD#" + cardID
 }
 
 func taskSK(cardID, taskID string) string {
@@ -159,6 +166,8 @@ func (h *Handler) list(w http.ResponseWriter, req *http.Request) {
 }
 
 type CreateRequest struct {
+	// ID is optional: the app names tasks it creates offline.
+	ID   string `json:"id"`
 	Name string `json:"name"`
 }
 
@@ -186,20 +195,56 @@ func (h *Handler) create(w http.ResponseWriter, req *http.Request) {
 		order = tasks[len(tasks)-1].Order + orderGap
 	}
 
-	id := uuid.New().String()
-	_, err = h.db.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(h.table),
-		Item: map[string]types.AttributeValue{
-			"PK":          &types.AttributeValueMemberS{Value: boardID},
-			"SK":          &types.AttributeValueMemberS{Value: taskSK(cardID, id)},
-			"ID":          &types.AttributeValueMemberS{Value: id},
-			"CardID":      &types.AttributeValueMemberS{Value: cardID},
-			"Name":        &types.AttributeValueMemberS{Value: r.Name},
-			"Description": &types.AttributeValueMemberS{Value: ""},
-			"Status":      &types.AttributeValueMemberS{Value: "pending"},
-			"Order":       &types.AttributeValueMemberN{Value: strconv.FormatFloat(order, 'f', -1, 64)},
+	id, err := clientid.Pick(r.ID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// The card must still exist, or a create sent after the card was
+	// deleted (such as an offline change sent late) would leave a task
+	// that no card shows.
+	_, err = h.db.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{
+		TransactItems: []types.TransactWriteItem{
+			{
+				ConditionCheck: &types.ConditionCheck{
+					TableName: aws.String(h.table),
+					Key: map[string]types.AttributeValue{
+						"PK": &types.AttributeValueMemberS{Value: boardID},
+						"SK": &types.AttributeValueMemberS{Value: cardSK(cardID)},
+					},
+					ConditionExpression: aws.String("attribute_exists(SK)"),
+				},
+			},
+			{
+				Put: &types.Put{
+					TableName: aws.String(h.table),
+					Item: map[string]types.AttributeValue{
+						"PK":          &types.AttributeValueMemberS{Value: boardID},
+						"SK":          &types.AttributeValueMemberS{Value: taskSK(cardID, id)},
+						"ID":          &types.AttributeValueMemberS{Value: id},
+						"CardID":      &types.AttributeValueMemberS{Value: cardID},
+						"Name":        &types.AttributeValueMemberS{Value: r.Name},
+						"Description": &types.AttributeValueMemberS{Value: ""},
+						"Status":      &types.AttributeValueMemberS{Value: "pending"},
+						"Order":       &types.AttributeValueMemberN{Value: strconv.FormatFloat(order, 'f', -1, 64)},
+					},
+					ConditionExpression: aws.String("attribute_not_exists(SK)"),
+				},
+			},
 		},
 	})
+	var canceled *types.TransactionCanceledException
+	if errors.As(err, &canceled) && len(canceled.CancellationReasons) == 2 {
+		if aws.ToString(canceled.CancellationReasons[0].Code) == "ConditionalCheckFailed" {
+			http.Error(w, "card not found", http.StatusNotFound)
+			return
+		}
+		if aws.ToString(canceled.CancellationReasons[1].Code) == "ConditionalCheckFailed" {
+			http.Error(w, "a task with this id already exists", http.StatusConflict)
+			return
+		}
+	}
 	if err != nil {
 		log.Printf("failed to create task: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -271,7 +316,13 @@ func (h *Handler) update(w http.ResponseWriter, req *http.Request) {
 		UpdateExpression:          expr.Update(),
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
+		// Without it, updating a deleted task would bring back a broken one.
+		ConditionExpression: aws.String("attribute_exists(SK)"),
 	})
+	if isConditionFailed(err) {
+		http.Error(w, "task not found", http.StatusNotFound)
+		return
+	}
 	if err != nil {
 		log.Printf("failed to update task: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -379,7 +430,12 @@ func (h *Handler) move(w http.ResponseWriter, req *http.Request) {
 			UpdateExpression:          expr.Update(),
 			ExpressionAttributeNames:  expr.Names(),
 			ExpressionAttributeValues: expr.Values(),
+			ConditionExpression:       aws.String("attribute_exists(SK)"),
 		})
+		if isConditionFailed(err) {
+			http.Error(w, "task not found", http.StatusNotFound)
+			return
+		}
 		if err != nil {
 			log.Printf("failed to reorder task: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -392,7 +448,8 @@ func (h *Handler) move(w http.ResponseWriter, req *http.Request) {
 
 	// Different card — the SK embeds cardId, so "moving" means delete + put,
 	// done as one transaction so a task is never dropped if the second step
-	// fails.
+	// fails. Both the task and the card it goes to must still be there, or
+	// the move would bring back a deleted task or leave it in a deleted card.
 	_, err = h.db.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{
 		TransactItems: []types.TransactWriteItem{
 			{
@@ -402,6 +459,17 @@ func (h *Handler) move(w http.ResponseWriter, req *http.Request) {
 						"PK": &types.AttributeValueMemberS{Value: boardID},
 						"SK": &types.AttributeValueMemberS{Value: taskSK(cardID, taskID)},
 					},
+					ConditionExpression: aws.String("attribute_exists(SK)"),
+				},
+			},
+			{
+				ConditionCheck: &types.ConditionCheck{
+					TableName: aws.String(h.table),
+					Key: map[string]types.AttributeValue{
+						"PK": &types.AttributeValueMemberS{Value: boardID},
+						"SK": &types.AttributeValueMemberS{Value: cardSK(r.NewCardID)},
+					},
+					ConditionExpression: aws.String("attribute_exists(SK)"),
 				},
 			},
 			{
@@ -421,6 +489,17 @@ func (h *Handler) move(w http.ResponseWriter, req *http.Request) {
 			},
 		},
 	})
+	var canceled *types.TransactionCanceledException
+	if errors.As(err, &canceled) && len(canceled.CancellationReasons) == 3 {
+		if aws.ToString(canceled.CancellationReasons[0].Code) == "ConditionalCheckFailed" {
+			http.Error(w, "task not found", http.StatusNotFound)
+			return
+		}
+		if aws.ToString(canceled.CancellationReasons[1].Code) == "ConditionalCheckFailed" {
+			http.Error(w, "card not found", http.StatusNotFound)
+			return
+		}
+	}
 	if err != nil {
 		log.Printf("failed to move task: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -450,4 +529,11 @@ func (h *Handler) delete(w http.ResponseWriter, req *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// isConditionFailed reports whether a write was refused by its
+// ConditionExpression.
+func isConditionFailed(err error) bool {
+	var failed *types.ConditionalCheckFailedException
+	return errors.As(err, &failed)
 }

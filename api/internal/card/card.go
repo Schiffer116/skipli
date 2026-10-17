@@ -3,12 +3,11 @@ package card
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"sort"
 	"strconv"
-
-	"github.com/google/uuid"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/Schiffer116/skipli/api/internal/auth"
 	"github.com/Schiffer116/skipli/api/internal/board"
+	"github.com/Schiffer116/skipli/api/internal/clientid"
 )
 
 const orderGap = 1000
@@ -157,6 +157,8 @@ func (h *Handler) list(w http.ResponseWriter, req *http.Request) {
 }
 
 type CreateRequest struct {
+	// ID is optional: the app names cards it creates offline.
+	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	CreatedAt   string `json:"createdAt"`
@@ -185,7 +187,11 @@ func (h *Handler) create(w http.ResponseWriter, req *http.Request) {
 		order = cards[len(cards)-1].Order + orderGap
 	}
 
-	id := uuid.New().String()
+	id, err := clientid.Pick(r.ID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	_, err = h.db.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String(h.table),
 		Item: map[string]types.AttributeValue{
@@ -197,8 +203,13 @@ func (h *Handler) create(w http.ResponseWriter, req *http.Request) {
 			"CreatedAt":   &types.AttributeValueMemberS{Value: r.CreatedAt},
 			"Order":       &types.AttributeValueMemberN{Value: strconv.FormatFloat(order, 'f', -1, 64)},
 		},
+		ConditionExpression: aws.String("attribute_not_exists(SK)"),
 	})
 	if err != nil {
+		if clientid.Taken(err) {
+			http.Error(w, "an item with this id already exists", http.StatusConflict)
+			return
+		}
 		log.Printf("failed to create card: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -265,7 +276,13 @@ func (h *Handler) update(w http.ResponseWriter, req *http.Request) {
 		UpdateExpression:          expr.Update(),
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
+		// Without it, updating a deleted card would bring back a broken one.
+		ConditionExpression: aws.String("attribute_exists(SK)"),
 	})
+	if isConditionFailed(err) {
+		http.Error(w, "card not found", http.StatusNotFound)
+		return
+	}
 	if err != nil {
 		log.Printf("failed to update card: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -354,7 +371,12 @@ func (h *Handler) reorder(w http.ResponseWriter, req *http.Request) {
 		UpdateExpression:          expr.Update(),
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
+		ConditionExpression:       aws.String("attribute_exists(SK)"),
 	})
+	if isConditionFailed(err) {
+		http.Error(w, "card not found", http.StatusNotFound)
+		return
+	}
 	if err != nil {
 		log.Printf("failed to reorder card: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -492,4 +514,11 @@ func (h *Handler) delete(w http.ResponseWriter, req *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// isConditionFailed reports whether a write was refused by its
+// ConditionExpression.
+func isConditionFailed(err error) bool {
+	var failed *types.ConditionalCheckFailedException
+	return errors.As(err, &failed)
 }

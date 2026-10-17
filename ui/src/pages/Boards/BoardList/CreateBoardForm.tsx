@@ -4,7 +4,9 @@ import { Input } from "@/components/ui/input";
 
 import type { Board } from "./BoardList";
 import useEscape from "@/hooks/useEscape";
-import { apiFetch } from "@/utils/apiFetch";
+import { newId } from "@/offline/ids";
+import { submit } from "@/offline/sync";
+import { useMe } from "../favorites";
 
 type BoardFormProps = {
   setBoards: React.Dispatch<React.SetStateAction<Board[]>>;
@@ -13,6 +15,7 @@ type BoardFormProps = {
 
 export default function CreateBoardForm(props: BoardFormProps) {
   const { setBoards, setShowCreateBoardForm } = props;
+  const me = useMe();
   useEscape(() => setShowCreateBoardForm(false));
 
   const createBoard = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -25,22 +28,20 @@ export default function CreateBoardForm(props: BoardFormProps) {
       return;
     }
 
-    const data = await apiFetch("/api/boards", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name,
-        description,
-      }),
-    });
-
-    if (!data.ok) {
+    const boardId = newId();
+    if (!(await submit({ type: "createBoard", boardId, name, description }))) {
       return;
     }
 
-    const newBoard: Board = await data.json();
+    const newBoard: Board = {
+      id: boardId,
+      name,
+      description,
+      owner: me.id,
+      favorite: false,
+      taskCount: 0,
+      doneCount: 0,
+    };
     setBoards((boards) => [...boards, newBoard]);
     setShowCreateBoardForm(false);
   };

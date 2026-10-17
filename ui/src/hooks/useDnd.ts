@@ -17,7 +17,7 @@ import { useParams } from "react-router";
 
 import { socket } from "@/utils/socket";
 import { moveCard, moveTask } from "@/utils/updateCard";
-import { apiFetch } from "@/utils/apiFetch";
+import { submit } from "@/offline/sync";
 
 export default function useDnd(
   cards: CardType[],
@@ -223,18 +223,14 @@ export default function useDnd(
 
       setCards(newCards);
 
-      const res = await apiFetch(`/api/boards/${boardId}/cards/${active.id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          beforeId: newCards[newCardIndex - 1]?.id ?? null,
-          afterId: newCards[newCardIndex + 1]?.id ?? null,
-        }),
+      const saved = await submit({
+        type: "moveCard",
+        boardId,
+        cardId: String(active.id),
+        beforeId: newCards[newCardIndex - 1]?.id ?? null,
+        afterId: newCards[newCardIndex + 1]?.id ?? null,
       });
-
-      if (!res.ok) {
+      if (!saved) {
         setCards(oldCards.current);
         return;
       }
@@ -266,22 +262,16 @@ export default function useDnd(
     );
     if (originalCard.id === taskCard.id && originalIndex === taskIndex) return;
 
-    const res = await apiFetch(
-      `/api/boards/${boardId}/cards/${originalCard.id}/tasks/${active.id}`,
-      {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          newCardId: taskCard.id,
-          beforeId: tasks[taskIndex - 1]?.id ?? null,
-          afterId: tasks[taskIndex + 1]?.id ?? null,
-        }),
-      },
-    );
-
-    if (!res.ok) {
+    const saved = await submit({
+      type: "moveTask",
+      boardId,
+      cardId: originalCard.id,
+      taskId: String(active.id),
+      newCardId: taskCard.id,
+      beforeId: tasks[taskIndex - 1]?.id ?? null,
+      afterId: tasks[taskIndex + 1]?.id ?? null,
+    });
+    if (!saved) {
       setCards(oldCards.current);
       return;
     }

@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { isRouteErrorResponse, Link, useRouteError } from "react-router";
-import { CircleAlert, SearchX, ShieldAlert } from "lucide-react";
+import { CircleAlert, CloudOff, SearchX, ShieldAlert } from "lucide-react";
+
+import { NOT_OFFLINE } from "./Boards/loaders";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -12,6 +14,12 @@ type ErrorCopy = {
   Icon: typeof CircleAlert;
   retryable: boolean;
 };
+
+// fetch rejects with a TypeError when a request never got an answer; each
+// browser words it differently.
+const isUnreachable = (error: unknown) =>
+  error instanceof TypeError &&
+  /fetch|network|load failed/i.test(error.message);
 
 function describe(error: unknown): ErrorCopy {
   if (isRouteErrorResponse(error)) {
@@ -34,6 +42,22 @@ function describe(error: unknown): ErrorCopy {
           Icon: ShieldAlert,
           retryable: false,
         };
+      case NOT_OFFLINE:
+        return error.data === "board"
+          ? {
+              title: "Not available offline",
+              message:
+                "This board hasn't been opened on this device, so it isn't saved here. Boards you open while online stay available offline.",
+              Icon: CloudOff,
+              retryable: true,
+            }
+          : {
+              title: "You're offline",
+              message:
+                "Sign in once while online to use Skipli offline on this device.",
+              Icon: CloudOff,
+              retryable: true,
+            };
       default:
         return {
           status: error.status,
@@ -46,6 +70,15 @@ function describe(error: unknown): ErrorCopy {
           retryable: true,
         };
     }
+  }
+
+  if (isUnreachable(error)) {
+    return {
+      title: "Couldn't reach Skipli",
+      message: "Check your connection and try again.",
+      Icon: CloudOff,
+      retryable: true,
+    };
   }
 
   return {
@@ -70,7 +103,11 @@ function errorDetails(error: unknown) {
 
 // `fullPage` is for the root route, where no layout (and so no top nav) has
 // rendered; nested inside the /boards layout the nav is already on screen.
-export default function ErrorPage({ fullPage = false }: { fullPage?: boolean }) {
+export default function ErrorPage({
+  fullPage = false,
+}: {
+  fullPage?: boolean;
+}) {
   const error = useRouteError();
   const { status, title, message, Icon, retryable } = describe(error);
 
@@ -82,8 +119,13 @@ export default function ErrorPage({ fullPage = false }: { fullPage?: boolean }) 
   }, [title]);
 
   useEffect(() => {
-    // Expected HTTP errors (404, 403) aren't bugs; anything else is.
-    if (!isRouteErrorResponse(error) || error.status >= 500) {
+    // Expected HTTP errors (404, 403, not available offline) and a lost
+    // connection aren't bugs; anything else is.
+    if (isRouteErrorResponse(error)) {
+      if (error.status >= 500 && error.status !== NOT_OFFLINE) {
+        console.error(error);
+      }
+    } else if (!isUnreachable(error)) {
       console.error(error);
     }
   }, [error]);

@@ -8,7 +8,9 @@ import { socket } from "@/utils/socket";
 import type { TaskType } from "./Task";
 import { BoardContext } from "../../BoardContext";
 import useEscape from "@/hooks/useEscape";
-import { apiFetch } from "@/utils/apiFetch";
+import { newId } from "@/offline/ids";
+import { submit } from "@/offline/sync";
+import { createTask } from "@/utils/updateCard";
 
 type TaskFormProps = {
   cardId: string;
@@ -25,36 +27,33 @@ export default function CreateTaskForm(props: TaskFormProps) {
     e.preventDefault();
 
     const formData = new FormData(e.currentTarget);
-    const name = formData.get("name");
+    const name = formData.get("name") as string;
     if (!name) {
       return;
     }
 
     e.currentTarget.reset();
 
-    const res = await apiFetch(`/api/boards/${boardId}/cards/${cardId}/tasks`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name,
-        description: "",
-        status: "",
-      }),
+    const newTask: TaskType = {
+      id: newId(),
+      cardId,
+      name,
+      description: "",
+      status: "pending",
+    };
+    const saved = await submit({
+      type: "createTask",
+      boardId,
+      cardId,
+      taskId: newTask.id,
+      name,
     });
-
-    if (!res.ok) {
+    if (!saved) {
       return;
     }
 
-    const newTask: TaskType = await res.json();
-
     socket.emit("create task", newTask);
-    setCards((cards) => {
-      cards.find((card) => card.id === cardId)!.tasks.push(newTask);
-      return [...cards];
-    });
+    setCards(createTask(newTask));
   };
 
   return (

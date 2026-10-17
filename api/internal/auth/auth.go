@@ -41,6 +41,7 @@ func (h *Handler) RegisterRoutes(router *http.ServeMux) {
 	router.HandleFunc("POST /auth/send", h.sendVerificationEmail)
 	router.HandleFunc("POST /auth/verify", h.verify)
 	router.HandleFunc("POST /auth/refresh", h.refresh)
+	router.HandleFunc("POST /auth/signout", h.signOut)
 }
 
 type SendVerificationEmailRequest struct {
@@ -182,7 +183,7 @@ func (h *Handler) verify(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	setCookie(w, idTokenCookie, *out.AuthenticationResult.IdToken, "/api", 60*60)
+	setCookie(w, idTokenCookie, *out.AuthenticationResult.IdToken, idTokenPath, 60*60)
 	setCookie(w, refreshTokenCookie, *out.AuthenticationResult.RefreshToken, refreshPath, 30*24*60*60)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -202,7 +203,7 @@ func (h *Handler) refresh(w http.ResponseWriter, req *http.Request) {
 		AuthParameters: map[string]string{"REFRESH_TOKEN": refreshToken},
 	})
 	var notAuthorized *types.NotAuthorizedException
-	if errors.As(err, &notAuthorized) || out.AuthenticationResult == nil {
+	if errors.As(err, &notAuthorized) {
 		http.Error(w, "invalid refresh token", http.StatusUnauthorized)
 		return
 	}
@@ -211,7 +212,32 @@ func (h *Handler) refresh(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	if out.AuthenticationResult == nil {
+		http.Error(w, "invalid refresh token", http.StatusUnauthorized)
+		return
+	}
 
-	setCookie(w, idTokenCookie, *out.AuthenticationResult.IdToken, "/api", 60*60)
+	setCookie(w, idTokenCookie, *out.AuthenticationResult.IdToken, idTokenPath, 60*60)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// signOut ends the session on this device: it revokes the refresh token
+// with Cognito, so it can't mint new ID tokens anywhere, and clears both
+// cookies. It succeeds even without a session, or if revoking fails, so a
+// device can always get back to a signed-out state.
+func (h *Handler) signOut(w http.ResponseWriter, req *http.Request) {
+	if refreshToken, ok := cookieValue(req, refreshTokenCookie); ok {
+		_, err := h.idp.RevokeToken(req.Context(), &cip.RevokeTokenInput{
+			ClientId: aws.String(h.clientID),
+			Token:    aws.String(refreshToken),
+		})
+		if err != nil {
+			log.Printf("failed to revoke refresh token: %v", err)
+		}
+	}
+
+	setCookie(w, idTokenCookie, "", idTokenPath, -1)
+	setCookie(w, refreshTokenCookie, "", refreshPath, -1)
+	setCookie(w, refreshTokenCookie, "", legacyRefreshPath, -1)
 	w.WriteHeader(http.StatusNoContent)
 }

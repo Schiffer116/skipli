@@ -31,7 +31,7 @@ import type { CardType } from "./Card";
 import { BoardContext } from "../BoardContext";
 import { useParams } from "react-router";
 import { deleteCard, updateCard } from "@/utils/updateCard";
-import { apiFetch } from "@/utils/apiFetch";
+import { submit } from "@/offline/sync";
 
 export default function EditCardDialog(props: CardType) {
   const { id, name, description } = props;
@@ -44,38 +44,30 @@ export default function EditCardDialog(props: CardType) {
     e.preventDefault();
 
     const formData = new FormData(e.currentTarget);
-    const name = formData.get("name");
-    const description = formData.get("description") ?? "";
+    const name = formData.get("name") as string;
+    const description = (formData.get("description") as string) ?? "";
     if (!name) {
       return;
     }
 
-    const res = await apiFetch(`/api/boards/${boardId}/cards/${id}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name,
-        description,
-      }),
+    const saved = await submit({
+      type: "updateCard",
+      boardId,
+      cardId: id,
+      name,
+      description,
     });
-
-    if (!res.ok) {
+    if (!saved) {
       return;
     }
 
-    const updatedCard = await res.json();
+    const updatedCard = { id, name, description };
     socket.emit("update card", { ...updatedCard });
     setCards(updateCard(updatedCard));
   };
 
   const handleDelete = async () => {
-    const res = await apiFetch(`/api/boards/${boardId}/cards/${id}`, {
-      method: "DELETE",
-    });
-
-    if (!res.ok) {
+    if (!(await submit({ type: "deleteCard", boardId, cardId: id }))) {
       return;
     }
 
@@ -91,6 +83,7 @@ export default function EditCardDialog(props: CardType) {
         <Button
           variant="ghost"
           size="icon"
+          aria-label="Edit card"
           onClick={(e) => {
             e.stopPropagation();
             setCreateTaskFormId(null);
@@ -138,7 +131,11 @@ export default function EditCardDialog(props: CardType) {
 
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button variant="destructive" className="ml-auto">
+                  <Button
+                    variant="destructive"
+                    className="ml-auto"
+                    aria-label="Delete card"
+                  >
                     <Trash className="h-5 w-5" />
                   </Button>
                 </AlertDialogTrigger>

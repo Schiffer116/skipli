@@ -22,7 +22,10 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@radix-ui/react-dialog";
-import type { boardViewLoader } from "../loaders";
+import type { BoardViewData } from "../loaders";
+import { useMe } from "../favorites";
+import { updateBoard } from "@/offline/copy";
+import { useSync } from "@/offline/sync";
 import { apiFetch } from "@/utils/apiFetch";
 
 // Per-browser preference; storage can be unavailable (private mode etc.).
@@ -40,8 +43,11 @@ function readCollapsed() {
 export default function Sidebar() {
   const { boardId } = useParams();
   const [members, setMembers] = useState(
-    useLoaderData<typeof boardViewLoader>().members,
+    useLoaderData<BoardViewData>().members,
   );
+  const me = useMe();
+  // Inviting needs the server, to send the invitation email.
+  const { offline } = useSync();
   const [collapsed, setCollapsed] = useState(readCollapsed);
 
   useEffect(() => {
@@ -73,11 +79,12 @@ export default function Sidebar() {
       return;
     }
 
-    setMembers((members) =>
-      members.some((member) => member.email === email)
-        ? members
-        : [...members, { id: email, email, name: email.split("@")[0] }],
-    );
+    const invited = members.some((member) => member.email === email)
+      ? members
+      : [...members, { id: email, email, name: email.split("@")[0] }];
+    setMembers(invited);
+    // The board is Shared now, so it must be read-only when offline.
+    void updateBoard(me.id, boardId!, { members: invited });
   };
 
   const toggleLabel = collapsed ? "Expand member list" : "Collapse member list";
@@ -132,9 +139,12 @@ export default function Sidebar() {
               >
                 <UserAvatar
                   email={member.email}
+                  name={member.name}
                   className="ring-1 ring-border size-7"
                 />
-                {!collapsed && (
+                {collapsed ? (
+                  <span className="sr-only">{member.name}</span>
+                ) : (
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-link truncate">{member.name}</p>
                   </div>
@@ -155,12 +165,18 @@ export default function Sidebar() {
                   size="icon"
                   className="w-full"
                   aria-label="Invite"
-                  title="Invite"
+                  title={offline ? "Inviting needs a connection" : "Invite"}
+                  disabled={offline}
                 >
                   <Plus className="size-3" />
                 </Button>
               ) : (
-                <Button variant="outline" className="w-full">
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  disabled={offline}
+                  title={offline ? "Inviting needs a connection" : undefined}
+                >
                   <span className="flex items-center">
                     <Plus className="size-3" />
                     <User className="size-4" />
