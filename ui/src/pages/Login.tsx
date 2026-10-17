@@ -10,6 +10,8 @@ import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 
+import { finishSignOut } from "@/offline/signOut";
+
 export default function Login() {
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
@@ -21,13 +23,25 @@ export default function Login() {
     if (submitting) return;
 
     setSubmitting(true);
+    // End a session signed out while offline before starting a new one.
+    await finishSignOut();
     const res = await fetch("/api/auth/send", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ email }),
-    }).finally(() => setSubmitting(false));
+    })
+      .catch(() => null)
+      .finally(() => setSubmitting(false));
+    if (!res) {
+      setError(
+        navigator.onLine
+          ? "Couldn't reach Skipli. Please try again."
+          : "You're offline. Connect to the internet to sign in.",
+      );
+      return;
+    }
     if (res.status === 400) {
       setError("That email address can't receive mail. Check it for typos.");
       return;

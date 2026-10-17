@@ -12,7 +12,12 @@ import (
 const (
 	idTokenCookie      = "id_token"
 	refreshTokenCookie = "refresh_token"
-	refreshPath        = "/api/auth/refresh"
+	idTokenPath        = "/api"
+	// The refresh token goes to every /api/auth route, so signing out can
+	// revoke it. Sessions started before it moved still hold it under
+	// legacyRefreshPath until they sign out or it expires.
+	refreshPath       = "/api/auth"
+	legacyRefreshPath = "/api/auth/refresh"
 )
 
 func setCookie(w http.ResponseWriter, name, value, path string, maxAge int) {

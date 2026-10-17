@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Link } from "react-router";
-import { Star, UsersRound } from "lucide-react";
+import { Link, useNavigate } from "react-router";
+import { LogOut, Star, UsersRound } from "lucide-react";
 
 import UserAvatar from "@/components/UserAvatar";
 import { Button } from "@/components/ui/button";
@@ -16,9 +16,21 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { signOut } from "@/offline/signOut";
+import { useSync } from "@/offline/sync";
 import { apiFetch } from "@/utils/apiFetch";
 
-import type { Favorite, Me } from "./loaders";
+import { forgetMe, type Favorite, type Me } from "./loaders";
 
 type HeaderProps = {
   me: Me;
@@ -29,6 +41,16 @@ type HeaderProps = {
 export default function Header({ me, setMe, favorites }: HeaderProps) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
+  const { offline, pendingCount, rejectedCount } = useSync();
+  const navigate = useNavigate();
+  const unsaved = pendingCount + rejectedCount;
+
+  const finishSignOut = async () => {
+    await signOut();
+    forgetMe();
+    navigate("/login", { replace: true });
+  };
 
   const saveName = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -72,6 +94,7 @@ export default function Header({ me, setMe, favorites }: HeaderProps) {
               {me.name}
               <UserAvatar
                 email={me.email}
+                name={me.name}
                 className="size-7 ring-1 ring-nav-muted/40"
               />
             </button>
@@ -100,19 +123,64 @@ export default function Header({ me, setMe, favorites }: HeaderProps) {
                     {error}
                   </p>
                 )}
+                {offline && (
+                  <p className="text-sm text-muted-foreground">
+                    Changing your name needs a connection.
+                  </p>
+                )}
               </div>
               <DialogFooter className="mt-4">
+                <Button
+                  variant="ghost"
+                  type="button"
+                  className="sm:mr-auto"
+                  onClick={() => {
+                    if (unsaved === 0) {
+                      void finishSignOut();
+                      return;
+                    }
+                    // One dialog at a time: the confirmation replaces this one.
+                    setOpen(false);
+                    setConfirmSignOut(true);
+                  }}
+                >
+                  <LogOut />
+                  Sign out
+                </Button>
                 <DialogClose asChild>
                   <Button variant="outline" type="button">
                     Cancel
                   </Button>
                 </DialogClose>
-                <Button type="submit">Save</Button>
+                <Button type="submit" disabled={offline}>
+                  Save
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>
         </Dialog>
       </div>
+
+      <AlertDialog open={confirmSignOut} onOpenChange={setConfirmSignOut}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Sign out and discard unsaved changes?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              You have {unsavedSummary(pendingCount, rejectedCount)}. Signing
+              out deletes your boards from this device, and those changes with
+              them.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Stay signed in</AlertDialogCancel>
+            <AlertDialogAction onClick={finishSignOut}>
+              Sign out and discard
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <nav
         aria-label="Favorite boards"
@@ -141,4 +209,15 @@ export default function Header({ me, setMe, favorites }: HeaderProps) {
       </nav>
     </header>
   );
+}
+
+const changes = (n: number) => `${n} ${n === 1 ? "change" : "changes"}`;
+
+// In the words the offline banner uses for the same changes.
+function unsavedSummary(pending: number, rejected: number) {
+  const waiting = `${changes(pending)} waiting to sync`;
+  const refused = `${changes(rejected)} that couldn't be saved`;
+  if (rejected === 0) return waiting;
+  if (pending === 0) return refused;
+  return `${waiting} and ${rejected} that couldn't be saved`;
 }

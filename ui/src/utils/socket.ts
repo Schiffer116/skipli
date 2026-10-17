@@ -6,6 +6,7 @@ const handlers = new Map<string, Set<Handler>>();
 let ws: WebSocket | null = null;
 let boardId: string | null = null;
 let retry: ReturnType<typeof setTimeout> | undefined;
+let waitForOnline: (() => void) | null = null;
 
 function open(id: string) {
   const protocol = location.protocol === "https:" ? "wss" : "ws";
@@ -24,10 +25,27 @@ function open(id: string) {
 
   conn.onclose = () => {
     if (ws !== conn) return;
-    retry = setTimeout(async () => {
-      await apiFetch("/api/me");
+    const reconnect = async () => {
+      try {
+        // Refreshes the session if it expired while disconnected.
+        await apiFetch("/api/me");
+      } catch {
+        // Still unreachable: the new connection fails and retries again.
+      }
       if (ws === conn) open(id);
-    }, 3000);
+    };
+
+    // Offline there's nothing to reach, so wait for the browser to say the
+    // connection is back instead of retrying every few seconds.
+    if (navigator.onLine) {
+      retry = setTimeout(reconnect, 3000);
+    } else {
+      waitForOnline = () => {
+        waitForOnline = null;
+        void reconnect();
+      };
+      window.addEventListener("online", waitForOnline, { once: true });
+    }
   };
 
   ws = conn;
@@ -42,6 +60,8 @@ export const socket = {
 
   disconnect() {
     clearTimeout(retry);
+    if (waitForOnline) window.removeEventListener("online", waitForOnline);
+    waitForOnline = null;
     const conn = ws;
     ws = null;
     boardId = null;

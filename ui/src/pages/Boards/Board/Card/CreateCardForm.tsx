@@ -9,7 +9,8 @@ import { socket } from "@/utils/socket";
 import { BoardContext } from "../BoardContext";
 import { createCard } from "@/utils/updateCard";
 import useEscape from "@/hooks/useEscape";
-import { apiFetch } from "@/utils/apiFetch";
+import { newId } from "@/offline/ids";
+import { submit } from "@/offline/sync";
 
 export default function CreateCard() {
   const boardId = useParams().boardId!;
@@ -21,31 +22,24 @@ export default function CreateCard() {
     e.preventDefault();
 
     const formData = new FormData(e.currentTarget);
-    const name = formData.get("name");
+    const name = formData.get("name") as string;
     if (!name) {
       return;
     }
 
-    const data = await apiFetch(`/api/boards/${boardId}/cards`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name,
-        description: "",
-        createdAt: new Date().toISOString(),
-      }),
+    const cardId = newId();
+    const saved = await submit({
+      type: "createCard",
+      boardId,
+      cardId,
+      name,
+      createdAt: new Date().toISOString(),
     });
-
-    if (!data.ok) {
+    if (!saved) {
       return;
     }
 
-    const newCard = {
-      ...(await data.json()),
-      tasks: [],
-    };
+    const newCard = { id: cardId, name, description: "", tasks: [] };
 
     socket.emit("create card", newCard);
     setCards(createCard(newCard));

@@ -43,7 +43,16 @@ jobs:
           terraform init -backend-config=env/dev.s3.tfbackend
           terraform apply -auto-approve -var-file=env/dev.tfvars
 
-      - run: aws s3 sync ui/dist "s3://${{ vars.DEV_UI_BUCKET }}/ui" --delete
+      # Hashed assets first, so the new index.html never points at a file
+      # that isn't uploaded yet. Their names change with their content, so
+      # browsers may keep them forever; every other file (index.html, the
+      # service worker, the manifest) must be checked on each load, or a
+      # deploy takes up to CloudFront's default hour to show up.
+      - run: |
+          aws s3 sync ui/dist/assets "s3://${{ vars.DEV_UI_BUCKET }}/ui/assets" --delete \
+            --cache-control "public, max-age=31536000, immutable"
+          aws s3 sync ui/dist "s3://${{ vars.DEV_UI_BUCKET }}/ui" --delete --exclude "assets/*" \
+            --cache-control "no-cache"
 
   prod-plan:
     if: github.ref_name == 'master'
@@ -105,4 +114,13 @@ jobs:
           terraform init -backend-config=env/prod.s3.tfbackend
           terraform apply tfplan
 
-      - run: aws s3 sync ui/dist "s3://${{ vars.PROD_UI_BUCKET }}/ui" --delete
+      # Hashed assets first, so the new index.html never points at a file
+      # that isn't uploaded yet. Their names change with their content, so
+      # browsers may keep them forever; every other file (index.html, the
+      # service worker, the manifest) must be checked on each load, or a
+      # deploy takes up to CloudFront's default hour to show up.
+      - run: |
+          aws s3 sync ui/dist/assets "s3://${{ vars.PROD_UI_BUCKET }}/ui/assets" --delete \
+            --cache-control "public, max-age=31536000, immutable"
+          aws s3 sync ui/dist "s3://${{ vars.PROD_UI_BUCKET }}/ui" --delete --exclude "assets/*" \
+            --cache-control "no-cache"

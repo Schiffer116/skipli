@@ -15,8 +15,11 @@ import BoardView from "@/pages/Boards/BoardView";
 import {
   boardListLoader,
   boardsLoader,
+  boardsShouldRevalidate,
   boardViewLoader,
 } from "@/pages/Boards/loaders";
+import UpdatePrompt from "@/components/UpdatePrompt";
+import { setOnRejected } from "@/offline/sync";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -50,6 +53,7 @@ const router = createBrowserRouter([
         path: "/boards",
         Component: Boards,
         loader: boardsLoader,
+        shouldRevalidate: boardsShouldRevalidate,
         children: [
           {
             // Errors here render inside the Boards layout, keeping the nav.
@@ -90,8 +94,13 @@ const router = createBrowserRouter([
     ],
   },
 ]);
+// The server refused some changes made offline, so what's on screen is
+// ahead of it: load the page's data again.
+setOnRejected(() => void router.revalidate());
+
 createRoot(document.getElementById("root")!).render(
   <QueryClientProvider client={queryClient}>
     <RouterProvider router={router} />
+    <UpdatePrompt />
   </QueryClientProvider>,
 );

@@ -10,7 +10,8 @@ import { useParams } from "react-router";
 import { socket } from "@/utils/socket";
 import { updateTask } from "@/utils/updateCard";
 import { BoardContext } from "../../BoardContext";
-import { apiFetch } from "@/utils/apiFetch";
+import { submit, useSync } from "@/offline/sync";
+import UnsentMark from "@/components/UnsentMark";
 
 export type TaskType = {
   id: string;
@@ -22,6 +23,7 @@ export type TaskType = {
 
 export default function Task(props: TaskType) {
   const { id } = props;
+  const { readOnly } = useContext(BoardContext)!;
 
   const {
     attributes,
@@ -32,6 +34,7 @@ export default function Task(props: TaskType) {
     setNodeRef,
   } = useSortable({
     id,
+    disabled: readOnly,
   });
 
   const style = {
@@ -45,8 +48,9 @@ export default function Task(props: TaskType) {
       ref={setNodeRef}
       style={style}
       {...props}
-      {...attributes}
-      listeners={listeners}
+      // Read-only: not announced as draggable either.
+      {...(!readOnly && attributes)}
+      listeners={readOnly ? undefined : listeners}
     />
   );
 }
@@ -58,12 +62,13 @@ type DummyTaskProps = TaskType & {
 export const DummyTask = forwardRef<HTMLDivElement, DummyTaskProps>(
   (props, ref) => {
     const { id, name, description, status, listeners, cardId, ...rest } = props;
+    const { readOnly } = useContext(BoardContext)!;
 
     return (
       <Card
         ref={ref}
         {...rest}
-        className="min-h-10 p-0 cursor-grab shadow-none rounded-md hover:border-link hover:bg-accent/40"
+        className={`min-h-10 p-0 shadow-none rounded-md ${readOnly ? "" : "cursor-grab hover:border-link hover:bg-accent/40"}`}
       >
         <TaskBody
           id={id}
@@ -83,30 +88,30 @@ const TaskBody = memo(function TaskBody(
 ) {
   const { id, name, description, status, listeners, cardId } = props;
   const { boardId } = useParams();
-  const { setCards } = useContext(BoardContext)!;
+  const { readOnly, setCards } = useContext(BoardContext)!;
+  const unsent = useSync().pendingIds.has(id);
 
   const toggleStatus = async () => {
-    const res = await apiFetch(
-      `/api/boards/${boardId}/cards/${cardId}/tasks/${id}`,
-      {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          id,
-          name,
-          description,
-          status: status === "done" ? "pending" : "done",
-        }),
-      },
-    );
-
-    if (!res.ok) {
+    const updatedTask = {
+      id,
+      cardId,
+      name,
+      description,
+      status: status === "done" ? "pending" : "done",
+    };
+    const saved = await submit({
+      type: "updateTask",
+      boardId: boardId!,
+      cardId,
+      taskId: id,
+      name,
+      description,
+      status: updatedTask.status,
+    });
+    if (!saved) {
       return;
     }
 
-    const updatedTask = await res.json();
     socket.emit("update task", updatedTask);
     setCards(updateTask(updatedTask));
   };
@@ -114,9 +119,12 @@ const TaskBody = memo(function TaskBody(
   return (
     <CardHeader className="relative group flex items-center p-0 pr-2 h-full">
       <Button
-        className={`size-6 ml-2 transition-colors ${status === "done" ? "visible" : "invisible group-hover:visible pointer-coarse:visible"}`}
+        // Hidden until hovered, but still reachable by keyboard.
+        className={`size-6 ml-2 transition-colors ${status === "done" ? "" : readOnly ? "invisible" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"}`}
         variant="ghost"
         size="icon"
+        disabled={readOnly}
+        aria-label={status === "done" ? "Mark not done" : "Mark done"}
         onClick={toggleStatus}
       >
         {status === "done" ? (
@@ -131,13 +139,16 @@ const TaskBody = memo(function TaskBody(
       >
         <span className="break-words">{name}</span>
       </CardTitle>
-      <EditTaskDialog
-        id={id}
-        cardId={cardId}
-        name={name}
-        description={description}
-        status={status}
-      />
+      {unsent && <UnsentMark className="mr-1" />}
+      {!readOnly && (
+        <EditTaskDialog
+          id={id}
+          cardId={cardId}
+          name={name}
+          description={description}
+          status={status}
+        />
+      )}
     </CardHeader>
   );
 });

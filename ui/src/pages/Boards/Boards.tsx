@@ -1,13 +1,25 @@
 import { useState } from "react";
 import { Outlet, useLoaderData } from "react-router";
 
+import { submit } from "@/offline/sync";
+import { revisionOf } from "@/utils/revision";
+
 import Header from "./Header";
+import OfflineBanner from "./OfflineBanner";
 import type { FavoritesContext } from "./favorites";
 import type { boardsLoader, Favorite } from "./loaders";
-import { apiFetch } from "@/utils/apiFetch";
 
-export default function Boards() {
+// Keyed by the loader's data, so reloading it starts the layout afresh.
+export default function BoardsRoute() {
   const loaderData = useLoaderData<typeof boardsLoader>();
+  return <Boards key={revisionOf(loaderData)} loaderData={loaderData} />;
+}
+
+function Boards({
+  loaderData,
+}: {
+  loaderData: Awaited<ReturnType<typeof boardsLoader>>;
+}) {
   const [favorites, setFavorites] = useState(loaderData.favorites);
   const [me, setMe] = useState(loaderData.me);
 
@@ -18,25 +30,23 @@ export default function Boards() {
       favorite ? [...old, board] : old.filter((f) => f.id !== board.id),
     );
 
-    const res = await apiFetch(`/api/boards/${board.id}/favorite`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ favorite }),
-    });
-
-    if (!res.ok) {
+    if (
+      !(await submit({ type: "favoriteBoard", boardId: board.id, favorite }))
+    ) {
       setFavorites(old);
     }
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-background">
+    <div className="flex flex-col h-dvh bg-background">
       <Header me={me} setMe={setMe} favorites={favorites} />
-      <Outlet
-        context={{ favorites, toggleFavorite } satisfies FavoritesContext}
-      />
+      <OfflineBanner />
+      {/* The page takes whatever height the header and banner leave. */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <Outlet
+          context={{ me, favorites, toggleFavorite } satisfies FavoritesContext}
+        />
+      </div>
     </div>
   );
 }

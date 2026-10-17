@@ -10,8 +10,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
@@ -19,6 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
 	"github.com/Schiffer116/skipli/api/internal/auth"
+	"github.com/Schiffer116/skipli/api/internal/clientid"
 	"github.com/Schiffer116/skipli/api/internal/profile"
 )
 
@@ -114,6 +113,8 @@ func itemExists(ctx context.Context, db *dynamodb.Client, table, pk, sk string) 
 }
 
 type CreateRequest struct {
+	// ID is optional: the app names boards it creates offline.
+	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 }
@@ -137,8 +138,12 @@ func (h *Handler) create(w http.ResponseWriter, req *http.Request) {
 
 	log.Printf("got: %+v", r)
 
-	id := uuid.New().String()
-	_, err := h.db.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{
+	id, err := clientid.Pick(r.ID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	_, err = h.db.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{
 		TransactItems: []types.TransactWriteItem{
 			{
 				Put: &types.Put{
@@ -151,6 +156,7 @@ func (h *Handler) create(w http.ResponseWriter, req *http.Request) {
 						"Name":        &types.AttributeValueMemberS{Value: r.Name},
 						"Description": &types.AttributeValueMemberS{Value: r.Description},
 					},
+					ConditionExpression: aws.String("attribute_not_exists(PK)"),
 				},
 			},
 			{
@@ -169,6 +175,10 @@ func (h *Handler) create(w http.ResponseWriter, req *http.Request) {
 	})
 
 	if err != nil {
+		if clientid.Taken(err) {
+			http.Error(w, "an item with this id already exists", http.StatusConflict)
+			return
+		}
 		log.Printf("failed to create board: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -809,7 +819,13 @@ func (h *Handler) put(w http.ResponseWriter, req *http.Request) {
 			":name":        &types.AttributeValueMemberS{Value: r.Name},
 			":description": &types.AttributeValueMemberS{Value: r.Description},
 		},
+		ConditionExpression: aws.String("attribute_exists(SK)"),
 	})
+	var missing *types.ConditionalCheckFailedException
+	if errors.As(err, &missing) {
+		http.Error(w, "board not found", http.StatusNotFound)
+		return
+	}
 	if err != nil {
 		log.Printf("failed to update board: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)

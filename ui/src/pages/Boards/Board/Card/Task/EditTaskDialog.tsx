@@ -31,7 +31,7 @@ import { socket } from "@/utils/socket";
 import { BoardContext } from "../../BoardContext";
 import type { TaskType } from "./Task";
 import { deleteTask, updateTask } from "@/utils/updateCard";
-import { apiFetch } from "@/utils/apiFetch";
+import { submit } from "@/offline/sync";
 
 export default function EditTaskDialog(props: TaskType) {
   const { id, cardId, name, description, status } = props;
@@ -44,46 +44,39 @@ export default function EditTaskDialog(props: TaskType) {
     e.preventDefault();
 
     const formData = new FormData(e.currentTarget);
-    const name = formData.get("name");
-    const description = formData.get("description") ?? "";
-    const status = formData.get("status") ?? "";
+    const name = formData.get("name") as string;
+    const description = (formData.get("description") as string) ?? "";
+    const status = (formData.get("status") as string) ?? "";
     if (!name) {
       return;
     }
 
-    const res = await apiFetch(
-      `/api/boards/${boardId}/cards/${cardId}/tasks/${id}`,
-      {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name,
-          description,
-          status,
-        }),
-      },
-    );
-
-    if (!res.ok) {
+    const saved = await submit({
+      type: "updateTask",
+      boardId,
+      cardId,
+      taskId: id,
+      name,
+      description,
+      status,
+    });
+    if (!saved) {
       return;
     }
 
-    const updatedTask = await res.json();
+    const updatedTask = { id, cardId, name, description, status };
     socket.emit("update task", updatedTask);
     setCards(updateTask(updatedTask));
   };
 
   const handleDelete = async () => {
-    const res = await apiFetch(
-      `/api/boards/${boardId}/cards/${cardId}/tasks/${id}`,
-      {
-        method: "DELETE",
-      },
-    );
-
-    if (!res.ok) {
+    const saved = await submit({
+      type: "deleteTask",
+      boardId,
+      cardId,
+      taskId: id,
+    });
+    if (!saved) {
       return;
     }
 
@@ -99,7 +92,8 @@ export default function EditTaskDialog(props: TaskType) {
         <Button
           variant="ghost"
           size="icon"
-          className="invisible group-hover:visible pointer-coarse:visible transition-colors"
+          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 transition-colors"
+          aria-label="Edit task"
           onClick={(e) => {
             e.stopPropagation();
             setCreateTaskFormId(null);
@@ -148,7 +142,11 @@ export default function EditTaskDialog(props: TaskType) {
 
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button variant="destructive" className="ml-auto">
+                  <Button
+                    variant="destructive"
+                    className="ml-auto"
+                    aria-label="Delete task"
+                  >
                     <Trash className="h-5 w-5" />
                   </Button>
                 </AlertDialogTrigger>

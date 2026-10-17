@@ -4,9 +4,11 @@ import { useLoaderData } from "react-router";
 
 import { Button } from "@/components/ui/button";
 
+import { revisionOf } from "@/utils/revision";
+
 import CreateBoardForm from "./CreateBoardForm";
 import SortableBoards from "./SortableBoards";
-import type { boardListLoader } from "../loaders";
+import type { BoardListData } from "../loaders";
 
 export type Board = {
   id: string;
@@ -18,8 +20,14 @@ export type Board = {
   doneCount: number;
 };
 
-export default function BoardList() {
-  const loaderData = useLoaderData<typeof boardListLoader>();
+// Keyed by the loader's data, so reloading it starts the list afresh.
+export default function BoardListRoute() {
+  const loaderData = useLoaderData<BoardListData>();
+  return <BoardList key={revisionOf(loaderData)} loaderData={loaderData} />;
+}
+
+function BoardList({ loaderData }: { loaderData: BoardListData }) {
+  const offline = loaderData.offline;
   const [boards, setBoards] = useState(loaderData.boards);
   const [teamBoards, setTeamBoards] = useState(loaderData.teamBoards);
   const [showCreateBoardForm, setShowCreateBoardForm] = useState(false);
@@ -28,7 +36,12 @@ export default function BoardList() {
     <div className="flex flex-col gap-10 px-10 py-8">
       <div className="flex flex-col gap-4">
         <h1 className="text-2xl font-bold">Your workspace</h1>
-        <SortableBoards boards={boards} setBoards={setBoards} editable>
+        <SortableBoards
+          boards={boards}
+          setBoards={setBoards}
+          offline={offline}
+          editable
+        >
           {showCreateBoardForm ? (
             <CreateBoardForm
               setBoards={setBoards}
@@ -49,8 +62,19 @@ export default function BoardList() {
 
       <div className="flex flex-col gap-4">
         <h2 className="text-xl font-bold">Your teams</h2>
-        <SortableBoards boards={teamBoards} setBoards={setTeamBoards} />
+        <SortableBoards
+          boards={teamBoards}
+          setBoards={setTeamBoards}
+          offline={offline}
+        />
       </div>
+
+      {offline?.missing && (
+        <p className="text-sm text-muted-foreground">
+          Some boards aren't available offline. Boards you open while online are
+          kept on this device.
+        </p>
+      )}
     </div>
   );
 }

@@ -11,6 +11,9 @@ import { CircleAlert, Loader2, Mail } from "lucide-react";
 import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 
+import { setSignOutPending } from "@/offline/session";
+import { forgetMe } from "./Boards/loaders";
+
 type VerifyError = { title: string; message: string };
 
 export default function Verify() {
@@ -67,6 +70,9 @@ export default function Verify() {
         return;
       }
 
+      // A new session replaces any left over from signing out offline.
+      setSignOutPending(false);
+      forgetMe();
       navigate("/boards");
     } catch {
       fail({
@@ -84,7 +90,7 @@ export default function Verify() {
         <CardHeader>
           <CardTitle>Email Verification</CardTitle>
           <CardDescription>
-            Enter the 6-digit code we emailed you
+            Enter the 8-digit code we emailed you
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">

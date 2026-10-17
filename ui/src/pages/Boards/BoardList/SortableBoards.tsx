@@ -19,16 +19,21 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import UnsentMark from "@/components/UnsentMark";
+import { submit, useSync } from "@/offline/sync";
+import { ago } from "@/offline/time";
+import { OwnKeyboardSensor } from "@/utils/keyboardSensor";
 
 import type { Board } from "./BoardList";
 import EditBoardDialog from "./EditBoardDialog";
 import FavoriteButton from "../FavoriteButton";
-import { apiFetch } from "@/utils/apiFetch";
-import { OwnKeyboardSensor } from "@/utils/keyboardSensor";
+import { useMe } from "../favorites";
+import type { BoardListData } from "../loaders";
 
 type SortableBoardsProps = {
   boards: Board[];
   setBoards: React.Dispatch<React.SetStateAction<Board[]>>;
+  offline?: BoardListData["offline"];
   editable?: boolean;
   children?: React.ReactNode;
 };
@@ -36,6 +41,7 @@ type SortableBoardsProps = {
 export default function SortableBoards({
   boards,
   setBoards,
+  offline,
   editable = false,
   children,
 }: SortableBoardsProps) {
@@ -62,15 +68,11 @@ export default function SortableBoards({
     );
     setBoards(newBoards);
 
-    const res = await apiFetch("/api/boards/order", {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ boardIds: newBoards.map((board) => board.id) }),
+    const saved = await submit({
+      type: "orderBoards",
+      boardIds: newBoards.map((board) => board.id),
     });
-
-    if (!res.ok) {
+    if (!saved) {
       setBoards(oldBoards);
     }
   };
@@ -88,7 +90,10 @@ export default function SortableBoards({
               key={board.id}
               board={board}
               setBoards={setBoards}
-              editable={editable}
+              // Offline, only a Solo board can still be changed. A board
+              // made offline isn't in the snapshot yet, but it's Solo.
+              editable={editable && offline?.solo[board.id] !== false}
+              savedAt={offline?.savedAt[board.id]}
             />
           ))}
           {children}
@@ -102,10 +107,13 @@ type BoardTileProps = {
   board: Board;
   setBoards: React.Dispatch<React.SetStateAction<Board[]>>;
   editable: boolean;
+  savedAt?: number;
 };
 
-function BoardTile({ board, setBoards, editable }: BoardTileProps) {
+function BoardTile({ board, setBoards, editable, savedAt }: BoardTileProps) {
   const navigate = useNavigate();
+  const me = useMe();
+  const unsent = useSync().pendingIds.has(board.id);
 
   const {
     attributes,
@@ -131,7 +139,7 @@ function BoardTile({ board, setBoards, editable }: BoardTileProps) {
       style={style}
       {...attributes}
       {...listeners}
-      className={`group relative w-full max-w-xs aspect-video cursor-pointer p-4 gap-2 border-t-4 hover:bg-accent/40 ${editable ? "border-t-primary" : "border-t-link"}`}
+      className={`group relative w-full max-w-xs aspect-video cursor-pointer p-4 gap-2 border-t-4 hover:bg-accent/40 ${board.owner === me.id ? "border-t-primary" : "border-t-link"}`}
       onClick={() => navigate(`/boards/${board.id}`)}
     >
       <CardHeader className="flex justify-between items-center p-0">
@@ -139,6 +147,7 @@ function BoardTile({ board, setBoards, editable }: BoardTileProps) {
           {board.name}
         </CardTitle>
         <div className="flex items-center">
+          {unsent && <UnsentMark />}
           <FavoriteButton board={board} />
           {editable && <EditBoardDialog {...board} setBoards={setBoards} />}
         </div>
@@ -148,8 +157,11 @@ function BoardTile({ board, setBoards, editable }: BoardTileProps) {
           {board.description}
         </p>
       )}
-      <p className="mt-auto text-xs text-muted-foreground tabular-nums">
-        {board.doneCount} / {board.taskCount} done
+      <p className="mt-auto flex justify-between gap-2 text-xs text-muted-foreground tabular-nums">
+        <span>
+          {board.doneCount} / {board.taskCount} done
+        </span>
+        {savedAt !== undefined && <span>Updated {ago(savedAt)}</span>}
       </p>
     </Card>
   );

@@ -31,17 +31,24 @@ import Card, { DummyCard, type CardType } from "./Card/Card";
 import { DummyTask, type TaskType } from "./Card/Task/Task";
 import { useState } from "react";
 import CreateCardForm from "./Card/CreateCardForm";
-import type { boardViewLoader } from "../loaders";
+import type { BoardViewData } from "../loaders";
 import { BoardContext } from "./BoardContext";
 import FavoriteButton from "../FavoriteButton";
 import CleanUpButton from "./CleanUpButton";
+import { useMe } from "../favorites";
+import { useSync } from "@/offline/sync";
+import { ago } from "@/offline/time";
+import useSaveCards from "@/offline/useSaveCards";
 
 export default function Board() {
-  const [cards, setCards] = useState(
-    useLoaderData<typeof boardViewLoader>().cardsWithTasks,
-  );
-  const { name, description, owner } = useLoaderData<typeof boardViewLoader>();
+  const loaderData = useLoaderData<BoardViewData>();
+  const [cards, setCards] = useState(loaderData.cardsWithTasks);
+  const { name, description, owner, members, savedAt } = loaderData;
   const { boardId } = useParams();
+  const { offline } = useSync();
+  // Offline, only a Solo board can be changed; a Shared board is read-only.
+  const readOnly = offline && members.length > 1;
+  useSaveCards(useMe().id, boardId!, cards);
   const [layout, setLayout] = useBoardLayout();
   const [listElement, setListElement] = useState<HTMLDivElement | null>(null);
   const [masonryElement, setMasonryElement] = useState<HTMLDivElement | null>(
@@ -54,6 +61,7 @@ export default function Board() {
   const [createTaskFormId, setCreateTaskFormId] = useState<string | null>(null);
 
   const boardContextValue = {
+    readOnly,
     cards,
     setCards,
     showCreateCardForm,
@@ -93,7 +101,9 @@ export default function Board() {
 
   useSocket(boardId!, setCards);
 
-  const createCard = (
+  const createCard = readOnly ? (
+    <div key={CREATE_CARD_KEY} />
+  ) : (
     <div key={CREATE_CARD_KEY} className="flex-shrink-0 w-80">
       {showCreateCardForm ? (
         <CreateCardForm />
@@ -144,11 +154,13 @@ export default function Board() {
                 >
                   {masonry ? <Columns3 /> : <LayoutDashboard />}
                 </Button>
-                <CleanUpButton
-                  boardId={boardId!}
-                  cards={cards}
-                  setCards={setCards}
-                />
+                {!readOnly && (
+                  <CleanUpButton
+                    boardId={boardId!}
+                    cards={cards}
+                    setCards={setCards}
+                  />
+                )}
               </div>
             </div>
             {description && (
@@ -156,10 +168,18 @@ export default function Board() {
                 {description}
               </p>
             )}
+            {/* Loaded online, the board was live until the connection
+                dropped, so there's no "last updated" to show. */}
+            {offline && (readOnly || savedAt !== undefined) && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {readOnly && "Read-only offline. "}
+                {savedAt !== undefined && `Last updated ${ago(savedAt)}.`}
+              </p>
+            )}
           </header>
 
           <DndContext
-            sensors={sensors}
+            sensors={readOnly ? [] : sensors}
             collisionDetection={collisionDetection}
             measuring={{ droppable: { measure: measureMasonryTarget } }}
             onDragStart={onDragStart}

@@ -25,7 +25,7 @@ import {
 import { Button } from "@/components/ui/button";
 import type { Board } from "./BoardList";
 import { DialogDescription } from "@radix-ui/react-dialog";
-import { apiFetch } from "@/utils/apiFetch";
+import { submit } from "@/offline/sync";
 
 type UpdateBoardDialogProps = Board & {
   setBoards: React.Dispatch<React.SetStateAction<Board[]>>;
@@ -44,18 +44,9 @@ export default function EditBoardDialog(props: UpdateBoardDialogProps) {
       return;
     }
 
-    const res = await apiFetch(`/api/boards/${id}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name,
-        description,
-      }),
-    });
-
-    if (!res.ok) {
+    if (
+      !(await submit({ type: "updateBoard", boardId: id, name, description }))
+    ) {
       return;
     }
 
@@ -67,11 +58,7 @@ export default function EditBoardDialog(props: UpdateBoardDialogProps) {
   };
 
   const deleteBoard = async () => {
-    const res = await apiFetch(`/api/boards/${id}`, {
-      method: "DELETE",
-    });
-
-    if (!res.ok) {
+    if (!(await submit({ type: "deleteBoard", boardId: id }))) {
       return;
     }
 
@@ -84,6 +71,7 @@ export default function EditBoardDialog(props: UpdateBoardDialogProps) {
         <Button
           variant="ghost"
           size="icon"
+          aria-label="Edit board"
           onClick={(e) => {
             e.stopPropagation();
           }}
@@ -128,7 +116,11 @@ export default function EditBoardDialog(props: UpdateBoardDialogProps) {
 
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="destructive" className="ml-auto">
+                <Button
+                  variant="destructive"
+                  className="ml-auto"
+                  aria-label="Delete board"
+                >
                   <Trash className="h-5 w-5" />
                 </Button>
               </AlertDialogTrigger>

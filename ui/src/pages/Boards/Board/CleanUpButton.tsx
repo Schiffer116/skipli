@@ -12,7 +12,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { apiFetch } from "@/utils/apiFetch";
+import { submit } from "@/offline/sync";
 import { socket } from "@/utils/socket";
 import { cleanUp as removeDoneTasks } from "@/utils/updateCard";
 
@@ -34,10 +34,7 @@ export default function CleanUpButton({
     .filter((task) => task.status === "done").length;
 
   const cleanUp = async () => {
-    const res = await apiFetch(`/api/boards/${boardId}/cleanup`, {
-      method: "POST",
-    });
-    if (!res.ok) {
+    if (!(await submit({ type: "cleanUp", boardId }))) {
       return;
     }
 
