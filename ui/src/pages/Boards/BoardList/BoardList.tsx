@@ -1,8 +1,9 @@
 import { Plus } from "lucide-react";
-import { useState } from "react";
-import { useLoaderData } from "react-router";
+import { useEffect, useState } from "react";
+import { useLoaderData, useRevalidator } from "react-router";
 
 import { Button } from "@/components/ui/button";
+import { useSync } from "@/offline/sync";
 
 import { revisionOf } from "@/utils/revision";
 
@@ -23,7 +24,21 @@ export type Board = {
 // Keyed by the loader's data, so reloading it starts the list afresh.
 export default function BoardListRoute() {
   const loaderData = useLoaderData<BoardListData>();
+  useReloadOnConnectionChange(loaderData);
   return <BoardList key={revisionOf(loaderData)} loaderData={loaderData} />;
+}
+
+// Which boards are listed and which can be changed differ offline, so the
+// list loads again when the connection comes or goes. Changes made from the
+// list are already in the Offline copy, so nothing on screen is lost.
+function useReloadOnConnectionChange(loaderData: BoardListData) {
+  const { offline } = useSync();
+  const { revalidate, state } = useRevalidator();
+  const loadedOffline = loaderData.offline !== undefined;
+
+  useEffect(() => {
+    if (offline !== loadedOffline && state === "idle") void revalidate();
+  }, [offline, loadedOffline, state, revalidate]);
 }
 
 function BoardList({ loaderData }: { loaderData: BoardListData }) {
