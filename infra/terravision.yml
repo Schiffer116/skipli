@@ -1,0 +1,77 @@
+format: 0.3
+title: Skipli on AWS
+
+# Plumbing that clutters the picture without changing the request flow
+remove:
+  - archive_file.*
+  - aws_iam_*
+  - aws_cloudwatch_log_group.*
+  - aws_lambda_permission.*
+  - aws_apigatewayv2_integration.*
+  - aws_apigatewayv2_route.*
+  - aws_apigatewayv2_stage.*
+  - aws_cloudfront_function.*
+  - aws_cloudfront_origin_access_control.*
+  - aws_s3_bucket_policy.*
+  - aws_acm_certificate.*
+  # Drawn as the zone below: TerraVision points record arrows the wrong way
+  - aws_route53_record.*
+
+# The DNS records live in the hosted zone of a separate DNS account
+add:
+  aws_route53_zone.dns: {}
+
+# Reversed dependency edges, redrawn in the direction requests flow
+disconnect:
+  aws_dynamodb_table.skipli:
+    - aws_lambda_function.realtime
+    - aws_lambda_function.skipli
+  aws_cognito_user_pool.cognito:
+    - aws_lambda_function.realtime
+    - aws_lambda_function.skipli
+  aws_sesv2_email_identity.domain:
+    - aws_cognito_user_pool.cognito
+
+connect:
+  tv_aws_users.users:
+    - aws_route53_zone.dns: DNS
+    - aws_cloudfront_distribution.skipli: HTTPS
+  aws_cloudfront_distribution.skipli:
+    - aws_s3_bucket.skipli: "/* UI"
+    - aws_apigatewayv2_api.skipli: "/api/*"
+    - aws_apigatewayv2_api.realtime: "/api/ws"
+  aws_apigatewayv2_api.skipli:
+    - aws_lambda_function.skipli
+  aws_apigatewayv2_api.realtime:
+    - aws_lambda_function.realtime
+  aws_lambda_function.skipli:
+    - aws_dynamodb_table.skipli
+    - aws_cognito_user_pool.cognito
+    - aws_apigatewayv2_api.realtime: Push updates
+  aws_lambda_function.realtime:
+    - aws_dynamodb_table.skipli
+    - aws_cognito_user_pool.cognito
+  aws_cognito_user_pool.cognito:
+    - aws_sesv2_email_identity.domain: Sign-in emails
+
+update:
+  aws_route53_zone.dns:
+    label: Route 53
+  aws_cloudfront_distribution.skipli:
+    label: CloudFront
+  aws_s3_bucket.skipli:
+    label: S3 (UI)
+  aws_apigatewayv2_api.skipli:
+    label: HTTP API
+  aws_apigatewayv2_api.realtime:
+    label: WebSocket API
+  aws_lambda_function.skipli:
+    label: API Lambda
+  aws_lambda_function.realtime:
+    label: Realtime Lambda
+  aws_dynamodb_table.skipli:
+    label: DynamoDB
+  aws_cognito_user_pool.cognito:
+    label: Cognito
+  aws_sesv2_email_identity.domain:
+    label: SES
