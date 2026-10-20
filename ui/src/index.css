@@ -48,6 +48,7 @@
 }
 
 :root {
+  color-scheme: light;
   --radius: 0.5rem;
   --app-font: "Amazon Ember", "Helvetica Neue", Roboto, Arial, sans-serif;
   --background: #f2f3f3;
@@ -89,6 +90,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: #0f1b2a;
   --foreground: #d1d5db;
   --card: #192534;
@@ -99,7 +101,7 @@
   --primary-foreground: #0f1b2a;
   --secondary: #192534;
   --secondary-foreground: #539fe5;
-  --muted: #0f1b2a;
+  --muted: #1f2b3b;
   --muted-foreground: #8d99a8;
   --accent: #0f2c4a;
   --accent-foreground: #89bdee;

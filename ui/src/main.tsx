@@ -20,6 +20,7 @@ import {
 } from "@/pages/Boards/loaders";
 import UpdatePrompt from "@/components/UpdatePrompt";
 import { setOnRejected } from "@/offline/sync";
+import { watchTheme } from "@/utils/theme";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -35,6 +36,8 @@ declare global {
     __TANSTACK_QUERY_CLIENT__: import("@tanstack/query-core").QueryClient;
   }
 }
+
+watchTheme();
 
 // This code is for all users
 window.__TANSTACK_QUERY_CLIENT__ = queryClient;

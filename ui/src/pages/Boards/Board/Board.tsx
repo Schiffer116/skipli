@@ -230,7 +230,7 @@ export default function Board() {
                   items
                 )}
 
-                <DragOverlay>
+                <DragOverlay className="rounded-lg shadow-xl dark:shadow-black/60">
                   {activeTask ? (
                     <DummyTask {...activeTask} />
                   ) : activeCard ? (
