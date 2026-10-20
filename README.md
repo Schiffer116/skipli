@@ -16,7 +16,20 @@ This project is a **real-time board management tool** that allows teams to colla
 
 - **Frontend**: React, TypeScript, TailwindCSS (`ui/`)
 - **Backend**: Go, DynamoDB (`app/`)
-- **Infrastructure**: AWS CloudFormation: S3 + CloudFront, Lambda, DynamoDB (`infra/`)
+- **Infrastructure**: Terraform on AWS: S3 + CloudFront, API Gateway, Lambda, DynamoDB, Cognito (`infra/`)
+
+## Architecture
+
+![AWS architecture](infra/architecture.png)
+
+Rendered by [TerraVision](https://github.com/patrickchugh/terravision) from a
+plan of the dev environment (needs AWS access, Graphviz and `uv`). Labels and
+arrows are curated in `infra/terravision.yml`, and `infra/diagram.gvpr` lays
+it out left to right, one column per tier. To regenerate:
+
+```bash
+cd infra && make diagram
+```
 
 ## Running locally
 

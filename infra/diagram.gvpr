@@ -1,0 +1,107 @@
+// Re-lays out TerraVision's DOT output as a compact left-to-right diagram.
+// TerraVision hardcodes a tall top-to-bottom layout, so this drops its
+// computed positions, puts each tier in one column and lets dot lay the
+// graph out again.
+BEG_G {
+  // Each tier is a column; resources are listed top to bottom
+  int tier[string];
+  string order[int];
+  int i = 0;
+  tier[order[i++] = "tv_aws_users.users"] = 0;
+  tier[order[i++] = "aws_cloudfront_distribution.skipli"] = 1;
+  tier[order[i++] = "aws_route53_zone.dns"] = 1;
+  tier[order[i++] = "aws_apigatewayv2_api.skipli"] = 2;
+  tier[order[i++] = "aws_apigatewayv2_api.realtime"] = 2;
+  tier[order[i++] = "aws_s3_bucket.skipli"] = 2;
+  tier[order[i++] = "aws_lambda_function.skipli"] = 3;
+  tier[order[i++] = "aws_lambda_function.realtime"] = 3;
+  tier[order[i++] = "aws_dynamodb_table.skipli"] = 4;
+  tier[order[i++] = "aws_cognito_user_pool.cognito"] = 4;
+  tier[order[i++] = "aws_sesv2_email_identity.domain"] = 4;
+
+  node_t n, nn;
+  node_t byres[string];
+  edge_t e, ee, f;
+  graph_t sg;
+  string res, t, h;
+  int row[string];
+
+  $G.rankdir = "LR"; $G.ranksep = "0.5"; $G.nodesep = "0.5"; $G.pad = "0.4";
+  $G.splines = "line"; $G.newrank = "true"; $G.labelloc = "t";
+  $G.bb = ""; $G.lp = "";
+  for (sg = fstsubg($G); sg; sg = nxtsubg(sg)) sg.margin = "32";
+
+  for (n = fstnode($G); n; n = nn) {
+    nn = nxtnode(n);
+    res = aget(n, "tf_resource_name");
+    // The title becomes the graph label; the footer only carries a timestamp
+    if (aget(n, "_titlenode") == "1") {
+      $G.label = n.label; delete($G, n);
+    // TerraVision always adds this IAM placeholder, connected to nothing
+    } else if (aget(n, "_footernode") == "1" || res == "aws_iam_group.of_services") {
+      delete($G, n);
+    } else if (res in tier) {
+      sg = subg($G, sprintf("tier%d", tier[res]));
+      sg.rank = "same";
+      subnode(sg, n);
+      byres[res] = n;
+    }
+  }
+  // An edge back to an earlier tier is laid out forward and drawn reversed,
+  // so it crosses the gap like any other edge instead of detouring round it.
+  // So is an edge down a tier, which dot would otherwise stack upwards.
+  for (i = 0; order[i] != ""; i++) row[order[i]] = i;
+  for (n = fstnode($G); n; n = nxtnode(n)) {
+    for (e = fstout(n); e; e = ee) {
+      ee = nxtout(e);
+      t = aget(e.tail, "tf_resource_name"); h = aget(e.head, "tf_resource_name");
+      if (tier[t] > tier[h] || (tier[t] == tier[h] && row[t] < row[h])) {
+        f = edge(e.head, e.tail, "");
+        f._edgetext = e._edgetext; f.fontname = e.fontname; f.dir = "back";
+        delete($G, e);
+      }
+    }
+  }
+  // Invisible edges inside a tier keep its resources in the listed order;
+  // left to right, dot stacks a flat edge's head above its tail
+  for (i = 1; order[i] != ""; i++) {
+    if (tier[order[i]] == tier[order[i - 1]] && (order[i] in byres) && (order[i - 1] in byres)) {
+      e = edge(byres[order[i]], byres[order[i - 1]], "");
+      e.style = "invis";
+    }
+  }
+}
+N {
+  pos = "";
+  // Icon above a one-line caption as wide as the widest, so that all columns
+  // are; edges attach to the icon through its port, or through the thin cells
+  // flanking its upper and lower halves
+  if (image != "") {
+    label = html($G, sprintf("<TABLE BORDER=\"0\" CELLSPACING=\"0\" CELLPADDING=\"2\"><TR><TD><TABLE BORDER=\"0\" CELLSPACING=\"0\" CELLPADDING=\"0\"><TR><TD PORT=\"wn\" FIXEDSIZE=\"TRUE\" WIDTH=\"1\" HEIGHT=\"60\"></TD><TD PORT=\"icon\" ROWSPAN=\"2\" FIXEDSIZE=\"TRUE\" WIDTH=\"120\" HEIGHT=\"120\"><IMG SCALE=\"TRUE\" SRC=\"%s\"/></TD><TD PORT=\"en\" FIXEDSIZE=\"TRUE\" WIDTH=\"1\" HEIGHT=\"60\"></TD></TR><TR><TD PORT=\"ws\" FIXEDSIZE=\"TRUE\" WIDTH=\"1\" HEIGHT=\"60\"></TD><TD PORT=\"es\" FIXEDSIZE=\"TRUE\" WIDTH=\"1\" HEIGHT=\"60\"></TD></TR></TABLE></TD></TR><TR><TD>%s</TD></TR></TABLE>", image, gsub(label, "\n", " ")));
+    image = ""; shape = "plaintext"; fixedsize = "false"; width = "3"; height = "0"; margin = "0";
+    fontsize = "26"; fontcolor = "#232F3E";
+  }
+}
+E [style != "invis"] {
+  pos = ""; xlp = ""; lp = ""; xlabel = "";
+  color = "#3F4B58"; penwidth = "2.5"; arrowsize = "1.2";
+  fontsize = "24"; fontcolor = "#1F4E79";
+  if (tier[aget($.tail, "tf_resource_name")] == tier[aget($.head, "tf_resource_name")]) {
+    // An edge down a tier drops from under the caption above onto the icon
+    // below; a label would add a column, so it goes beside the line instead,
+    // placed from the icon below and one word per line to stay clear of the
+    // cloud's border
+    tailport = "icon:n"; headport = "s";
+    label = ""; labelangle = "-54"; labeldistance = "6.2";
+    taillabel = html($G, sprintf("<TABLE BORDER=\"0\" CELLPADDING=\"0\"><TR><TD BALIGN=\"LEFT\">%s</TD></TR></TABLE>", gsub(aget($, "_edgetext"), " ", "<BR/>")));
+    return;
+  }
+  // Edges leave the icon's right side and enter the next one's left; a
+  // reversed edge runs from the upper right of one icon to the lower left of
+  // the other, clear of the edges level with them
+  if (dir == "back") { tailport = "en:e"; headport = "ws:w"; }
+  else { tailport = "icon:e"; headport = "icon:w"; }
+  // Every label, even an empty one, is as wide as the widest, so that all the
+  // gaps between tiers come out the same
+  label = html($G, sprintf("<TABLE BORDER=\"0\" CELLPADDING=\"0\"><TR><TD FIXEDSIZE=\"TRUE\" WIDTH=\"165\" HEIGHT=\"%s\">%s</TD></TR></TABLE>", aget($, "_edgetext") == "" ? "1" : "36", aget($, "_edgetext")));
+}
