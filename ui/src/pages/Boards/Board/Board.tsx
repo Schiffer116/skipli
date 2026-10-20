@@ -130,6 +130,8 @@ export default function Board() {
     createCard,
   ];
   const masonry = layout === "masonry";
+  const tasks = cards.flatMap((card) => card.tasks);
+  const doneCount = tasks.filter((task) => task.status === "done").length;
   const masonryLayout = useMasonry(masonry ? masonryElement : null, cards);
   useSwipeSnap(listElement, !masonry && !activeCard && !activeTask);
   const toggleLabel = masonry
@@ -168,6 +170,9 @@ export default function Board() {
                 {description}
               </p>
             )}
+            <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+              {doneCount} / {tasks.length} done
+            </p>
             {/* Loaded online, the board was live until the connection
                 dropped, so there's no "last updated" to show. */}
             {offline && (readOnly || savedAt !== undefined) && (

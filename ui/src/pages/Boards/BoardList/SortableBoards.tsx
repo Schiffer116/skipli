@@ -158,10 +158,10 @@ function BoardTile({ board, setBoards, editable, savedAt }: BoardTileProps) {
         </p>
       )}
       <p className="mt-auto flex justify-between gap-2 text-xs text-muted-foreground tabular-nums">
-        <span>
+        {savedAt !== undefined && <span>Updated {ago(savedAt)}</span>}
+        <span className="ml-auto">
           {board.doneCount} / {board.taskCount} done
         </span>
-        {savedAt !== undefined && <span>Updated {ago(savedAt)}</span>}
       </p>
     </Card>
   );
