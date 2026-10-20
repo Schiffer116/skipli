@@ -49,7 +49,6 @@ func (h *Handler) RegisterRoutes(router *http.ServeMux) {
 	router.HandleFunc("GET /boards/{boardId}/cards/{cardId}", h.member(h.get))
 	router.HandleFunc("PUT /boards/{boardId}/cards/{cardId}", h.member(h.update))
 	router.HandleFunc("PATCH /boards/{boardId}/cards/{cardId}", h.member(h.reorder))
-	router.HandleFunc("PUT /boards/{boardId}/cards/order", h.member(h.order))
 	router.HandleFunc("DELETE /boards/{boardId}/cards/{cardId}", h.member(h.delete))
 }
 
@@ -384,73 +383,6 @@ func (h *Handler) reorder(w http.ResponseWriter, req *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-}
-
-type OrderRequest struct {
-	CardIDs []string `json:"cardIds"`
-}
-
-// order rewrites the whole card order at once, for rebalancing where nearly
-// every card moves. Positions become evenly spaced Orders, so later single
-// moves still have room to land between them.
-func (h *Handler) order(w http.ResponseWriter, req *http.Request) {
-	ctx := req.Context()
-	boardID := req.PathValue("boardId")
-
-	var r OrderRequest
-	if err := json.NewDecoder(req.Body).Decode(&r); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	defer req.Body.Close()
-
-	if len(r.CardIDs) == 0 {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	if len(r.CardIDs) > 100 {
-		http.Error(w, "too many cards", http.StatusBadRequest)
-		return
-	}
-
-	seen := map[string]bool{}
-	transactItems := make([]types.TransactWriteItem, 0, len(r.CardIDs))
-	for i, id := range r.CardIDs {
-		if seen[id] {
-			http.Error(w, "duplicate card id", http.StatusBadRequest)
-			return
-		}
-		seen[id] = true
-
-		transactItems = append(transactItems, types.TransactWriteItem{
-			Update: &types.Update{
-				TableName: aws.String(h.table),
-				Key: map[string]types.AttributeValue{
-					"PK": &types.AttributeValueMemberS{Value: boardID},
-					"SK": &types.AttributeValueMemberS{Value: cardSK(id)},
-				},
-				UpdateExpression:    aws.String("SET #order = :order"),
-				ConditionExpression: aws.String("attribute_exists(PK)"),
-				ExpressionAttributeNames: map[string]string{
-					"#order": "Order",
-				},
-				ExpressionAttributeValues: map[string]types.AttributeValue{
-					":order": &types.AttributeValueMemberN{Value: strconv.Itoa((i + 1) * orderGap)},
-				},
-			},
-		})
-	}
-
-	_, err := h.db.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{
-		TransactItems: transactItems,
-	})
-	if err != nil {
-		log.Printf("failed to reorder cards: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
 }
 
 // delete cascades to the card's tasks, all in one transaction so a card

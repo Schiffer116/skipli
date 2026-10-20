@@ -5,20 +5,17 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
-import { socket } from "@/utils/socket";
 import { BoardContext } from "../BoardContext";
-import { createCard } from "@/utils/updateCard";
 import useEscape from "@/hooks/useEscape";
 import { newId } from "@/offline/ids";
-import { submit } from "@/offline/sync";
 
 export default function CreateCard() {
   const boardId = useParams().boardId!;
 
-  const { setCards, setShowCreateCardForm } = useContext(BoardContext)!;
+  const { make, setShowCreateCardForm } = useContext(BoardContext)!;
   useEscape(() => setShowCreateCardForm(false));
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     const formData = new FormData(e.currentTarget);
@@ -27,22 +24,13 @@ export default function CreateCard() {
       return;
     }
 
-    const cardId = newId();
-    const saved = await submit({
+    void make({
       type: "createCard",
       boardId,
-      cardId,
+      cardId: newId(),
       name,
       createdAt: new Date().toISOString(),
     });
-    if (!saved) {
-      return;
-    }
-
-    const newCard = { id: cardId, name, description: "", tasks: [] };
-
-    socket.emit("create card", newCard);
-    setCards(createCard(newCard));
     setShowCreateCardForm(false);
   };
 

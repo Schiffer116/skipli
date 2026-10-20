@@ -1,12 +1,12 @@
 import { createContext } from "react";
 
-import type { CardType } from "./Card";
+import type { BoardChange } from "@/offline/changes";
 
 type BoardContextType = {
   // Offline on a Shared board: nothing can be changed.
   readOnly: boolean;
-  cards: CardType[];
-  setCards: React.Dispatch<React.SetStateAction<CardType[]>>;
+  // Makes a Board change: the only way the board's cards change.
+  make: (change: BoardChange) => Promise<void>;
   showCreateCardForm: boolean;
   setShowCreateCardForm: React.Dispatch<React.SetStateAction<boolean>>;
   createTaskFormId: string | null;

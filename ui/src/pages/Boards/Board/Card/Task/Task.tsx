@@ -7,10 +7,8 @@ import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities";
 import { CheckCircle2, Circle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useParams } from "react-router";
-import { socket } from "@/utils/socket";
-import { updateTask } from "@/utils/updateCard";
 import { BoardContext } from "../../BoardContext";
-import { submit, useSync } from "@/offline/sync";
+import { useSync } from "@/offline/sync";
 import UnsentMark from "@/components/UnsentMark";
 
 export type TaskType = {
@@ -88,32 +86,19 @@ const TaskBody = memo(function TaskBody(
 ) {
   const { id, name, description, status, listeners, cardId } = props;
   const { boardId } = useParams();
-  const { readOnly, setCards } = useContext(BoardContext)!;
+  const { readOnly, make } = useContext(BoardContext)!;
   const unsent = useSync().pendingIds.has(id);
 
-  const toggleStatus = async () => {
-    const updatedTask = {
-      id,
-      cardId,
-      name,
-      description,
-      status: status === "done" ? "pending" : "done",
-    };
-    const saved = await submit({
+  const toggleStatus = () => {
+    void make({
       type: "updateTask",
       boardId: boardId!,
       cardId,
       taskId: id,
       name,
       description,
-      status: updatedTask.status,
+      status: status === "done" ? "pending" : "done",
     });
-    if (!saved) {
-      return;
-    }
-
-    socket.emit("update task", updatedTask);
-    setCards(updateTask(updatedTask));
   };
 
   return (

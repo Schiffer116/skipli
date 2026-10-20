@@ -19,7 +19,6 @@ import { Button } from "@/components/ui/button";
 import useDnd from "@/hooks/useDnd";
 import { useSwipeSnap } from "@/hooks/useSwipeSnap";
 import { OwnKeyboardSensor } from "@/utils/keyboardSensor";
-import useSocket from "@/hooks/useSocket";
 import {
   CREATE_CARD_KEY,
   measureMasonryTarget,
@@ -35,20 +34,21 @@ import type { BoardViewData } from "../loaders";
 import { BoardContext } from "./BoardContext";
 import FavoriteButton from "../FavoriteButton";
 import CleanUpButton from "./CleanUpButton";
-import { useMe } from "../favorites";
 import { useSync } from "@/offline/sync";
 import { ago } from "@/offline/time";
-import useSaveCards from "@/offline/useSaveCards";
+import useOpenBoard from "@/board/useOpenBoard";
 
 export default function Board() {
   const loaderData = useLoaderData<BoardViewData>();
-  const [cards, setCards] = useState(loaderData.cardsWithTasks);
   const { name, description, owner, members, savedAt } = loaderData;
   const { boardId } = useParams();
+  const { cards, make } = useOpenBoard(
+    boardId!,
+    loaderData.cardsWithTasks,
+  );
   const { offline } = useSync();
   // Offline, only a Solo board can be changed; a Shared board is read-only.
   const readOnly = offline && members.length > 1;
-  useSaveCards(useMe().id, boardId!, cards);
   const [layout, setLayout] = useBoardLayout();
   const [listElement, setListElement] = useState<HTMLDivElement | null>(null);
   const [masonryElement, setMasonryElement] = useState<HTMLDivElement | null>(
@@ -60,10 +60,28 @@ export default function Board() {
   const [showCreateCardForm, setShowCreateCardForm] = useState(false);
   const [createTaskFormId, setCreateTaskFormId] = useState<string | null>(null);
 
+  // While dragging, the cards as they'd be if dropped here.
+  const {
+    shown,
+    collisionDetection,
+    onDragStart,
+    onDragOver,
+    onDragMove,
+    onDragEnd,
+    onDragCancel,
+  } = useDnd(
+    cards,
+    make,
+    activeCard,
+    setActiveCard,
+    activeTask,
+    setActiveTask,
+    layout === "masonry",
+  );
+
   const boardContextValue = {
     readOnly,
-    cards,
-    setCards,
+    make,
     showCreateCardForm,
     setShowCreateCardForm,
     createTaskFormId,
@@ -81,25 +99,6 @@ export default function Board() {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
-
-  const {
-    collisionDetection,
-    onDragStart,
-    onDragOver,
-    onDragMove,
-    onDragEnd,
-    onDragCancel,
-  } = useDnd(
-    cards,
-    setCards,
-    activeCard,
-    setActiveCard,
-    activeTask,
-    setActiveTask,
-    layout === "masonry",
-  );
-
-  useSocket(boardId!, setCards);
 
   const createCard = readOnly ? (
     <div key={CREATE_CARD_KEY} />
@@ -124,13 +123,13 @@ export default function Board() {
   );
 
   const items = [
-    ...cards.map((card) => (
+    ...shown.map((card) => (
       <Card key={card.id} {...card} staticTasks={activeCard !== null} />
     )),
     createCard,
   ];
   const masonry = layout === "masonry";
-  const masonryLayout = useMasonry(masonry ? masonryElement : null, cards);
+  const masonryLayout = useMasonry(masonry ? masonryElement : null, shown);
   useSwipeSnap(listElement, !masonry && !activeCard && !activeTask);
   const toggleLabel = masonry
     ? "Show cards in one scrolling row"
@@ -155,11 +154,7 @@ export default function Board() {
                   {masonry ? <Columns3 /> : <LayoutDashboard />}
                 </Button>
                 {!readOnly && (
-                  <CleanUpButton
-                    boardId={boardId!}
-                    cards={cards}
-                    setCards={setCards}
-                  />
+                  <CleanUpButton boardId={boardId!} cards={cards} />
                 )}
               </div>
             </div>
@@ -193,7 +188,7 @@ export default function Board() {
               className={`flex gap-4 pb-6 flex-1 min-h-0 items-start -mx-4 px-4 md:-mx-8 md:px-8 ${masonry ? "overflow-y-auto [scrollbar-gutter:stable]" : "overflow-auto touch-pan-y max-md:*:w-full"}`}
             >
               <SortableContext
-                items={cards}
+                items={shown}
                 strategy={masonry ? () => null : horizontalListSortingStrategy}
               >
                 {masonry ? (
