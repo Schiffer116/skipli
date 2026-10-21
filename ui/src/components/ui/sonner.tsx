@@ -1,9 +1,24 @@
+import { useSyncExternalStore } from "react";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 
+// Toasts match the page: dark while <html> has the dark class.
+function subscribe(onChange: () => void) {
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class"],
+  });
+  return () => observer.disconnect();
+}
+
+const isDark = () => document.documentElement.classList.contains("dark");
+
 const Toaster = ({ ...props }: ToasterProps) => {
+  const dark = useSyncExternalStore(subscribe, isDark);
+
   return (
     <Sonner
-      theme="light"
+      theme={dark ? "dark" : "light"}
       className="toaster group"
       style={
         {
