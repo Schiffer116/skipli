@@ -43,7 +43,7 @@ export default function EditTaskDialog(props: TaskType) {
     const formData = new FormData(e.currentTarget);
     const name = formData.get("name") as string;
     const description = (formData.get("description") as string) ?? "";
-    const status = (formData.get("status") as string) ?? "";
+    const status = formData.get("status") as string;
     if (!name) {
       return;
     }
@@ -109,16 +109,24 @@ export default function EditTaskDialog(props: TaskType) {
               </div>
               <div className="grid gap-3">
                 <Label htmlFor="task-status">Status</Label>
-                <Input id="task-status" name="status" defaultValue={status} />
+                <select
+                  id="task-status"
+                  name="status"
+                  defaultValue={status === "done" ? "done" : "pending"}
+                  className="border-input dark:bg-background h-9 w-full rounded-md border bg-transparent px-3 py-1 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] md:text-sm"
+                >
+                  <option value="pending">Pending</option>
+                  <option value="done">Done</option>
+                </select>
               </div>
             </div>
-            <DialogFooter className="mt-4">
+            <DialogFooter className="mt-4 flex-row justify-end">
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button
                     type="button"
                     variant="destructive"
-                    className="sm:mr-auto"
+                    className="mr-auto"
                     aria-label="Delete task"
                   >
                     <Trash className="h-5 w-5" />

@@ -150,7 +150,7 @@ export default function Board() {
       <div className="flex-1 min-w-0 px-4 md:px-8 pt-6">
         <div className="flex flex-col h-full">
           <header className="mb-6">
-            <div className="flex flex-wrap items-center gap-1 mb-1">
+            <div className="flex items-center gap-1 mb-1">
               <h1 className="text-2xl font-bold min-w-0 break-words">{name}</h1>
               <FavoriteButton board={{ id: boardId!, name, owner }} />
               {editable && (
@@ -163,7 +163,7 @@ export default function Board() {
                   onDeleted={() => void navigate("/boards")}
                 />
               )}
-              <div className="ml-auto flex items-center gap-2">
+              <div className="ml-auto flex shrink-0 items-center gap-2">
                 <Button
                   variant="outline"
                   size="icon"

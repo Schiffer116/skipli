@@ -101,13 +101,13 @@ export default function EditCardDialog(props: CardType) {
                 />
               </div>
             </div>
-            <DialogFooter className="mt-4">
+            <DialogFooter className="mt-4 flex-row justify-end">
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button
                     type="button"
                     variant="destructive"
-                    className="sm:mr-auto"
+                    className="mr-auto"
                     aria-label="Delete card"
                   >
                     <Trash className="h-5 w-5" />

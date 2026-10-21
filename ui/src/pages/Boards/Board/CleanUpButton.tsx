@@ -35,9 +35,14 @@ export default function CleanUpButton({ boardId, cards }: CleanUpButtonProps) {
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button variant="outline" disabled={doneCount === 0}>
+        {/* Icon-only on phones, so it fits on the title row. */}
+        <Button
+          variant="outline"
+          className="max-md:w-9 max-md:px-0"
+          disabled={doneCount === 0}
+        >
           <BrushCleaning />
-          Clean up
+          <span className="max-md:sr-only">Clean up</span>
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
