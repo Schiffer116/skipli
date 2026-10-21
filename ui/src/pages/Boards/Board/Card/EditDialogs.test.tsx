@@ -1,0 +1,158 @@
+// @vitest-environment jsdom
+import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { createMemoryRouter, RouterProvider } from "react-router";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { BoardContext } from "../BoardContext";
+import EditCardDialog from "./EditCardDialog";
+import EditTaskDialog from "./Task/EditTaskDialog";
+
+afterEach(cleanup);
+
+const make = vi.fn(async () => {});
+
+function open(dialog: React.ReactNode) {
+  make.mockClear();
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/boards/:boardId",
+        element: (
+          <BoardContext.Provider
+            value={{
+              readOnly: false,
+              make,
+              showCreateCardForm: false,
+              setShowCreateCardForm: () => {},
+              createTaskFormId: null,
+              setCreateTaskFormId: () => {},
+            }}
+          >
+            {dialog}
+          </BoardContext.Provider>
+        ),
+      },
+    ],
+    { initialEntries: ["/boards/b1"] },
+  );
+  render(<RouterProvider router={router} />);
+}
+
+// Stops a submit before React sees it.
+const holdBack = (e: Event) => {
+  e.preventDefault();
+  e.stopPropagation();
+};
+
+const card = <EditCardDialog id="c1" name="Todo" description="" tasks={[]} />;
+
+describe("Edit card", () => {
+  it("saves the new name and description, then closes", async () => {
+    const user = userEvent.setup();
+    open(card);
+    await user.click(screen.getByRole("button", { name: "Edit card" }));
+    await user.clear(screen.getByLabelText("Name"));
+    await user.type(screen.getByLabelText("Name"), "Done");
+    await user.type(screen.getByLabelText("Description"), "Shipped");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(make).toHaveBeenCalledExactlyOnceWith({
+      type: "updateCard",
+      boardId: "b1",
+      cardId: "c1",
+      name: "Done",
+      description: "Shipped",
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  // In a browser the click's own handlers, then React's re-render, run
+  // before the form is submitted: a Save that closes the dialog removes the
+  // form first, and the browser drops the submit ("form is not connected").
+  // jsdom submits before re-rendering, so hold back the submit and check
+  // the click alone leaves the form in place.
+  it("keeps the form open until it's submitted", async () => {
+    const user = userEvent.setup();
+    open(card);
+    await user.click(screen.getByRole("button", { name: "Edit card" }));
+
+    document.addEventListener("submit", holdBack, true);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    document.removeEventListener("submit", holdBack, true);
+
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(make).not.toHaveBeenCalled();
+  });
+
+  it("saves on Enter", async () => {
+    const user = userEvent.setup();
+    open(card);
+    await user.click(screen.getByRole("button", { name: "Edit card" }));
+    await user.type(screen.getByLabelText("Name"), "!{Enter}");
+
+    expect(make).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("changes nothing on Cancel or Escape", async () => {
+    const user = userEvent.setup();
+    open(card);
+    await user.click(screen.getByRole("button", { name: "Edit card" }));
+    await user.type(screen.getByLabelText("Name"), "!");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Edit card" }));
+    await user.type(screen.getByLabelText("Name"), "!");
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    expect(make).not.toHaveBeenCalled();
+  });
+
+  it("stays open without saving an empty name", async () => {
+    const user = userEvent.setup();
+    open(card);
+    await user.click(screen.getByRole("button", { name: "Edit card" }));
+    await user.clear(screen.getByLabelText("Name"));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(make).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  });
+});
+
+describe("Edit task", () => {
+  it("saves the new name, then closes", async () => {
+    const user = userEvent.setup();
+    open(
+      <EditTaskDialog
+        id="t1"
+        cardId="c1"
+        name="Milk"
+        description=""
+        status="pending"
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Edit task" }));
+    document.addEventListener("submit", holdBack, true);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    document.removeEventListener("submit", holdBack, true);
+    expect(screen.getByRole("dialog")).toBeTruthy();
+
+    await user.type(screen.getByLabelText("Name"), " and eggs");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(make).toHaveBeenCalledExactlyOnceWith({
+      type: "updateTask",
+      boardId: "b1",
+      cardId: "c1",
+      taskId: "t1",
+      name: "Milk and eggs",
+      description: "",
+      status: "pending",
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});

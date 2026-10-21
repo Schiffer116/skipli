@@ -12,34 +12,27 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { submit } from "@/offline/sync";
-import { socket } from "@/utils/socket";
-import { cleanUp as removeDoneTasks } from "@/utils/updateCard";
+import { useContext } from "react";
 
 import type { CardType } from "./Card/Card";
+import { BoardContext } from "./BoardContext";
 
 type CleanUpButtonProps = {
   boardId: string;
   cards: CardType[];
-  setCards: React.Dispatch<React.SetStateAction<CardType[]>>;
 };
 
 export default function CleanUpButton({
   boardId,
   cards,
-  setCards,
 }: CleanUpButtonProps) {
+  const { make } = useContext(BoardContext)!;
   const doneCount = cards
     .flatMap((card) => card.tasks)
     .filter((task) => task.status === "done").length;
 
-  const cleanUp = async () => {
-    if (!(await submit({ type: "cleanUp", boardId }))) {
-      return;
-    }
-
-    socket.emit("clean up");
-    setCards(removeDoneTasks());
+  const cleanUp = () => {
+    void make({ type: "cleanUp", boardId });
   };
 
   return (

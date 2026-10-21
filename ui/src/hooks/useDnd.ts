@@ -12,16 +12,19 @@ import {
   type DragStartEvent,
   type UniqueIdentifier,
 } from "@dnd-kit/core";
-import { useEffect, useRef } from "react";
+import { arrayMove } from "@dnd-kit/sortable";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
 
-import { socket } from "@/utils/socket";
-import { moveCard, moveTask } from "@/utils/updateCard";
-import { submit } from "@/offline/sync";
+import { apply } from "@/board/apply";
+import type { BoardChange } from "@/offline/changes";
 
+// Dragging shows the cards as they'd be if dropped there, a preview of
+// this drag's own that nothing else sees or keeps. Only the drop makes a
+// Board change; cancelling drops the preview.
 export default function useDnd(
   cards: CardType[],
-  setCards: React.Dispatch<React.SetStateAction<CardType[]>>,
+  make: (change: BoardChange) => Promise<void>,
   activeCard: CardType | null,
   setActiveCard: React.Dispatch<React.SetStateAction<CardType | null>>,
   activeTask: TaskType | null,
@@ -29,30 +32,28 @@ export default function useDnd(
   masonry: boolean,
 ) {
   const boardId = useParams().boardId!;
-  const oldCards = useRef<CardType[]>(structuredClone(cards));
-  const oldCard = useRef<CardType>(structuredClone(activeCard));
+  const [preview, setPreview] = useState<CardType[] | null>(null);
+  const shown = preview ?? cards;
 
-  const findCard = (id: UniqueIdentifier) => {
-    const card = cards.find((card) => card.id === id);
+  const findCard = (id: UniqueIdentifier, among = shown) => {
+    const card = among.find((card) => card.id === id);
     if (card) return card;
 
-    return cards.find((card) => card.tasks.find((task) => task.id === id));
+    return among.find((card) => card.tasks.find((task) => task.id === id));
   };
 
   const onDragStart = (event: DragStartEvent) => {
     const { active } = event;
 
-    oldCards.current = structuredClone(cards);
-    oldCard.current = cards.find((card) => card.id === active.id) ?? null;
-    if (oldCard.current) {
-      setActiveCard(oldCard.current);
+    const card = cards.find((card) => card.id === active.id);
+    if (card) {
+      setActiveCard(card);
       return;
     }
 
-    oldCard.current =
-      cards.find((card) => card.tasks.find((task) => task.id === active.id)) ??
-      null;
-    const task = oldCard.current?.tasks.find((task) => task.id === active.id);
+    const task = findCard(active.id, cards)?.tasks.find(
+      (task) => task.id === active.id,
+    );
     setActiveTask(task ?? null);
   };
 
@@ -68,7 +69,7 @@ export default function useDnd(
     requestAnimationFrame(() => {
       recentlyMovedToNewCard.current = false;
     });
-  }, [cards]);
+  }, [shown]);
 
   const collisionDetection: CollisionDetection = (args) => {
     // Dragging a card: only other cards are valid targets.
@@ -76,7 +77,7 @@ export default function useDnd(
       const cardArgs = {
         ...args,
         droppableContainers: args.droppableContainers.filter((container) =>
-          cards.some((card) => card.id === container.id),
+          shown.some((card) => card.id === container.id),
         ),
       };
       if (masonry) {
@@ -95,7 +96,7 @@ export default function useDnd(
 
     if (overId != null) {
       // Over a card: narrow down to the closest of its tasks, if any.
-      const overCard = cards.find((card) => card.id === overId);
+      const overCard = shown.find((card) => card.id === overId);
       if (overCard && overCard.tasks.length > 0) {
         overId =
           closestCenter({
@@ -153,7 +154,18 @@ export default function useDnd(
           cardId: overCard.id,
         },
     );
-    setCards(moveTask(active.id, overCard.id, newTaskIndex));
+    const tasks = overCard.tasks;
+    setPreview((preview) =>
+      apply(preview ?? cards, {
+        type: "moveTask",
+        boardId,
+        cardId: currentCard.id,
+        taskId: String(active.id),
+        newCardId: overCard.id,
+        beforeId: tasks[newTaskIndex - 1]?.id ?? null,
+        afterId: tasks[newTaskIndex]?.id ?? null,
+      }),
+    );
   };
 
   // Masonry cards have different heights, so the layout reflows as the card
@@ -173,8 +185,8 @@ export default function useDnd(
     }
     if (over.id === handledOverId.current) return;
 
-    const from = cards.findIndex((card) => card.id === active.id);
-    const to = cards.findIndex((card) => card.id === over.id);
+    const from = shown.findIndex((card) => card.id === active.id);
+    const to = shown.findIndex((card) => card.id === over.id);
     if (to === -1) return;
 
     const last = lastCardMove.current;
@@ -188,98 +200,90 @@ export default function useDnd(
 
     handledOverId.current = over.id;
     lastCardMove.current = { from, delta };
-    setCards(moveCard(from, to));
+    setPreview((preview) => arrayMove(preview ?? cards, from, to));
   };
 
   const endDrag = () => {
     lastCardMove.current = null;
     handledOverId.current = null;
     lastOverId.current = null;
+    setPreview(null);
     setActiveTask(null);
     setActiveCard(null);
   };
 
-  const onDragCancel = () => {
-    setCards(oldCards.current);
+  const onDragCancel = endDrag;
+
+  const onDragEnd = ({ active, over }: DragEndEvent) => {
     endDrag();
-  };
+    const id = String(active.id);
 
-  const onDragEnd = async ({ active, over }: DragEndEvent) => {
     if (activeCard) {
-      endDrag();
-      const oldCardIndex = oldCards.current.findIndex(
-        (card) => card.id === active.id,
-      );
       const overCard = over ? findCard(over.id) : undefined;
-      const newCards =
+      const dropped =
         !masonry && overCard
-          ? moveCard(
-              cards.findIndex((card) => card.id === active.id),
-              cards.findIndex((card) => card.id === overCard.id),
-            )(cards)
-          : cards;
-      const newCardIndex = newCards.findIndex((card) => card.id === active.id);
-      if (oldCardIndex === newCardIndex) return;
-
-      setCards(newCards);
-
-      const saved = await submit({
-        type: "moveCard",
-        boardId,
-        cardId: String(active.id),
-        beforeId: newCards[newCardIndex - 1]?.id ?? null,
-        afterId: newCards[newCardIndex + 1]?.id ?? null,
-      });
-      if (!saved) {
-        setCards(oldCards.current);
+          ? arrayMove(
+              shown,
+              shown.findIndex((card) => card.id === id),
+              shown.findIndex((card) => card.id === overCard.id),
+            )
+          : shown;
+      const index = dropped.findIndex((card) => card.id === id);
+      const beforeId = dropped[index - 1]?.id ?? null;
+      const afterId = dropped[index + 1]?.id ?? null;
+      const from = cards.findIndex((card) => card.id === id);
+      if (
+        from === -1 ||
+        (cards[from - 1]?.id === beforeId && cards[from + 1]?.id === afterId)
+      ) {
         return;
       }
 
-      socket.emit("move card", oldCardIndex, newCardIndex);
+      void make({ type: "moveCard", boardId, cardId: id, beforeId, afterId });
       return;
     }
 
     if (!activeTask) return;
-    endDrag();
 
     // Where the task is now (onDragOver may already have moved it to
-    // another card), then apply any final reorder within that card.
-    let newCards = cards;
-    const taskCard = findCard(active.id)!;
+    // another card), then any final reorder within that card.
+    const taskCard = findCard(id)!;
+    let tasks = taskCard.tasks;
     if (over && over.id !== taskCard.id && findCard(over.id) === taskCard) {
-      const overTaskIndex = taskCard.tasks.findIndex(
-        (task) => task.id === over.id,
+      tasks = arrayMove(
+        tasks,
+        tasks.findIndex((task) => task.id === id),
+        tasks.findIndex((task) => task.id === over.id),
       );
-      newCards = moveTask(active.id, taskCard.id, overTaskIndex)(cards);
     }
-    setCards(newCards);
+    const index = tasks.findIndex((task) => task.id === id);
+    const beforeId = tasks[index - 1]?.id ?? null;
+    const afterId = tasks[index + 1]?.id ?? null;
 
-    const tasks = newCards.find((card) => card.id === taskCard.id)!.tasks;
-    const taskIndex = tasks.findIndex((task) => task.id === active.id);
-    const originalCard = oldCard.current!;
-    const originalIndex = originalCard.tasks.findIndex(
-      (task) => task.id === active.id,
-    );
-    if (originalCard.id === taskCard.id && originalIndex === taskIndex) return;
-
-    const saved = await submit({
-      type: "moveTask",
-      boardId,
-      cardId: originalCard.id,
-      taskId: String(active.id),
-      newCardId: taskCard.id,
-      beforeId: tasks[taskIndex - 1]?.id ?? null,
-      afterId: tasks[taskIndex + 1]?.id ?? null,
-    });
-    if (!saved) {
-      setCards(oldCards.current);
+    const fromCard = findCard(id, cards);
+    if (!fromCard) return;
+    const from = fromCard.tasks.findIndex((task) => task.id === id);
+    if (
+      fromCard.id === taskCard.id &&
+      fromCard.tasks[from - 1]?.id === beforeId &&
+      fromCard.tasks[from + 1]?.id === afterId
+    ) {
       return;
     }
 
-    socket.emit("move task", active.id, taskCard.id, taskIndex);
+    void make({
+      type: "moveTask",
+      boardId,
+      cardId: fromCard.id,
+      taskId: id,
+      newCardId: taskCard.id,
+      beforeId,
+      afterId,
+    });
   };
 
   return {
+    shown,
     collisionDetection,
     onDragStart,
     onDragOver,

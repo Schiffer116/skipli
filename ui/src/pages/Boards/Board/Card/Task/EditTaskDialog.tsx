@@ -27,20 +27,17 @@ import {
 import { Button } from "@/components/ui/button";
 import { DialogDescription } from "@radix-ui/react-dialog";
 
-import { socket } from "@/utils/socket";
 import { BoardContext } from "../../BoardContext";
 import type { TaskType } from "./Task";
-import { deleteTask, updateTask } from "@/utils/updateCard";
-import { submit } from "@/offline/sync";
 
 export default function EditTaskDialog(props: TaskType) {
   const { id, cardId, name, description, status } = props;
 
   const boardId = useParams().boardId!;
-  const { setCards, setCreateTaskFormId, setShowCreateCardForm } =
+  const { make, setCreateTaskFormId, setShowCreateCardForm } =
     useContext(BoardContext)!;
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     const formData = new FormData(e.currentTarget);
@@ -51,7 +48,7 @@ export default function EditTaskDialog(props: TaskType) {
       return;
     }
 
-    const saved = await submit({
+    void make({
       type: "updateTask",
       boardId,
       cardId,
@@ -60,28 +57,11 @@ export default function EditTaskDialog(props: TaskType) {
       description,
       status,
     });
-    if (!saved) {
-      return;
-    }
-
-    const updatedTask = { id, cardId, name, description, status };
-    socket.emit("update task", updatedTask);
-    setCards(updateTask(updatedTask));
+    setOpen(false);
   };
 
-  const handleDelete = async () => {
-    const saved = await submit({
-      type: "deleteTask",
-      boardId,
-      cardId,
-      taskId: id,
-    });
-    if (!saved) {
-      return;
-    }
-
-    socket.emit("delete task", id);
-    setCards(deleteTask(id));
+  const handleDelete = () => {
+    void make({ type: "deleteTask", boardId, cardId, taskId: id });
   };
 
   const [open, setOpen] = useState(false);
@@ -133,16 +113,19 @@ export default function EditTaskDialog(props: TaskType) {
               </div>
             </div>
             <DialogFooter className="mt-4">
+              {/* Not a DialogClose: closing unmounts the form before the
+                  browser submits it, and the edit is lost. */}
+              <Button type="submit">Save</Button>
               <DialogClose asChild>
-                <Button type="submit">Save</Button>
-              </DialogClose>
-              <DialogClose asChild>
-                <Button variant="outline">Cancel</Button>
+                <Button type="button" variant="outline">
+                  Cancel
+                </Button>
               </DialogClose>
 
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button
+                    type="button"
                     variant="destructive"
                     className="ml-auto"
                     aria-label="Delete task"

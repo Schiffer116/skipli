@@ -60,6 +60,23 @@ export type Change =
     }
   | { type: "cleanUp"; boardId: string };
 
+// A Board change: one edit to the cards or tasks of a board.
+export type BoardChange = Extract<
+  Change,
+  {
+    type:
+      | "createCard"
+      | "updateCard"
+      | "deleteCard"
+      | "moveCard"
+      | "createTask"
+      | "updateTask"
+      | "deleteTask"
+      | "moveTask"
+      | "cleanUp";
+  }
+>;
+
 export function toRequest(change: Change): { url: string; init: RequestInit } {
   const json = (method: string, body: unknown) => ({
     method,

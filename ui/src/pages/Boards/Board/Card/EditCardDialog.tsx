@@ -26,21 +26,18 @@ import {
 import { Button } from "@/components/ui/button";
 import { DialogDescription } from "@radix-ui/react-dialog";
 
-import { socket } from "@/utils/socket";
 import type { CardType } from "./Card";
 import { BoardContext } from "../BoardContext";
 import { useParams } from "react-router";
-import { deleteCard, updateCard } from "@/utils/updateCard";
-import { submit } from "@/offline/sync";
 
 export default function EditCardDialog(props: CardType) {
   const { id, name, description } = props;
 
   const boardId = useParams().boardId!;
-  const { setCards, setCreateTaskFormId, setShowCreateCardForm } =
+  const { make, setCreateTaskFormId, setShowCreateCardForm } =
     useContext(BoardContext)!;
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     const formData = new FormData(e.currentTarget);
@@ -50,29 +47,12 @@ export default function EditCardDialog(props: CardType) {
       return;
     }
 
-    const saved = await submit({
-      type: "updateCard",
-      boardId,
-      cardId: id,
-      name,
-      description,
-    });
-    if (!saved) {
-      return;
-    }
-
-    const updatedCard = { id, name, description };
-    socket.emit("update card", { ...updatedCard });
-    setCards(updateCard(updatedCard));
+    void make({ type: "updateCard", boardId, cardId: id, name, description });
+    setOpen(false);
   };
 
-  const handleDelete = async () => {
-    if (!(await submit({ type: "deleteCard", boardId, cardId: id }))) {
-      return;
-    }
-
-    socket.emit("delete card", id);
-    setCards(deleteCard(id));
+  const handleDelete = () => {
+    void make({ type: "deleteCard", boardId, cardId: id });
   };
 
   const [open, setOpen] = useState(false);
@@ -122,16 +102,19 @@ export default function EditCardDialog(props: CardType) {
               </div>
             </div>
             <DialogFooter className="mt-4">
+              {/* Not a DialogClose: closing unmounts the form before the
+                  browser submits it, and the edit is lost. */}
+              <Button type="submit">Save</Button>
               <DialogClose asChild>
-                <Button type="submit">Save</Button>
-              </DialogClose>
-              <DialogClose asChild>
-                <Button variant="outline">Cancel</Button>
+                <Button type="button" variant="outline">
+                  Cancel
+                </Button>
               </DialogClose>
 
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button
+                    type="button"
                     variant="destructive"
                     className="ml-auto"
                     aria-label="Delete card"

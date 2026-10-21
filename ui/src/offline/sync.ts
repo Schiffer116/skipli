@@ -51,7 +51,8 @@ export function useSync() {
 }
 
 let me: Me | null = null;
-let onRejected: () => void = () => {};
+let onRefused: (count: number) => void = () => {};
+const acceptedListeners = new Set<(change: Change) => void>();
 
 // Starts tracking one person's pending changes; called once who is signed
 // in is known (from the server, or from the offline copy).
@@ -67,10 +68,25 @@ export function stopSync() {
   setState({ pendingIds: new Set(), pendingCount: 0, rejectedCount: 0 });
 }
 
-// What to do once a sync has had changes refused, so what's on screen no
-// longer matches the server: load the page's data again.
-export function setOnRejected(callback: () => void) {
-  onRejected = callback;
+// What to do once the server has refused changes, so what's on screen no
+// longer matches it: say so and load the page's data again.
+export function setOnRefused(callback: (count: number) => void) {
+  onRefused = callback;
+}
+
+export function refused(count = 1) {
+  onRefused(count);
+}
+
+// Calls back with each change the server accepts, whether sent right away
+// or later as a Pending change.
+export function onAccepted(listener: (change: Change) => void) {
+  acceptedListeners.add(listener);
+  return () => void acceptedListeners.delete(listener);
+}
+
+function accepted(change: Change) {
+  acceptedListeners.forEach((listener) => listener(change));
 }
 
 async function refreshCounts() {
@@ -87,28 +103,51 @@ async function refreshCounts() {
 }
 
 // Makes a change: sends it now when online, or keeps it as a Pending change
-// when offline (or while earlier ones are still waiting, so they reach the
-// server in order). Resolves false only when an online send fails, which
-// the caller treats as it always has: the change didn't happen.
-export async function submit(change: Change): Promise<boolean> {
+// when offline, when the server can't be reached or answers with a server
+// error, or while earlier ones are still waiting, so they reach the server
+// in order. Resolves false only when the server refuses it.
+export function submit(change: Change): Promise<boolean> {
+  // One at a time, so a change made before the last one's answer came back
+  // still reaches the server after it.
+  const result = submitting.then(() => submitNow(change));
+  submitting = result.catch(() => {});
+  return result;
+}
+
+let submitting: Promise<unknown> = Promise.resolve();
+
+async function submitNow(change: Change) {
   if (me && (isOffline() || state.pendingCount > 0)) {
-    await addPending(me.id, change);
-    await applyChange(me, change);
-    await refreshCounts();
+    await keep(me, change);
     void sync();
     return true;
   }
 
   const { url, init } = toRequest(change);
-  let res: Response;
+  let res: Response | null;
   try {
     res = await apiFetch(url, init);
   } catch {
-    return false;
+    res = null;
   }
-  if (!res.ok) return false;
-  if (me) await applyChange(me, change);
-  return true;
+
+  if (res && (res.ok || alreadySaved(change, res.status))) {
+    if (me) await applyChange(me, change);
+    accepted(change);
+    return true;
+  }
+  if (me && (!res || res.status >= 500)) {
+    await keep(me, change);
+    retryLater();
+    return true;
+  }
+  return false;
+}
+
+async function keep(user: Me, change: Change) {
+  await addPending(user.id, change);
+  await applyChange(user, change);
+  await refreshCounts();
 }
 
 let running: Promise<void> | null = null;
@@ -138,7 +177,7 @@ async function send() {
   clearTimeout(retry);
   if (!me || isOffline()) return;
   const user = me;
-  let refused = 0;
+  let refusedCount = 0;
   let failed = false;
   setState({ syncing: true });
 
@@ -160,6 +199,7 @@ async function send() {
 
       if (res.ok || alreadySaved(pending.change, res.status)) {
         await removePending(user.id, pending.seq);
+        accepted(pending.change);
       } else if (res.status >= 500) {
         failed = true;
         break;
@@ -168,7 +208,7 @@ async function send() {
         break;
       } else {
         await reject(user.id, pending, res.status, await res.text());
-        refused++;
+        refusedCount++;
       }
       await refreshCounts();
     }
@@ -179,7 +219,7 @@ async function send() {
   if (me !== user) return;
   if (failed) retryLater();
   else retryDelay = FIRST_RETRY;
-  if (refused > 0) onRejected();
+  if (refusedCount > 0) refused(refusedCount);
 }
 
 window.addEventListener("online", () => {
