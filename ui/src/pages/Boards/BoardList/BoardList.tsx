@@ -75,14 +75,16 @@ function BoardList({ loaderData }: { loaderData: BoardListData }) {
         </SortableBoards>
       </div>
 
-      <div className="flex flex-col gap-4">
-        <h2 className="text-xl font-bold">Your teams</h2>
-        <SortableBoards
-          boards={teamBoards}
-          setBoards={setTeamBoards}
-          offline={offline}
-        />
-      </div>
+      {teamBoards.length > 0 && (
+        <div className="flex flex-col gap-4">
+          <h2 className="text-xl font-bold">Your teams</h2>
+          <SortableBoards
+            boards={teamBoards}
+            setBoards={setTeamBoards}
+            offline={offline}
+          />
+        </div>
+      )}
 
       {offline?.missing && (
         <p className="text-sm text-muted-foreground">
