@@ -25,6 +25,13 @@ func NewDirectory(idp *cip.Client, poolID string) *Directory {
 }
 
 func (d *Directory) Ensure(ctx context.Context, email string) (User, error) {
+	u, _, err := d.ensure(ctx, email)
+	return u, err
+}
+
+// ensure is Ensure that also returns the user's username, which in a pool
+// that signs in by email is a generated id rather than the address.
+func (d *Directory) ensure(ctx context.Context, email string) (User, string, error) {
 	created, err := d.idp.AdminCreateUser(ctx, &cip.AdminCreateUserInput{
 		UserPoolId:    aws.String(d.poolID),
 		Username:      aws.String(email),
@@ -41,12 +48,12 @@ func (d *Directory) Ensure(ctx context.Context, email string) (User, error) {
 			Username:   aws.String(email),
 		})
 		if err != nil {
-			return User{}, err
+			return User{}, "", err
 		}
-		return userFrom(got.UserAttributes), nil
+		return userFrom(got.UserAttributes), aws.ToString(got.Username), nil
 	}
 	if err != nil {
-		return User{}, err
+		return User{}, "", err
 	}
 
 	_, err = d.idp.AdminSetUserPassword(ctx, &cip.AdminSetUserPasswordInput{
@@ -56,9 +63,9 @@ func (d *Directory) Ensure(ctx context.Context, email string) (User, error) {
 		Permanent:  true,
 	})
 	if err != nil {
-		return User{}, err
+		return User{}, "", err
 	}
-	return userFrom(created.User.Attributes), nil
+	return userFrom(created.User.Attributes), aws.ToString(created.User.Username), nil
 }
 
 func userFrom(attributes []types.AttributeType) User {

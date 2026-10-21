@@ -208,6 +208,8 @@ resource "aws_lambda_function" "skipli" {
       USER_POOL_ID        = aws_cognito_user_pool.skipli.id
       USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.skipli.id
       TABLE_NAME          = aws_dynamodb_table.skipli.name
+      AUTH_DOMAIN         = var.google_sign_in ? local.auth_domain : ""
+      APP_URL             = local.app_url
     }
   }
 }

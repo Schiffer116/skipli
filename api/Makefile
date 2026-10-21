@@ -5,6 +5,10 @@ run dev: export AWS_REGION ?= $(shell terraform -chdir=../infra output -raw regi
 run dev: export TABLE_NAME ?= Skipli
 run dev: export USER_POOL_ID ?= $(shell terraform -chdir=../infra output -raw user_pool_id)
 run dev: export USER_POOL_CLIENT_ID ?= $(shell terraform -chdir=../infra output -raw user_pool_client_id)
+# Google sign-in only finishes at an origin the user pool client allows
+# (local_app_urls in infra/env).
+run dev: export AUTH_DOMAIN ?= $(shell terraform -chdir=../infra output -raw auth_domain 2>/dev/null)
+run dev: export APP_URL ?= http://localhost:4417
 
 build:
 	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \

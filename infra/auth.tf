@@ -36,6 +36,10 @@ resource "aws_cognito_user_pool" "skipli" {
     source_arn            = aws_sesv2_email_identity.domain.arn
     from_email_address    = "${var.email_from_name} <no-reply@${data.aws_route53_zone.hosted_zone.name}>"
   }
+
+  lambda_config {
+    pre_sign_up = aws_lambda_function.pre_sign_up.arn
+  }
 }
 
 resource "aws_cognito_user_pool_client" "skipli" {
@@ -46,6 +50,13 @@ resource "aws_cognito_user_pool_client" "skipli" {
   explicit_auth_flows   = ["ALLOW_USER_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]
   id_token_validity     = 1
   auth_session_validity = 10
+
+  # Google sign-in: the API's callback is the only redirect target.
+  allowed_oauth_flows_user_pool_client = var.google_sign_in
+  allowed_oauth_flows                  = var.google_sign_in ? ["code"] : []
+  allowed_oauth_scopes                 = var.google_sign_in ? ["openid", "email", "profile"] : []
+  supported_identity_providers         = aws_cognito_identity_provider.google[*].provider_name
+  callback_urls                        = var.google_sign_in ? [for url in concat([local.app_url], var.local_app_urls) : "${url}/api/auth/google/callback"] : []
 }
 
 output "user_pool_id" {

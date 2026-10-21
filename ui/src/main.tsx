@@ -9,6 +9,7 @@ import Boards from "@/pages/Boards";
 import BoardList from "@/pages/Boards/BoardList";
 import Login from "@/pages/Login";
 import Verify from "@/pages/Verify";
+import SignedIn from "@/pages/SignedIn";
 import AcceptInvite from "@/pages/AcceptInvite";
 import ErrorPage from "@/pages/ErrorPage";
 import BoardView from "@/pages/Boards/BoardView";
@@ -87,6 +88,10 @@ const router = createBrowserRouter([
       {
         path: "/verify",
         Component: Verify,
+      },
+      {
+        path: "/signed-in",
+        Component: SignedIn,
       },
       {
         path: "/boards/:boardId/invite/accept",

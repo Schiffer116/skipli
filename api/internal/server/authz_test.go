@@ -156,7 +156,7 @@ func TestBoardRoutesRequireMembership(t *testing.T) {
 	}, testIssuer, testClientID)
 
 	canReceiveMail := func(context.Context, string) bool { return true }
-	router := newServer(aws.Config{}, db, idp, tokens, "us-east-1_test", testClientID, "Skipli", canReceiveMail).Router
+	router := newServer(aws.Config{}, db, idp, tokens, "us-east-1_test", testClientID, "Skipli", canReceiveMail, nil).Router
 
 	// {board} is replaced with the board under test; routes without it
 	// aren't scoped to a board and only need a signed-in caller.

@@ -24,6 +24,7 @@ type Handler struct {
 	tokens         *TokenVerifier
 	cooldown       *Cooldown
 	canReceiveMail func(context.Context, string) bool
+	google         *Google
 }
 
 func NewHandler(idp *cip.Client, clientID string, users *Directory, tokens *TokenVerifier, cooldown *Cooldown) *Handler {
@@ -37,7 +38,15 @@ func NewHandler(idp *cip.Client, clientID string, users *Directory, tokens *Toke
 	}
 }
 
+// EnableGoogle offers Google sign-in alongside email codes; nil turns it off.
+func (h *Handler) EnableGoogle(google *Google) {
+	h.google = google
+}
+
 func (h *Handler) RegisterRoutes(router *http.ServeMux) {
+	router.HandleFunc("GET /auth/providers", h.providers)
+	router.HandleFunc("GET /auth/google", h.googleStart)
+	router.HandleFunc("GET /auth/google/callback", h.googleCallback)
 	router.HandleFunc("POST /auth/send", h.sendVerificationEmail)
 	router.HandleFunc("POST /auth/verify", h.verify)
 	router.HandleFunc("POST /auth/refresh", h.refresh)

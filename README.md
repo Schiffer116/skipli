@@ -6,7 +6,7 @@
 
 This project is a **real-time board management tool** that allows teams to collaborate on tasks and cards. Features include:
 
-- Multi-user support with authentication
+- Multi-user support: sign in with an emailed code or with Google
 - Board, Card and Task creation, updates, deletion
 - Drag-and-drop task management
 - Real-time updates via WebSockets

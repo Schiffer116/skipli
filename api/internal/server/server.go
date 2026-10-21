@@ -53,13 +53,22 @@ func NewServer() *Server {
 		log.Fatalf("unable to load user pool keys: %v", err)
 	}
 
-	return newServer(cfg, db, idp, tokens, poolID, clientID, tableName, auth.CanReceiveMail)
+	var google *auth.Google
+	if domain := os.Getenv("AUTH_DOMAIN"); domain != "" {
+		appURL := os.Getenv("APP_URL")
+		if appURL == "" {
+			log.Fatal("APP_URL must be set when AUTH_DOMAIN is")
+		}
+		google = &auth.Google{Domain: domain, AppURL: appURL}
+	}
+
+	return newServer(cfg, db, idp, tokens, poolID, clientID, tableName, auth.CanReceiveMail, google)
 }
 
 // newServer wires the routes onto already-built clients, so tests can run the
 // real router against fakes. canReceiveMail stands in for the invite
-// address's DNS check.
-func newServer(cfg aws.Config, db *dynamodb.Client, idp *cognitoidentityprovider.Client, tokens *auth.TokenVerifier, poolID, clientID, tableName string, canReceiveMail func(context.Context, string) bool) *Server {
+// address's DNS check. A nil google leaves Google sign-in off.
+func newServer(cfg aws.Config, db *dynamodb.Client, idp *cognitoidentityprovider.Client, tokens *auth.TokenVerifier, poolID, clientID, tableName string, canReceiveMail func(context.Context, string) bool, google *auth.Google) *Server {
 	router := http.NewServeMux()
 
 	users := auth.NewDirectory(idp, poolID)
@@ -70,7 +79,9 @@ func newServer(cfg aws.Config, db *dynamodb.Client, idp *cognitoidentityprovider
 	profiles := profile.NewStore(db, tableName)
 	profile.NewHandler(profiles, tokens).RegisterRoutes(router)
 	board.NewHandler(db, tableName, tokens, users, profiles, canReceiveMail).RegisterRoutes(router)
-	auth.NewHandler(idp, clientID, users, tokens, auth.NewCooldown(db, tableName)).RegisterRoutes(router)
+	authHandler := auth.NewHandler(idp, clientID, users, tokens, auth.NewCooldown(db, tableName))
+	authHandler.EnableGoogle(google)
+	authHandler.RegisterRoutes(router)
 	card.NewHandler(db, tableName, tokens).RegisterRoutes(router)
 	task.NewHandler(db, tableName, tokens).RegisterRoutes(router)
 
