@@ -88,7 +88,7 @@ export default function Verify() {
     <div className="w-full min-h-screen bg-background border-t-[3rem] border-nav flex justify-center items-center text-center">
       <Card className="w-full max-w-md border-t-4 border-t-primary">
         <CardHeader>
-          <CardTitle>Email Verification</CardTitle>
+          <CardTitle className="text-heading">Email Verification</CardTitle>
           <CardDescription>
             Enter the 8-digit code we emailed you
           </CardDescription>

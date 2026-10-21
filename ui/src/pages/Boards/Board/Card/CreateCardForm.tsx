@@ -50,7 +50,7 @@ export default function CreateCard() {
     <form onSubmit={handleSubmit}>
       <Card className="flex-shrink-0 w-80 bg-card border-border">
         <CardHeader>
-          <CardTitle>Create a card</CardTitle>
+          <CardTitle className="text-heading">Create a card</CardTitle>
         </CardHeader>
         <CardContent>
           <Input name="name" placeholder="Name" className="mb-3" autoFocus />

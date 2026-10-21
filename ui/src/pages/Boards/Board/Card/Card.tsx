@@ -130,7 +130,7 @@ const CardBody = memo(function CardBody(
         className={`flex items-center justify-between px-4 py-3 [.border-b]:pb-3 bg-muted border-b ${readOnly ? "" : "cursor-grab"}`}
         {...listeners}
       >
-        <CardTitle className="text-base font-bold text-card-foreground w-full">
+        <CardTitle className="text-base font-bold text-heading w-full">
           {name}
           <span className="ml-2 font-normal text-muted-foreground">
             ({tasks.length})
