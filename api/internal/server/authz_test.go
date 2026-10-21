@@ -6,8 +6,10 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -28,6 +30,7 @@ const (
 )
 
 // fakeAWS stands in for DynamoDB and Cognito. GetItem reads from items, a
+// Query on a board's partition gives back its items in key order, a
 // transaction's attribute_exists conditions are checked against them, and
 // every other call succeeds with an empty result.
 type fakeAWS struct {
@@ -50,8 +53,10 @@ func (f *fakeAWS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Unlock()
 
 	var body struct {
-		Key           attributeKey
-		TransactItems []struct {
+		Key                       attributeKey
+		KeyConditionExpression    string
+		ExpressionAttributeValues map[string]map[string]string
+		TransactItems             []struct {
 			Update *struct {
 				Key                 attributeKey
 				ConditionExpression string
@@ -69,7 +74,20 @@ func (f *fakeAWS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		fmt.Fprint(w, `{}`)
 	case "Query":
-		fmt.Fprint(w, `{"Items":[],"Count":0}`)
+		// Only whole-partition reads (a board read) find anything; other
+		// queries, by index or key prefix, come back empty.
+		var found []string
+		if !strings.Contains(body.KeyConditionExpression, "begins_with") {
+			keys := slices.Sorted(maps.Keys(f.items))
+			for _, v := range body.ExpressionAttributeValues {
+				for _, k := range keys {
+					if strings.HasPrefix(k, v["S"]+"/") {
+						found = append(found, f.items[k])
+					}
+				}
+			}
+		}
+		fmt.Fprintf(w, `{"Items":[%s],"Count":%d}`, strings.Join(found, ","), len(found))
 	case "TransactWriteItems":
 		var reasons []string
 		failed := false
@@ -191,17 +209,10 @@ func TestBoardRoutesRequireMembership(t *testing.T) {
 		{"POST", "/api/boards", `{"name":"New"}`, 201, 201},
 		{"PUT", "/api/boards/order", `{"boardIds":["b1"]}`, 204, 403},
 		{"GET", "/api/boards/{board}", "", 200, 403},
-		{"GET", "/api/boards/{board}/members", "", 200, 403},
 		{"PUT", "/api/boards/{board}", `{"name":"Renamed","description":""}`, 204, 403},
 		{"PUT", "/api/boards/{board}/favorite", `{"favorite":true}`, 204, 403},
 		{"POST", "/api/boards/{board}/invite", `{"email":"invitee@example.com"}`, 204, 403},
 		{"DELETE", "/api/boards/{board}", "", 204, 403},
-
-		{"GET", "/api/boards/{board}/cards", "", 200, 403},
-		{"GET", "/api/boards/{board}/cards/c1", "", 200, 403},
-
-		{"GET", "/api/boards/{board}/cards/c1/tasks", "", 200, 403},
-		{"GET", "/api/boards/{board}/cards/c1/tasks/t1", "", 200, 403},
 	}
 
 	// Every kind of Board change is taken from members only.
@@ -282,4 +293,25 @@ func TestBoardRoutesRequireMembership(t *testing.T) {
 			})
 		}
 	}
+
+	// A member opening the board gets all of it from one membership check,
+	// one Query and one profile lookup.
+	t.Run("whole board", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/boards/b1", nil)
+		req.AddCookie(&http.Cookie{Name: "id_token", Value: signToken(t, key, "u-member")})
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		calls := fake.takeCalls()
+
+		want := `{"id":"b1","owner":"u-member","name":"Board","description":"",` +
+			`"members":[{"id":"u-member","email":"u-member@example.com","name":"u-member"}],` +
+			`"cards":[{"id":"c1","name":"Card 1","description":"","tasks":[{"id":"t1","cardId":"c1","name":"Task","description":"","status":"pending"}]},` +
+			`{"id":"c2","name":"Card 2","description":"","tasks":[]}]}`
+		if got := strings.TrimSpace(rec.Body.String()); rec.Code != 200 || got != want {
+			t.Errorf("got %d %s\nwant 200 %s", rec.Code, got, want)
+		}
+		if got := strings.Join(calls, ","); got != "GetItem,Query,BatchGetItem" {
+			t.Errorf("calls = %s, want GetItem,Query,BatchGetItem", got)
+		}
+	})
 }

@@ -44,7 +44,6 @@ func NewHandler(db *dynamodb.Client, table string, tokens *auth.TokenVerifier, u
 func (h *Handler) RegisterRoutes(router *http.ServeMux) {
 	router.HandleFunc("GET /boards", h.tokens.RequireAuth(h.list))
 	router.HandleFunc("GET /boards/{id}", h.member(h.get))
-	router.HandleFunc("GET /boards/{id}/members", h.member(h.members))
 	router.HandleFunc("POST /boards", h.tokens.RequireAuth(h.create))
 	router.HandleFunc("PUT /boards/order", h.tokens.RequireAuth(h.order))
 	router.HandleFunc("PUT /boards/{id}", h.member(h.put))
@@ -161,115 +160,6 @@ func (h *Handler) create(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(Board{ID: id, Owner: user.ID, Name: r.Name, Description: r.Description})
-}
-
-func (h *Handler) get(w http.ResponseWriter, req *http.Request) {
-	ctx := req.Context()
-
-	id := req.PathValue("id")
-
-	response, err := h.db.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(h.table),
-		Key: map[string]types.AttributeValue{
-			"PK": &types.AttributeValueMemberS{Value: id},
-			"SK": &types.AttributeValueMemberS{Value: "META"},
-		},
-	})
-	if err != nil {
-		log.Printf("failed to get item: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if response.Item == nil {
-		http.NotFound(w, req)
-		return
-	}
-
-	var board Board
-	if err := attributevalue.UnmarshalMap(response.Item, &board); err != nil {
-		log.Printf("failed to unmarshal item: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(board)
-}
-
-func (h *Handler) members(w http.ResponseWriter, req *http.Request) {
-	ctx := req.Context()
-	id := req.PathValue("id")
-
-	response, err := h.db.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(h.table),
-		Key: map[string]types.AttributeValue{
-			"PK": &types.AttributeValueMemberS{Value: id},
-			"SK": &types.AttributeValueMemberS{Value: "META"},
-		},
-	})
-	if err != nil {
-		log.Printf("failed to get board: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if response.Item == nil {
-		http.NotFound(w, req)
-		return
-	}
-
-	keyEx := expression.Key("PK").Equal(expression.Value(id)).
-		And(expression.Key("SK").BeginsWith("MEMBER#"))
-	expr, err := expression.NewBuilder().WithKeyCondition(keyEx).Build()
-	if err != nil {
-		log.Printf("failed to build query expression: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	queryOutput := dynamodb.NewQueryPaginator(h.db, &dynamodb.QueryInput{
-		TableName:                 aws.String(h.table),
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
-		KeyConditionExpression:    expr.KeyCondition(),
-	})
-
-	var users []auth.User
-	for queryOutput.HasMorePages() {
-		page, err := queryOutput.NextPage(ctx)
-		if err != nil {
-			log.Printf("failed to list members: %v", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		var pageMembers []struct{ Member, Email string }
-		if err := attributevalue.UnmarshalListOfMaps(page.Items, &pageMembers); err != nil {
-			log.Printf("failed to unmarshal members: %v", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		for _, m := range pageMembers {
-			users = append(users, auth.User{ID: m.Member, Email: m.Email})
-		}
-	}
-
-	names, err := h.profiles.Names(ctx, users)
-	if err != nil {
-		log.Printf("failed to get member names: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	members := []Member{}
-	for _, u := range users {
-		members = append(members, Member{ID: u.ID, Email: u.Email, Name: names[u.ID]})
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(members)
 }
 
 type Member struct {

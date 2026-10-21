@@ -11,10 +11,8 @@ import (
 	"github.com/Schiffer116/skipli/api/internal/board"
 	"github.com/Schiffer116/skipli/api/internal/boardchange"
 	"github.com/Schiffer116/skipli/api/internal/broadcast"
-	"github.com/Schiffer116/skipli/api/internal/card"
 	"github.com/Schiffer116/skipli/api/internal/config"
 	"github.com/Schiffer116/skipli/api/internal/profile"
-	"github.com/Schiffer116/skipli/api/internal/task"
 )
 
 // NewRouter serves the HTTP API: page loads, every change, sign-in, invites
@@ -38,8 +36,6 @@ func newRouter(db *dynamodb.Client, idp *cognitoidentityprovider.Client, tokens 
 	profile.NewHandler(profiles, tokens).RegisterRoutes(router)
 	board.NewHandler(db, tableName, tokens, users, profiles, canReceiveMail, broadcaster).RegisterRoutes(router)
 	auth.NewHandler(idp, clientID, users, tokens, auth.NewCooldown(db, tableName)).RegisterRoutes(router)
-	card.NewHandler(db, tableName, tokens).RegisterRoutes(router)
-	task.NewHandler(db, tableName, tokens).RegisterRoutes(router)
 	boardchange.NewHandler(db, tableName, tokens, broadcaster).RegisterRoutes(router)
 
 	api := http.NewServeMux()
