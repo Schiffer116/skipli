@@ -22,6 +22,9 @@ import UpdatePrompt from "@/components/UpdatePrompt";
 import { Toaster } from "@/components/ui/sonner";
 import { setOnRefused } from "@/offline/sync";
 import { toast } from "sonner";
+import { setOnRejected } from "@/offline/sync";
+import { keepFocusVisible } from "@/utils/keepFocusVisible";
+import { watchTheme } from "@/utils/theme";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -37,6 +40,9 @@ declare global {
     __TANSTACK_QUERY_CLIENT__: import("@tanstack/query-core").QueryClient;
   }
 }
+
+keepFocusVisible();
+watchTheme();
 
 // This code is for all users
 window.__TANSTACK_QUERY_CLIENT__ = queryClient;

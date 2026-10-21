@@ -12,7 +12,7 @@ const buttonVariants = cva(
         default:
           "bg-primary text-primary-foreground hover:bg-[#eb5f07] dark:hover:bg-[#ffb347]",
         destructive:
-          "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
+          "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-[#d91515] dark:hover:bg-[#b80f0f]",
         outline:
           "border-2 border-link bg-card text-link hover:bg-accent hover:text-accent-foreground",
         secondary:

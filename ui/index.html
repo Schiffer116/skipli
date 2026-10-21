@@ -6,6 +6,36 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#232f3e" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content"
+    />
+    <!-- Light or dark before the first paint, so a dark page never flashes
+         light. Same key and rules as src/utils/theme.ts; the colors are
+         --background and --nav from src/index.css. -->
+    <script>
+      (function () {
+        var theme = null;
+        try {
+          theme = localStorage.getItem("skipli:theme");
+        } catch (e) {}
+        var dark =
+          theme === "dark" ||
+          (theme !== "light" &&
+            matchMedia("(prefers-color-scheme: dark)").matches);
+        if (!dark) return;
+        document.documentElement.classList.add("dark");
+        document
+          .querySelector('meta[name="theme-color"]')
+          .setAttribute("content", "#0f141a");
+      })();
+    </script>
+    <style>
+      html.dark {
+        background: #161d26;
+        color-scheme: dark;
+      }
+    </style>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Skipli</title>
   </head>

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { LogOut, Star, UsersRound } from "lucide-react";
+import { LogOut, Monitor, Moon, Star, Sun, UsersRound } from "lucide-react";
 
 import UserAvatar from "@/components/UserAvatar";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,7 @@ import {
 import { signOut } from "@/offline/signOut";
 import { useSync } from "@/offline/sync";
 import { apiFetch } from "@/utils/apiFetch";
+import { readTheme, setTheme, type Theme } from "@/utils/theme";
 
 import { forgetMe, type Favorite, type Me } from "./loaders";
 
@@ -102,10 +103,10 @@ export default function Header({ me, setMe, favorites }: HeaderProps) {
           <DialogContent className="sm:max-w-[425px]">
             <form onSubmit={saveName} autoComplete="off">
               <DialogHeader className="mb-4">
-                <DialogTitle>Display name</DialogTitle>
+                <DialogTitle>Account</DialogTitle>
                 <DialogDescription>
-                  Shown to the members of your boards instead of your email,{" "}
-                  {me.email}.
+                  Your name is shown to the members of your boards instead of
+                  your email, {me.email}.
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-2">
@@ -129,6 +130,7 @@ export default function Header({ me, setMe, favorites }: HeaderProps) {
                   </p>
                 )}
               </div>
+              <ThemePicker />
               <DialogFooter className="mt-4">
                 <Button
                   variant="ghost"
@@ -208,6 +210,51 @@ export default function Header({ me, setMe, favorites }: HeaderProps) {
         ))}
       </nav>
     </header>
+  );
+}
+
+const themes = [
+  { value: "system", label: "System", Icon: Monitor },
+  { value: "light", label: "Light", Icon: Sun },
+  { value: "dark", label: "Dark", Icon: Moon },
+] satisfies { value: Theme; label: string; Icon: typeof Sun }[];
+
+// Applies at once rather than on Save: it's remembered on this device,
+// not on the account.
+function ThemePicker() {
+  const [theme, setChoice] = useState(readTheme);
+
+  return (
+    <div className="grid gap-2 mt-6">
+      <p id="theme-label" className="text-sm leading-none font-medium">
+        Appearance
+      </p>
+      <div
+        role="radiogroup"
+        aria-labelledby="theme-label"
+        className="grid grid-cols-3 gap-1 rounded-lg border bg-background p-1"
+      >
+        {themes.map(({ value, label, Icon }) => (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={theme === value}
+            onClick={() => {
+              setTheme(value);
+              setChoice(value);
+            }}
+            className="flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-checked:bg-card aria-checked:font-bold aria-checked:text-foreground aria-checked:shadow-sm dark:aria-checked:bg-accent dark:aria-checked:text-accent-foreground"
+          >
+            <Icon className="size-4" aria-hidden />
+            {label}
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Remembered on this device. System follows your device's setting.
+      </p>
+    </div>
   );
 }
 
