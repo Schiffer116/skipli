@@ -15,7 +15,7 @@ variable "auth_domain_prefix" {
 }
 
 variable "local_app_urls" {
-  description = "Origins of locally run copies of the UI that may finish Google sign-in, such as http://localhost:4417."
+  description = "Origins of locally run copies of the UI that may finish Google sign-in, such as http://localhost:4400."
   type        = list(string)
   default     = []
 }

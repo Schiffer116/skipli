@@ -2,7 +2,7 @@ import { Loader2 } from "lucide-react";
 
 // Google's sign-in button, drawn to its branding rules: the standard "G" on
 // a white (light) or #131314 (dark) fill with a thin outline, Roboto Medium
-// 14px, 40px tall.
+// 14px, 40px tall, in the pill shape the rules allow.
 export default function GoogleButton({
   busy,
   onClick,
@@ -15,7 +15,7 @@ export default function GoogleButton({
       type="button"
       onClick={onClick}
       disabled={busy}
-      className="flex h-10 w-full items-center justify-center gap-2.5 rounded-md border border-[#747775] bg-white px-3 font-[Roboto,var(--app-font)] text-sm leading-5 font-medium text-[#1f1f1f] outline-none hover:bg-[#f7f8f8] focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-60 dark:border-[#8e918f] dark:bg-[#131314] dark:text-[#e3e3e3] dark:hover:bg-[#1d1d1e]"
+      className="flex h-10 w-full items-center justify-center gap-2.5 rounded-full border border-[#747775] bg-white px-3 font-[Roboto,var(--app-font)] text-sm leading-5 font-medium text-[#1f1f1f] outline-none hover:bg-[#f7f8f8] focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-60 dark:border-[#8e918f] dark:bg-[#131314] dark:text-[#e3e3e3] dark:hover:bg-[#1d1d1e]"
     >
       {busy ? (
         <Loader2 className="size-[18px] animate-spin" aria-hidden />

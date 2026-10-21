@@ -23,9 +23,10 @@ never ask the user for one.
 4. Signed out (page is `/login`): fill the email, `since=$(date +%s)`,
    `press Enter`, then fill `$(scripts/e2e-code "$since")` and `press Enter`.
 
-Google sign-in can't be automated: test it with the user, and only on UI port
-4417, the one local origin the user pool allows (`local_app_urls` in
-`infra/env/dev.tfvars`).
+Google sign-in can't be automated: test it with the user, with the UI on port
+4400, the one local origin the user pool allows (`local_app_urls` in
+`infra/env/dev.tfvars`; the API's `APP_URL` defaults to it). Keep 4400 free
+otherwise.
 
 chrome-devtools-axi quirks:
 

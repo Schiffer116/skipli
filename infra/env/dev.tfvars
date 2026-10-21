@@ -9,4 +9,4 @@ local_dev_principals = ["arn:aws:iam::797848269974:user/iamadmin"]
 e2e_mail             = true
 auth_domain_prefix   = "skipli-dev"
 google_sign_in       = true
-local_app_urls       = ["http://localhost:4417"]
+local_app_urls       = ["http://localhost:4400"]

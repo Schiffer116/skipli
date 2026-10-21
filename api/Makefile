@@ -8,7 +8,7 @@ run dev: export USER_POOL_CLIENT_ID ?= $(shell terraform -chdir=../infra output 
 # Google sign-in only finishes at an origin the user pool client allows
 # (local_app_urls in infra/env).
 run dev: export AUTH_DOMAIN ?= $(shell terraform -chdir=../infra output -raw auth_domain 2>/dev/null)
-run dev: export APP_URL ?= http://localhost:4417
+run dev: export APP_URL ?= http://localhost:4400
 
 build:
 	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
