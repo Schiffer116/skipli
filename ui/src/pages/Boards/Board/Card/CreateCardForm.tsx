@@ -48,7 +48,7 @@ export default function CreateCard() {
 
   return (
     <form onSubmit={handleSubmit}>
-      <Card className="flex-shrink-0 w-80 bg-card border-border">
+      <Card className="w-full bg-card border-border">
         <CardHeader>
           <CardTitle className="text-heading">Create a card</CardTitle>
         </CardHeader>

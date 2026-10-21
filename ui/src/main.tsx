@@ -20,6 +20,7 @@ import {
 } from "@/pages/Boards/loaders";
 import UpdatePrompt from "@/components/UpdatePrompt";
 import { setOnRejected } from "@/offline/sync";
+import { keepFocusVisible } from "@/utils/keepFocusVisible";
 import { watchTheme } from "@/utils/theme";
 
 const queryClient = new QueryClient({
@@ -37,6 +38,7 @@ declare global {
   }
 }
 
+keepFocusVisible();
 watchTheme();
 
 // This code is for all users
