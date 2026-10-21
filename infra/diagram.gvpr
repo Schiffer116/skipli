@@ -10,11 +10,11 @@ BEG_G {
   tier[order[i++] = "tv_aws_users.users"] = 0;
   tier[order[i++] = "aws_cloudfront_distribution.skipli"] = 1;
   tier[order[i++] = "aws_route53_zone.dns"] = 1;
-  tier[order[i++] = "aws_apigatewayv2_api.skipli"] = 2;
   tier[order[i++] = "aws_apigatewayv2_api.realtime"] = 2;
+  tier[order[i++] = "aws_apigatewayv2_api.skipli"] = 2;
   tier[order[i++] = "aws_s3_bucket.skipli"] = 2;
-  tier[order[i++] = "aws_lambda_function.skipli"] = 3;
   tier[order[i++] = "aws_lambda_function.realtime"] = 3;
+  tier[order[i++] = "aws_lambda_function.skipli"] = 3;
   tier[order[i++] = "aws_dynamodb_table.skipli"] = 4;
   tier[order[i++] = "aws_cognito_user_pool.cognito"] = 4;
   tier[order[i++] = "aws_sesv2_email_identity.domain"] = 4;
