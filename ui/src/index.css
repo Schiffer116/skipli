@@ -10,6 +10,7 @@
   --radius-xl: calc(var(--radius) + 4px);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-heading: var(--heading);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
@@ -53,6 +54,7 @@
   --app-font: "Amazon Ember", "Helvetica Neue", Roboto, Arial, sans-serif;
   --background: #f2f3f3;
   --foreground: #16191f;
+  --heading: #16191f;
   --card: #ffffff;
   --card-foreground: #16191f;
   --popover: #ffffff;
@@ -89,44 +91,69 @@
   --sidebar-ring: #0972d3;
 }
 
+/* Cloudscape's dark mode, so dark reads as the AWS Console the light theme
+   follows. Values are the dark side of @cloudscape-design/design-tokens
+   (visual refresh, 3.0.116), by token:
+     background         color-background-layout-main
+     card, popover      color-background-container-content, -popover
+     muted              color-background-cell-shaded
+     foreground         color-text-body-default
+     heading            color-text-heading-default
+     muted-foreground   color-text-form-secondary
+     border             color-border-divider-default
+     input              color-border-input-default
+     ring, link         color-border-item-focused, color-text-link-default
+     accent             color-background-button-normal-hover,
+                        color-text-link-hover
+     secondary          color-background-button-normal-default,
+                        color-text-button-normal-default
+     primary-foreground color-text-button-primary-default
+     destructive        color-text-status-error
+     success            color-text-status-success
+     nav                color-background-home-header,
+                        color-text-top-navigation-title
+   Primary stays AWS orange rather than Cloudscape's blue: it's what the
+   Console's primary buttons use, and here it also tells your own boards
+   (orange) from shared ones (link blue). */
 .dark {
   color-scheme: dark;
-  --background: #0f1b2a;
-  --foreground: #d1d5db;
-  --card: #192534;
-  --card-foreground: #d1d5db;
-  --popover: #192534;
-  --popover-foreground: #d1d5db;
+  --background: #161d26;
+  --foreground: #c6c6cd;
+  --heading: #ebebf0;
+  --card: #161d26;
+  --card-foreground: #c6c6cd;
+  --popover: #1b232d;
+  --popover-foreground: #c6c6cd;
   --primary: #ff9900;
-  --primary-foreground: #0f1b2a;
-  --secondary: #192534;
-  --secondary-foreground: #539fe5;
-  --muted: #1f2b3b;
-  --muted-foreground: #8d99a8;
-  --accent: #0f2c4a;
-  --accent-foreground: #89bdee;
-  --destructive: #ff5d64;
-  --border: #414d5c;
-  --input: #7f8a98;
-  --ring: #539fe5;
-  --link: #539fe5;
+  --primary-foreground: #0f141a;
+  --secondary: #161d26;
+  --secondary-foreground: #42b4ff;
+  --muted: #1b232d;
+  --muted-foreground: #a4a4ad;
+  --accent: #1b232d;
+  --accent-foreground: #75cfff;
+  --destructive: #ff7a7a;
+  --border: #424650;
+  --input: #656871;
+  --ring: #42b4ff;
+  --link: #42b4ff;
   --success: #2bb534;
   --nav: #0f141a;
-  --nav-foreground: #ffffff;
-  --nav-muted: #b6bec9;
+  --nav-foreground: #f9f9fa;
+  --nav-muted: #c6c6cd;
   --chart-1: #ff9900;
-  --chart-2: #539fe5;
+  --chart-2: #42b4ff;
   --chart-3: #2bb534;
   --chart-4: #b88af6;
-  --chart-5: #ff5d64;
-  --sidebar: #192534;
-  --sidebar-foreground: #d1d5db;
+  --chart-5: #ff7a7a;
+  --sidebar: #161d26;
+  --sidebar-foreground: #c6c6cd;
   --sidebar-primary: #ff9900;
-  --sidebar-primary-foreground: #0f1b2a;
-  --sidebar-accent: #0f2c4a;
-  --sidebar-accent-foreground: #89bdee;
-  --sidebar-border: #414d5c;
-  --sidebar-ring: #539fe5;
+  --sidebar-primary-foreground: #0f141a;
+  --sidebar-accent: #1b232d;
+  --sidebar-accent-foreground: #75cfff;
+  --sidebar-border: #424650;
+  --sidebar-ring: #42b4ff;
 }
 
 @layer base {
@@ -136,5 +163,13 @@
 
   body {
     @apply bg-background text-foreground font-sans m-0 antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  [data-slot="dialog-title"],
+  [data-slot="alert-dialog-title"] {
+    @apply text-heading;
   }
 }
