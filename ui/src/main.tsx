@@ -22,7 +22,6 @@ import UpdatePrompt from "@/components/UpdatePrompt";
 import { Toaster } from "@/components/ui/sonner";
 import { setOnRefused } from "@/offline/sync";
 import { toast } from "sonner";
-import { setOnRejected } from "@/offline/sync";
 import { keepFocusVisible } from "@/utils/keepFocusVisible";
 import { watchTheme } from "@/utils/theme";
 
