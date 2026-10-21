@@ -1,6 +1,6 @@
 # Abuse limits for the public API. API Gateway throttles are account-wide per
 # route rather than per client, and reserved concurrency caps how many copies of
-# each Lambda can run at once, which bounds cost if the API is flooded.
+# the Lambda can run at once, which bounds cost if the API is flooded.
 variable "api_throttle_rate_limit" {
   description = "Steady-state requests per second allowed across every HTTP API route."
   type        = number
@@ -26,13 +26,7 @@ variable "auth_send_throttle_burst_limit" {
 }
 
 variable "api_reserved_concurrency" {
-  description = "Maximum concurrent executions of the HTTP API Lambda."
-  type        = number
-  default     = null
-}
-
-variable "realtime_reserved_concurrency" {
-  description = "Maximum concurrent executions of the WebSocket Lambda."
+  description = "Maximum concurrent executions of the API Lambda, which serves both the HTTP and the WebSocket API."
   type        = number
   default     = null
 }
@@ -191,6 +185,8 @@ data "archive_file" "zip_archive" {
   output_path = "${path.module}/../api/bin/api.zip"
 }
 
+# One function serves both the HTTP API and the WebSocket API; it tells their
+# events apart by shape (api/cmd/skipli).
 resource "aws_lambda_function" "skipli" {
   filename      = data.archive_file.zip_archive.output_path
   function_name = "SkipliAPI"
@@ -208,6 +204,8 @@ resource "aws_lambda_function" "skipli" {
       USER_POOL_ID        = aws_cognito_user_pool.skipli.id
       USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.skipli.id
       TABLE_NAME          = aws_dynamodb_table.skipli.name
+      # Where the HTTP handlers push what they save to a board's WebSockets.
+      REALTIME_ENDPOINT = replace(aws_apigatewayv2_stage.realtime.invoke_url, "wss://", "https://")
     }
   }
 }
@@ -277,28 +275,6 @@ resource "aws_lambda_permission" "apigw" {
   }
 }
 
-resource "aws_lambda_function" "realtime" {
-  filename      = data.archive_file.zip_archive.output_path
-  function_name = "SkipliRealtime"
-  role          = aws_iam_role.lambda.arn
-
-  handler          = "bootstrap"
-  runtime          = "provided.al2023"
-  architectures    = ["arm64"]
-  source_code_hash = data.archive_file.zip_archive.output_base64sha256
-
-  reserved_concurrent_executions = var.realtime_reserved_concurrency
-
-  environment {
-    variables = {
-      WEBSOCKET           = "1"
-      USER_POOL_ID        = aws_cognito_user_pool.skipli.id
-      USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.skipli.id
-      TABLE_NAME          = aws_dynamodb_table.skipli.name
-    }
-  }
-}
-
 resource "aws_apigatewayv2_api" "realtime" {
   name                       = "skipli-realtime"
   protocol_type              = "WEBSOCKET"
@@ -309,11 +285,13 @@ resource "aws_apigatewayv2_integration" "realtime" {
   api_id             = aws_apigatewayv2_api.realtime.id
   integration_type   = "AWS_PROXY"
   integration_method = "POST"
-  integration_uri    = aws_lambda_function.realtime.invoke_arn
+  integration_uri    = aws_lambda_function.skipli.invoke_arn
 }
 
+# The socket carries news out only: members connect and disconnect, and the app
+# pings on $default to keep an idle connection open. Changes are HTTP requests.
 resource "aws_apigatewayv2_route" "realtime" {
-  for_each  = toset(["$connect", "$default"])
+  for_each  = toset(["$connect", "$disconnect", "$default"])
   api_id    = aws_apigatewayv2_api.realtime.id
   route_key = each.key
   target    = "integrations/${aws_apigatewayv2_integration.realtime.id}"
@@ -327,7 +305,7 @@ resource "aws_apigatewayv2_stage" "realtime" {
 
 resource "aws_lambda_permission" "realtime" {
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.realtime.function_name
+  function_name = aws_lambda_function.skipli.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.realtime.execution_arn}/*"
 }

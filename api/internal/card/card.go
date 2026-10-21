@@ -3,11 +3,9 @@ package card
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"log"
 	"net/http"
 	"sort"
-	"strconv"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -17,17 +15,7 @@ import (
 
 	"github.com/Schiffer116/skipli/api/internal/auth"
 	"github.com/Schiffer116/skipli/api/internal/board"
-	"github.com/Schiffer116/skipli/api/internal/clientid"
 )
-
-const orderGap = 1000
-
-// taskPrefix mirrors internal/task's own SK format ("TASK#<cardId>#..."),
-// duplicated here (not imported) so cascade-delete can find a card's tasks
-// without coupling the two packages.
-func taskPrefix(cardID string) string {
-	return "TASK#" + cardID + "#"
-}
 
 type Handler struct {
 	db     *dynamodb.Client
@@ -45,11 +33,7 @@ func (h *Handler) member(next http.HandlerFunc) http.HandlerFunc {
 
 func (h *Handler) RegisterRoutes(router *http.ServeMux) {
 	router.HandleFunc("GET /boards/{boardId}/cards", h.member(h.list))
-	router.HandleFunc("POST /boards/{boardId}/cards", h.member(h.create))
 	router.HandleFunc("GET /boards/{boardId}/cards/{cardId}", h.member(h.get))
-	router.HandleFunc("PUT /boards/{boardId}/cards/{cardId}", h.member(h.update))
-	router.HandleFunc("PATCH /boards/{boardId}/cards/{cardId}", h.member(h.reorder))
-	router.HandleFunc("DELETE /boards/{boardId}/cards/{cardId}", h.member(h.delete))
 }
 
 // Card is the internal shape, including Order for sorting; Response is what
@@ -155,70 +139,6 @@ func (h *Handler) list(w http.ResponseWriter, req *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-type CreateRequest struct {
-	// ID is optional: the app names cards it creates offline.
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	CreatedAt   string `json:"createdAt"`
-}
-
-func (h *Handler) create(w http.ResponseWriter, req *http.Request) {
-	ctx := req.Context()
-	boardID := req.PathValue("boardId")
-
-	var r CreateRequest
-	if err := json.NewDecoder(req.Body).Decode(&r); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	defer req.Body.Close()
-
-	cards, err := h.listCards(ctx, boardID)
-	if err != nil {
-		log.Printf("failed to list cards: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	order := float64(orderGap)
-	if len(cards) > 0 {
-		order = cards[len(cards)-1].Order + orderGap
-	}
-
-	id, err := clientid.Pick(r.ID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	_, err = h.db.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(h.table),
-		Item: map[string]types.AttributeValue{
-			"PK":          &types.AttributeValueMemberS{Value: boardID},
-			"SK":          &types.AttributeValueMemberS{Value: cardSK(id)},
-			"ID":          &types.AttributeValueMemberS{Value: id},
-			"Name":        &types.AttributeValueMemberS{Value: r.Name},
-			"Description": &types.AttributeValueMemberS{Value: r.Description},
-			"CreatedAt":   &types.AttributeValueMemberS{Value: r.CreatedAt},
-			"Order":       &types.AttributeValueMemberN{Value: strconv.FormatFloat(order, 'f', -1, 64)},
-		},
-		ConditionExpression: aws.String("attribute_not_exists(SK)"),
-	})
-	if err != nil {
-		if clientid.Taken(err) {
-			http.Error(w, "an item with this id already exists", http.StatusConflict)
-			return
-		}
-		log.Printf("failed to create card: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(Response{ID: id, Name: r.Name, Description: r.Description})
-}
-
 func (h *Handler) get(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 	boardID := req.PathValue("boardId")
@@ -238,219 +158,4 @@ func (h *Handler) get(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(toResponse(card))
-}
-
-type UpdateRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-}
-
-func (h *Handler) update(w http.ResponseWriter, req *http.Request) {
-	ctx := req.Context()
-	boardID := req.PathValue("boardId")
-	cardID := req.PathValue("cardId")
-
-	var r UpdateRequest
-	if err := json.NewDecoder(req.Body).Decode(&r); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	defer req.Body.Close()
-
-	update := expression.Set(expression.Name("Name"), expression.Value(r.Name)).
-		Set(expression.Name("Description"), expression.Value(r.Description))
-	expr, err := expression.NewBuilder().WithUpdate(update).Build()
-	if err != nil {
-		log.Printf("failed to build update expression: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	_, err = h.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
-		TableName: aws.String(h.table),
-		Key: map[string]types.AttributeValue{
-			"PK": &types.AttributeValueMemberS{Value: boardID},
-			"SK": &types.AttributeValueMemberS{Value: cardSK(cardID)},
-		},
-		UpdateExpression:          expr.Update(),
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
-		// Without it, updating a deleted card would bring back a broken one.
-		ConditionExpression: aws.String("attribute_exists(SK)"),
-	})
-	if isConditionFailed(err) {
-		http.Error(w, "card not found", http.StatusNotFound)
-		return
-	}
-	if err != nil {
-		log.Printf("failed to update card: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(Response{ID: cardID, Name: r.Name, Description: r.Description})
-}
-
-type ReorderRequest struct {
-	BeforeID string `json:"beforeId"`
-	AfterID  string `json:"afterId"`
-}
-
-func (h *Handler) reorder(w http.ResponseWriter, req *http.Request) {
-	ctx := req.Context()
-	boardID := req.PathValue("boardId")
-	cardID := req.PathValue("cardId")
-
-	var r ReorderRequest
-	if err := json.NewDecoder(req.Body).Decode(&r); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	defer req.Body.Close()
-
-	if r.BeforeID == "" && r.AfterID == "" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	var beforeCard, afterCard *Card
-	if r.BeforeID != "" {
-		c, ok, err := h.getCard(ctx, boardID, r.BeforeID)
-		if err != nil {
-			log.Printf("failed to get before card: %v", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		if !ok {
-			http.NotFound(w, req)
-			return
-		}
-		beforeCard = &c
-	}
-	if r.AfterID != "" {
-		c, ok, err := h.getCard(ctx, boardID, r.AfterID)
-		if err != nil {
-			log.Printf("failed to get after card: %v", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		if !ok {
-			http.NotFound(w, req)
-			return
-		}
-		afterCard = &c
-	}
-
-	var newOrder float64
-	switch {
-	case beforeCard == nil:
-		newOrder = afterCard.Order - orderGap
-	case afterCard == nil:
-		newOrder = beforeCard.Order + orderGap
-	default:
-		newOrder = beforeCard.Order + (afterCard.Order-beforeCard.Order)/2
-	}
-
-	update := expression.Set(expression.Name("Order"), expression.Value(newOrder))
-	expr, err := expression.NewBuilder().WithUpdate(update).Build()
-	if err != nil {
-		log.Printf("failed to build update expression: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	_, err = h.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
-		TableName: aws.String(h.table),
-		Key: map[string]types.AttributeValue{
-			"PK": &types.AttributeValueMemberS{Value: boardID},
-			"SK": &types.AttributeValueMemberS{Value: cardSK(cardID)},
-		},
-		UpdateExpression:          expr.Update(),
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
-		ConditionExpression:       aws.String("attribute_exists(SK)"),
-	})
-	if isConditionFailed(err) {
-		http.Error(w, "card not found", http.StatusNotFound)
-		return
-	}
-	if err != nil {
-		log.Printf("failed to reorder card: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-}
-
-// delete cascades to the card's tasks, all in one transaction so a card
-// can't be left half-deleted (tasks gone but card still there, or vice
-// versa). Caps out at DynamoDB's 100-items-per-transaction limit, same
-// unhandled-at-scale caveat as list's BatchGetItem elsewhere in this repo.
-func (h *Handler) delete(w http.ResponseWriter, req *http.Request) {
-	ctx := req.Context()
-	boardID := req.PathValue("boardId")
-	cardID := req.PathValue("cardId")
-
-	keyEx := expression.Key("PK").Equal(expression.Value(boardID)).
-		And(expression.Key("SK").BeginsWith(taskPrefix(cardID)))
-	expr, err := expression.NewBuilder().WithKeyCondition(keyEx).Build()
-	if err != nil {
-		log.Printf("failed to build query expression: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	queryOutput, err := h.db.Query(ctx, &dynamodb.QueryInput{
-		TableName:                 aws.String(h.table),
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
-		KeyConditionExpression:    expr.KeyCondition(),
-		ProjectionExpression:      aws.String("SK"),
-	})
-	if err != nil {
-		log.Printf("failed to list tasks for card: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	transactItems := make([]types.TransactWriteItem, 0, len(queryOutput.Items)+1)
-	for _, item := range queryOutput.Items {
-		transactItems = append(transactItems, types.TransactWriteItem{
-			Delete: &types.Delete{
-				TableName: aws.String(h.table),
-				Key: map[string]types.AttributeValue{
-					"PK": &types.AttributeValueMemberS{Value: boardID},
-					"SK": item["SK"],
-				},
-			},
-		})
-	}
-	transactItems = append(transactItems, types.TransactWriteItem{
-		Delete: &types.Delete{
-			TableName: aws.String(h.table),
-			Key: map[string]types.AttributeValue{
-				"PK": &types.AttributeValueMemberS{Value: boardID},
-				"SK": &types.AttributeValueMemberS{Value: cardSK(cardID)},
-			},
-		},
-	})
-
-	_, err = h.db.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: transactItems})
-	if err != nil {
-		log.Printf("failed to delete card: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// isConditionFailed reports whether a write was refused by its
-// ConditionExpression.
-func isConditionFailed(err error) bool {
-	var failed *types.ConditionalCheckFailedException
-	return errors.As(err, &failed)
 }

@@ -1,0 +1,29 @@
+// Runs on dot's laid-out output, before neato -n2 draws it as laid out.
+E {
+  // dot draws a reversed edge's arrow at its head, which neato -n2 only
+  // draws for a forward edge
+  if (dir == "back" && sub(pos, "^e,") != pos && index(pos, "s,") < 0) dir = "forward";
+}
+// Puts each edge label beside the middle of its edge, on the upper side and
+// clear of the line. dot gives labels a slot of their own between the tiers,
+// so labels on edges fanning out of one icon end up stacked by each other
+// rather than on their edges.
+E [label != "" && pos != ""] {
+  string tok[int], xy[int];
+  double x0, y0, x1, y1, dx, dy, len, nx, ny, d;
+  int i, n, first = 1;
+  n = tokens(pos, tok, " ");
+  for (i = 0; i < n; i++) {
+    if (sub(tok[i], "^[se],") != tok[i]) continue;
+    split(tok[i], xy, ",");
+    if (first) { x0 = (double)xy[0]; y0 = (double)xy[1]; first = 0; }
+    x1 = (double)xy[0]; y1 = (double)xy[1];
+  }
+  // The normal pointing up (dot's y grows upwards), and how far along it the
+  // label's centre must sit for a label about 90 by 30 to clear the line
+  dx = x1 - x0; dy = y1 - y0; len = sqrt(dx * dx + dy * dy);
+  nx = -dy / len; ny = dx / len;
+  if (ny < 0) { nx = -nx; ny = -ny; }
+  d = 45 * (nx < 0 ? -nx : nx) + 15 * ny + 6;
+  lp = sprintf("%.2f,%.2f", (x0 + x1) / 2 + nx * d, (y0 + y1) / 2 + ny * d);
+}

@@ -10,11 +10,10 @@ BEG_G {
   tier[order[i++] = "tv_aws_users.users"] = 0;
   tier[order[i++] = "aws_cloudfront_distribution.skipli"] = 1;
   tier[order[i++] = "aws_route53_zone.dns"] = 1;
-  tier[order[i++] = "aws_apigatewayv2_api.skipli"] = 2;
   tier[order[i++] = "aws_apigatewayv2_api.realtime"] = 2;
+  tier[order[i++] = "aws_apigatewayv2_api.skipli"] = 2;
   tier[order[i++] = "aws_s3_bucket.skipli"] = 2;
   tier[order[i++] = "aws_lambda_function.skipli"] = 3;
-  tier[order[i++] = "aws_lambda_function.realtime"] = 3;
   tier[order[i++] = "aws_dynamodb_table.skipli"] = 4;
   tier[order[i++] = "aws_cognito_user_pool.cognito"] = 4;
   tier[order[i++] = "aws_sesv2_email_identity.domain"] = 4;
@@ -37,8 +36,9 @@ BEG_G {
     // The title becomes the graph label; the footer only carries a timestamp
     if (aget(n, "_titlenode") == "1") {
       $G.label = n.label; delete($G, n);
-    // TerraVision always adds this IAM placeholder, connected to nothing
-    } else if (aget(n, "_footernode") == "1" || res == "aws_iam_group.of_services") {
+    // TerraVision always adds an IAM placeholder connected to nothing, and
+    // draws resources a plan destroys, which are connected to nothing too
+    } else if (aget(n, "_footernode") == "1" || n.degree == 0) {
       delete($G, n);
     } else if (res in tier) {
       sg = subg($G, sprintf("tier%d", tier[res]));

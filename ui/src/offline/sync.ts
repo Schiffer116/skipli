@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 
 import type { Me } from "@/pages/Boards/loaders";
 import { apiFetch } from "@/utils/apiFetch";
+import { newChangeId } from "@/utils/socket";
 
 import { alreadySaved, toRequest, touchedIds, type Change } from "./changes";
 import {
@@ -52,7 +53,6 @@ export function useSync() {
 
 let me: Me | null = null;
 let onRefused: (count: number) => void = () => {};
-const acceptedListeners = new Set<(change: Change) => void>();
 
 // Starts tracking one person's pending changes; called once who is signed
 // in is known (from the server, or from the offline copy).
@@ -78,15 +78,14 @@ export function refused(count = 1) {
   onRefused(count);
 }
 
-// Calls back with each change the server accepts, whether sent right away
-// or later as a Pending change.
-export function onAccepted(listener: (change: Change) => void) {
-  acceptedListeners.add(listener);
-  return () => void acceptedListeners.delete(listener);
-}
-
-function accepted(change: Change) {
-  acceptedListeners.forEach((listener) => listener(change));
+// Sends a change over HTTP, under an id the server's broadcast of it will
+// carry, so this app can tell the broadcast is its own.
+function post(change: Change) {
+  const { url, init } = toRequest(change);
+  return apiFetch(url, {
+    ...init,
+    headers: { ...init.headers, "X-Change-Id": newChangeId() },
+  });
 }
 
 async function refreshCounts() {
@@ -116,6 +115,13 @@ export function submit(change: Change): Promise<boolean> {
 
 let submitting: Promise<unknown> = Promise.resolve();
 
+// Resolves once the changes made so far have each reached the server or
+// been kept as Pending changes, and sending the Pending ones has had its go.
+export async function settled() {
+  await submitting;
+  await running;
+}
+
 async function submitNow(change: Change) {
   if (me && (isOffline() || state.pendingCount > 0)) {
     await keep(me, change);
@@ -123,17 +129,15 @@ async function submitNow(change: Change) {
     return true;
   }
 
-  const { url, init } = toRequest(change);
   let res: Response | null;
   try {
-    res = await apiFetch(url, init);
+    res = await post(change);
   } catch {
     res = null;
   }
 
   if (res && (res.ok || alreadySaved(change, res.status))) {
     if (me) await applyChange(me, change);
-    accepted(change);
     return true;
   }
   if (me && (!res || res.status >= 500)) {
@@ -188,10 +192,9 @@ async function send() {
       const pending = await nextPending(user.id);
       if (!pending) break;
 
-      const { url, init } = toRequest(pending.change);
       let res: Response;
       try {
-        res = await apiFetch(url, init);
+        res = await post(pending.change);
       } catch {
         failed = true;
         break;
@@ -199,7 +202,6 @@ async function send() {
 
       if (res.ok || alreadySaved(pending.change, res.status)) {
         await removePending(user.id, pending.seq);
-        accepted(pending.change);
       } else if (res.status >= 500) {
         failed = true;
         break;

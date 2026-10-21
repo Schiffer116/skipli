@@ -29,3 +29,9 @@ chrome-devtools-axi quirks:
   selected"; `selectpage 2` (the app's tab) fixes it.
 - After `fill`, `press Enter` to submit.
 - Offline: `emulate --network Offline`; back online: `emulate --network "Fast 4G"`.
+
+# Architecture diagram
+
+When a change alters the architecture (`infra/` resources or how they
+connect), update `infra/terravision.yml` and regenerate `infra/architecture.png`
+with `make -C infra diagram` (plans only, applies nothing) in the same PR.

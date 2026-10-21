@@ -20,7 +20,10 @@ import {
 } from "@/pages/Boards/loaders";
 import UpdatePrompt from "@/components/UpdatePrompt";
 import { Toaster } from "@/components/ui/sonner";
+import { forgetBoard } from "@/offline/copy";
+import { activeUser } from "@/offline/session";
 import { setOnRefused } from "@/offline/sync";
+import { socket } from "@/utils/socket";
 import { toast } from "sonner";
 import { keepFocusVisible } from "@/utils/keepFocusVisible";
 import { watchTheme } from "@/utils/theme";
@@ -110,6 +113,17 @@ setOnRefused((count) => {
       : `Couldn't save ${count} of your changes`,
   );
   void router.revalidate();
+});
+
+// A teammate renamed the open board: load its data again.
+socket.onUpdated(() => void router.revalidate());
+
+// A teammate deleted the open board: leave it, and forget the device's copy.
+socket.onDeleted((boardId) => {
+  const userId = activeUser();
+  if (userId) void forgetBoard(userId, boardId);
+  toast("This board was deleted");
+  void router.navigate("/boards");
 });
 
 createRoot(document.getElementById("root")!).render(

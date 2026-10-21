@@ -77,6 +77,23 @@ export type BoardChange = Extract<
   }
 >;
 
+const boardChanges = new Set<Change["type"]>([
+  "createCard",
+  "updateCard",
+  "deleteCard",
+  "moveCard",
+  "createTask",
+  "updateTask",
+  "deleteTask",
+  "moveTask",
+  "cleanUp",
+]);
+
+export const isBoardChange = (change: Change): change is BoardChange =>
+  boardChanges.has(change.type);
+
+// A change is one HTTP request: a Board change goes to its board's change
+// endpoint, anything else to its own route.
 export function toRequest(change: Change): { url: string; init: RequestInit } {
   const json = (method: string, body: unknown) => ({
     method,
@@ -84,8 +101,10 @@ export function toRequest(change: Change): { url: string; init: RequestInit } {
     body: JSON.stringify(body),
   });
   const board = `/api/boards/${"boardId" in change ? change.boardId : ""}`;
-  const card = `${board}/cards/${"cardId" in change ? change.cardId : ""}`;
-  const task = `${card}/tasks/${"taskId" in change ? change.taskId : ""}`;
+
+  if (isBoardChange(change)) {
+    return { url: `${board}/changes`, init: json("POST", change) };
+  }
 
   switch (change.type) {
     case "createBoard":
@@ -117,61 +136,6 @@ export function toRequest(change: Change): { url: string; init: RequestInit } {
         url: "/api/boards/order",
         init: json("PUT", { boardIds: change.boardIds }),
       };
-    case "createCard":
-      return {
-        url: `${board}/cards`,
-        init: json("POST", {
-          id: change.cardId,
-          name: change.name,
-          description: "",
-          createdAt: change.createdAt,
-        }),
-      };
-    case "updateCard":
-      return {
-        url: card,
-        init: json("PUT", {
-          name: change.name,
-          description: change.description,
-        }),
-      };
-    case "deleteCard":
-      return { url: card, init: { method: "DELETE" } };
-    case "moveCard":
-      return {
-        url: card,
-        init: json("PATCH", {
-          beforeId: change.beforeId,
-          afterId: change.afterId,
-        }),
-      };
-    case "createTask":
-      return {
-        url: `${card}/tasks`,
-        init: json("POST", { id: change.taskId, name: change.name }),
-      };
-    case "updateTask":
-      return {
-        url: task,
-        init: json("PUT", {
-          name: change.name,
-          description: change.description,
-          status: change.status,
-        }),
-      };
-    case "deleteTask":
-      return { url: task, init: { method: "DELETE" } };
-    case "moveTask":
-      return {
-        url: task,
-        init: json("PATCH", {
-          newCardId: change.newCardId,
-          beforeId: change.beforeId,
-          afterId: change.afterId,
-        }),
-      };
-    case "cleanUp":
-      return { url: `${board}/cleanup`, init: { method: "POST" } };
   }
 }
 

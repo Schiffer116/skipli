@@ -16,38 +16,32 @@ const board = (id: string, rest: Partial<Board> = {}): Board => ({
 });
 
 describe("toRequest", () => {
-  it("sends the app's own ID with a create", () => {
-    const { url, init } = toRequest({
+  it("sends a Board change to its board's change endpoint, as it is", () => {
+    const change = {
       type: "createTask",
       boardId: "b1",
       cardId: "c1",
       taskId: "t1",
       name: "Buy milk",
-    });
-    expect(url).toBe("/api/boards/b1/cards/c1/tasks");
+    } as const;
+    const { url, init } = toRequest(change);
+    expect(url).toBe("/api/boards/b1/changes");
     expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body as string)).toEqual({
-      id: "t1",
-      name: "Buy milk",
-    });
+    expect(JSON.parse(init.body as string)).toEqual(change);
   });
 
-  it("moves a task from the card it is in on the server", () => {
+  it("sends the app's own ID with a board create", () => {
     const { url, init } = toRequest({
-      type: "moveTask",
+      type: "createBoard",
       boardId: "b1",
-      cardId: "c1",
-      taskId: "t1",
-      newCardId: "c2",
-      beforeId: "t0",
-      afterId: null,
+      name: "Plans",
+      description: "",
     });
-    expect(url).toBe("/api/boards/b1/cards/c1/tasks/t1");
-    expect(init.method).toBe("PATCH");
+    expect(url).toBe("/api/boards");
     expect(JSON.parse(init.body as string)).toEqual({
-      newCardId: "c2",
-      beforeId: "t0",
-      afterId: null,
+      id: "b1",
+      name: "Plans",
+      description: "",
     });
   });
 

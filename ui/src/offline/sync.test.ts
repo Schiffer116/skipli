@@ -59,10 +59,18 @@ afterEach(async () => {
 describe("submit", () => {
   it("sends right away when online", async () => {
     expect(await submit(createTask("t1"))).toBe(true);
-    expect(fetches.map((f) => f.url)).toEqual([
-      "/api/boards/b1/cards/c1/tasks",
-    ]);
+    expect(fetches.map((f) => f.url)).toEqual(["/api/boards/b1/changes"]);
     expect(await loadPending(me.id)).toEqual([]);
+  });
+
+  it("sends each change under an id of its own for the server's broadcast", async () => {
+    await submit(createTask("t1"));
+    await submit(createTask("t2"));
+    const ids = fetches.map(
+      (f) => (f.init.headers as Record<string, string>)["X-Change-Id"],
+    );
+    expect(ids[0]).toBeTruthy();
+    expect(ids[1]).not.toBe(ids[0]);
   });
 
   it("reports an online send the server refuses as not made", async () => {
@@ -102,11 +110,9 @@ describe("sync", () => {
     goOnline();
     await sync();
 
-    expect(fetches.map((f) => JSON.parse(f.init.body as string).id)).toEqual([
-      "t1",
-      "t2",
-      "t3",
-    ]);
+    expect(
+      fetches.map((f) => JSON.parse(f.init.body as string).taskId),
+    ).toEqual(["t1", "t2", "t3"]);
     expect(await loadPending(me.id)).toEqual([]);
   });
 
@@ -173,9 +179,8 @@ describe("sync", () => {
     await running;
     await sync();
 
-    expect(fetches.map((f) => JSON.parse(f.init.body as string).id)).toEqual([
-      "t1",
-      "t2",
-    ]);
+    expect(
+      fetches.map((f) => JSON.parse(f.init.body as string).taskId),
+    ).toEqual(["t1", "t2"]);
   });
 });

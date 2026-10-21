@@ -16,7 +16,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
+	"github.com/Schiffer116/skipli/api/internal/access"
 	"github.com/Schiffer116/skipli/api/internal/auth"
+	"github.com/Schiffer116/skipli/api/internal/broadcast"
 	"github.com/Schiffer116/skipli/api/internal/clientid"
 	"github.com/Schiffer116/skipli/api/internal/profile"
 )
@@ -30,12 +32,13 @@ type Handler struct {
 	users          *auth.Directory
 	profiles       *profile.Store
 	canReceiveMail func(context.Context, string) bool
+	broadcaster    broadcast.Broadcaster
 }
 
 // NewHandler builds the board routes. canReceiveMail vets invite addresses
 // before a user is created for them; production passes auth.CanReceiveMail.
-func NewHandler(db *dynamodb.Client, table string, tokens *auth.TokenVerifier, users *auth.Directory, profiles *profile.Store, canReceiveMail func(context.Context, string) bool) *Handler {
-	return &Handler{db: db, table: table, tokens: tokens, users: users, profiles: profiles, canReceiveMail: canReceiveMail}
+func NewHandler(db *dynamodb.Client, table string, tokens *auth.TokenVerifier, users *auth.Directory, profiles *profile.Store, canReceiveMail func(context.Context, string) bool, broadcaster broadcast.Broadcaster) *Handler {
+	return &Handler{db: db, table: table, tokens: tokens, users: users, profiles: profiles, canReceiveMail: canReceiveMail, broadcaster: broadcaster}
 }
 
 func (h *Handler) RegisterRoutes(router *http.ServeMux) {
@@ -48,7 +51,6 @@ func (h *Handler) RegisterRoutes(router *http.ServeMux) {
 	router.HandleFunc("PUT /boards/{id}/favorite", h.member(h.favorite))
 	router.HandleFunc("POST /boards/{id}/invite", h.member(h.invite))
 	router.HandleFunc("DELETE /boards/{id}", h.member(h.delete))
-	router.HandleFunc("POST /boards/{id}/cleanup", h.member(h.cleanup))
 }
 
 func (h *Handler) member(next http.HandlerFunc) http.HandlerFunc {
@@ -70,46 +72,18 @@ func RequireMember(db *dynamodb.Client, table string, tokens *auth.TokenVerifier
 			return
 		}
 
-		member, err := itemExists(ctx, db, table, boardID, "MEMBER#"+user.ID)
-		if err != nil {
+		switch status, err := access.Check(ctx, db, table, boardID, user.ID); {
+		case err != nil:
 			log.Printf("failed to check membership: %v", err)
 			http.Error(w, "failed to check membership", http.StatusInternalServerError)
-			return
-		}
-		if member {
+		case status == http.StatusOK:
 			next(w, req)
-			return
-		}
-
-		// Members are deleted along with their board, so this read only
-		// happens for callers who are about to be turned away.
-		exists, err := itemExists(ctx, db, table, boardID, "META")
-		if err != nil {
-			log.Printf("failed to get board: %v", err)
-			http.Error(w, "failed to check membership", http.StatusInternalServerError)
-			return
-		}
-		if !exists {
+		case status == http.StatusNotFound:
 			http.NotFound(w, req)
-			return
+		default:
+			http.Error(w, "not a member of this board", http.StatusForbidden)
 		}
-		http.Error(w, "not a member of this board", http.StatusForbidden)
 	})
-}
-
-func itemExists(ctx context.Context, db *dynamodb.Client, table, pk, sk string) (bool, error) {
-	out, err := db.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(table),
-		Key: map[string]types.AttributeValue{
-			"PK": &types.AttributeValueMemberS{Value: pk},
-			"SK": &types.AttributeValueMemberS{Value: sk},
-		},
-		ProjectionExpression: aws.String("PK"),
-	})
-	if err != nil {
-		return false, err
-	}
-	return out.Item != nil, nil
 }
 
 type CreateRequest struct {
@@ -722,22 +696,7 @@ func (h *Handler) delete(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (h *Handler) cleanup(w http.ResponseWriter, req *http.Request) {
-	ctx := req.Context()
-	id := req.PathValue("id")
-
-	if err := h.deleteItems(ctx, expression.NewBuilder().
-		WithKeyCondition(expression.Key("PK").Equal(expression.Value(id)).
-			And(expression.Key("SK").BeginsWith("TASK#"))).
-		WithFilter(expression.Name("Status").Equal(expression.Value("done")))); err != nil {
-		log.Printf("failed to clean up board: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	h.broadcaster.Broadcast(ctx, id, broadcast.Message{Type: broadcast.BoardDeleted, ID: req.Header.Get(broadcast.ChangeIDHeader)})
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -831,6 +790,11 @@ func (h *Handler) put(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	h.broadcaster.Broadcast(ctx, id, broadcast.Message{
+		Type:  broadcast.BoardUpdated,
+		ID:    req.Header.Get(broadcast.ChangeIDHeader),
+		Board: &broadcast.Detail{Name: r.Name, Description: r.Description},
+	})
 
 	w.WriteHeader(http.StatusNoContent)
 }
