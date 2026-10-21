@@ -17,6 +17,7 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-brand: var(--brand);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -61,6 +62,9 @@
   --popover-foreground: #16191f;
   --primary: #ec7211;
   --primary-foreground: #ffffff;
+  /* AWS orange in both modes: marks your own boards apart from shared
+     ones (link blue), whatever color primary buttons are. */
+  --brand: #ec7211;
   --secondary: #ffffff;
   --secondary-foreground: #0972d3;
   --muted: #fafafa;
@@ -107,14 +111,14 @@
                         color-text-link-hover
      secondary          color-background-button-normal-default,
                         color-text-button-normal-default
-     primary-foreground color-text-button-primary-default
+     primary            color-background-button-primary-default,
+                        color-text-button-primary-default (hover and
+                        active: button.tsx)
      destructive        color-text-status-error
      success            color-text-status-success
      nav                color-background-home-header,
                         color-text-top-navigation-title
-   Primary stays AWS orange rather than Cloudscape's blue: it's what the
-   Console's primary buttons use, and here it also tells your own boards
-   (orange) from shared ones (link blue). */
+   Brand (your own boards) stays AWS orange, as in light. */
 .dark {
   color-scheme: dark;
   --background: #161d26;
@@ -124,8 +128,9 @@
   --card-foreground: #c6c6cd;
   --popover: #1b232d;
   --popover-foreground: #c6c6cd;
-  --primary: #ff9900;
+  --primary: #42b4ff;
   --primary-foreground: #0f141a;
+  --brand: #ff9900;
   --secondary: #161d26;
   --secondary-foreground: #42b4ff;
   --muted: #1b232d;
@@ -148,7 +153,7 @@
   --chart-5: #ff7a7a;
   --sidebar: #161d26;
   --sidebar-foreground: #c6c6cd;
-  --sidebar-primary: #ff9900;
+  --sidebar-primary: #42b4ff;
   --sidebar-primary-foreground: #0f141a;
   --sidebar-accent: #1b232d;
   --sidebar-accent-foreground: #75cfff;

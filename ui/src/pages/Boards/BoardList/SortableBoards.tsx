@@ -139,7 +139,7 @@ function BoardTile({ board, setBoards, editable, savedAt }: BoardTileProps) {
       style={style}
       {...attributes}
       {...listeners}
-      className={`group relative w-full max-w-xs aspect-video cursor-pointer p-4 gap-2 border-t-4 hover:bg-accent/40 ${board.owner === me.id ? "border-t-primary" : "border-t-link"}`}
+      className={`group relative w-full max-w-xs aspect-video cursor-pointer p-4 gap-2 border-t-4 hover:bg-accent/40 ${board.owner === me.id ? "border-t-brand" : "border-t-link"}`}
       onClick={() => navigate(`/boards/${board.id}`)}
     >
       <CardHeader className="flex justify-between items-center p-0">
