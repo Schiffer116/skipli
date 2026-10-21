@@ -2,10 +2,10 @@ package realtime
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -28,8 +28,7 @@ var GatewayLimits = Limits{Idle: 10 * time.Minute, Lifetime: connectionLifetime,
 
 // ServeLocal stands in for API Gateway on a developer's machine: the same
 // board socket, with its connections kept in memory instead of the table,
-// each change answered on the sender's connection the way the route
-// response answers it, and connections closed at API Gateway's limits.
+// and closed at API Gateway's limits.
 func (h *Handler) ServeLocal(limits Limits) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) { h.serveLocal(w, req, limits) }
 }
@@ -78,9 +77,10 @@ func (h *Handler) serveLocal(w http.ResponseWriter, req *http.Request, limits Li
 	defer cancel()
 	for {
 		// A read that times out closes the connection, as API Gateway does
-		// once the connection is idle or at the end of its lifetime.
+		// once the connection is idle or at the end of its lifetime. What
+		// the app sends is only a keepalive, so it's read and dropped.
 		read, cancelRead := context.WithTimeout(lifetime, limits.Idle)
-		_, data, err := conn.Read(read)
+		_, _, err := conn.Read(read)
 		cancelRead()
 		if err != nil {
 			if errors.Is(lifetime.Err(), context.DeadlineExceeded) {
@@ -90,39 +90,24 @@ func (h *Handler) serveLocal(w http.ResponseWriter, req *http.Request, limits Li
 			}
 			return
 		}
-
-		reply, accepted := h.receive(ctx, data, func(changed string) (int, error) {
-			if changed != boardID {
-				return http.StatusForbidden, nil
-			}
-			return access.Check(ctx, h.db, h.table, boardID, user.ID)
-		})
-		if accepted != nil {
-			h.broadcastLocal(req, conn, accepted)
-		}
-		if reply != nil {
-			conn.Write(ctx, websocket.MessageText, reply)
-		}
 	}
 }
 
-func (h *Handler) broadcastLocal(req *http.Request, sender *websocket.Conn, accepted *broadcast) {
-	data, err := json.Marshal(accepted)
-	if err != nil {
-		log.Printf("failed to encode change: %v", err)
-		return
-	}
-
+func (h *Handler) broadcastLocal(ctx context.Context, boardID string, data []byte) {
 	h.mu.Lock()
-	var peers []*websocket.Conn
-	for peer := range h.rooms[accepted.Change.BoardID] {
-		if peer != sender {
-			peers = append(peers, peer)
-		}
+	peers := make([]*websocket.Conn, 0, len(h.rooms[boardID]))
+	for peer := range h.rooms[boardID] {
+		peers = append(peers, peer)
 	}
 	h.mu.Unlock()
 
+	var wg sync.WaitGroup
 	for _, peer := range peers {
-		peer.Write(req.Context(), websocket.MessageText, data)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			peer.Write(ctx, websocket.MessageText, data)
+		}()
 	}
+	wg.Wait()
 }

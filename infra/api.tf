@@ -204,6 +204,8 @@ resource "aws_lambda_function" "skipli" {
       USER_POOL_ID        = aws_cognito_user_pool.skipli.id
       USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.skipli.id
       TABLE_NAME          = aws_dynamodb_table.skipli.name
+      # Where the HTTP handlers push what they save to a board's WebSockets.
+      REALTIME_ENDPOINT = replace(aws_apigatewayv2_stage.realtime.invoke_url, "wss://", "https://")
     }
   }
 }
@@ -286,21 +288,13 @@ resource "aws_apigatewayv2_integration" "realtime" {
   integration_uri    = aws_lambda_function.skipli.invoke_arn
 }
 
-# Board changes arrive on $default, and the Lambda's answer to each is sent
-# back to the sender as its ack, which needs the route response.
+# The socket carries news out only: members connect and disconnect, and the app
+# pings on $default to keep an idle connection open. Changes are HTTP requests.
 resource "aws_apigatewayv2_route" "realtime" {
-  for_each  = toset(["$connect", "$default"])
+  for_each  = toset(["$connect", "$disconnect", "$default"])
   api_id    = aws_apigatewayv2_api.realtime.id
   route_key = each.key
   target    = "integrations/${aws_apigatewayv2_integration.realtime.id}"
-
-  route_response_selection_expression = each.key == "$default" ? "$default" : null
-}
-
-resource "aws_apigatewayv2_route_response" "realtime_ack" {
-  api_id             = aws_apigatewayv2_api.realtime.id
-  route_id           = aws_apigatewayv2_route.realtime["$default"].id
-  route_response_key = "$default"
 }
 
 resource "aws_apigatewayv2_stage" "realtime" {

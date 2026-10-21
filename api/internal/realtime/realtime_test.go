@@ -5,7 +5,9 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -18,6 +20,7 @@ import (
 
 	"github.com/Schiffer116/skipli/api/internal/auth"
 	"github.com/Schiffer116/skipli/api/internal/awsfake"
+	"github.com/Schiffer116/skipli/api/internal/broadcast"
 )
 
 const (
@@ -26,20 +29,17 @@ const (
 	newID        = "0b6f8f5e-2c3a-4f7e-9a51-1f2d3c4b5a69"
 )
 
-// The table: board b1 with its member, two cards and a task, and the
-// connections open on it. conn-removed belongs to someone no longer a member.
+// The table: board b1 with its member and the connections open on it, and
+// a connection on another board. conn-gone has closed.
 var table = map[string]map[string]any{
-	"b1/META":              {},
-	"b1/MEMBER#u-member":   {},
-	"b1/CARD#c1":           {"Order": map[string]any{"N": "1000"}},
-	"b1/CARD#c2":           {"Order": map[string]any{"N": "2000"}},
-	"b1/TASK#c1#t1":        {"Name": map[string]any{"S": "Ship"}, "Order": map[string]any{"N": "1000"}},
-	"b1/CONN#conn-member":  {"User": map[string]any{"S": "u-member"}},
-	"b1/CONN#conn-peer":    {"User": map[string]any{"S": "u-member"}},
-	"b1/CONN#conn-gone":    {"User": map[string]any{"S": "u-member"}},
-	"b1/CONN#conn-removed": {"User": map[string]any{"S": "u-removed"}},
-	"b2/META":              {},
-	"b2/CONN#conn-other":   {"User": map[string]any{"S": "u-member"}},
+	"b1/META":                {},
+	"b1/MEMBER#u-member":     {},
+	"CONNS#b1/conn-member":   {},
+	"CONNS#b1/conn-peer":     {},
+	"CONNS#b1/conn-gone":     {},
+	"CONNS#b2/conn-other":    {},
+	"CONN#conn-member/BOARD": {"Board": map[string]any{"S": "b1"}},
+	"CONN#conn-orphan/BOARD": {},
 }
 
 func keyOf(body map[string]any) string {
@@ -49,8 +49,7 @@ func keyOf(body map[string]any) string {
 	return fmt.Sprint(pk["S"], "/", sk["S"])
 }
 
-// fakeTable answers reads from table; every write succeeds, except that an
-// update of something not in the table fails its condition as DynamoDB would.
+// fakeTable answers reads from table; every write succeeds.
 func fakeTable(t *testing.T) *awsfake.Server {
 	return awsfake.New(t, func(op string, body map[string]any) (int, any) {
 		switch op {
@@ -59,19 +58,12 @@ func fakeTable(t *testing.T) *awsfake.Server {
 				return 200, map[string]any{"Item": item}
 			}
 			return 200, map[string]any{}
-		case "UpdateItem":
-			if _, ok := table[keyOf(body)]; !ok {
-				return 400, map[string]any{"__type": "ConditionalCheckFailedException", "message": "missing"}
-			}
 		case "Query":
 			values, _ := json.Marshal(body["ExpressionAttributeValues"])
-			if !strings.Contains(string(values), "CONN#") {
-				return 200, map[string]any{"Items": []any{}}
-			}
 			var items []any
 			for key := range table {
 				pk, sk, _ := strings.Cut(key, "/")
-				if strings.Contains(string(values), `"`+pk+`"`) && strings.HasPrefix(sk, "CONN#") {
+				if strings.Contains(string(values), `"`+pk+`"`) && strings.HasPrefix(pk, "CONNS#") {
 					items = append(items, map[string]any{"SK": map[string]any{"S": sk}})
 				}
 			}
@@ -85,11 +77,23 @@ func fakeTable(t *testing.T) *awsfake.Server {
 type fakeGateway struct {
 	mu   sync.Mutex
 	sent map[string][]string
+	// fail makes pushes to these connections fail; block, when set, holds
+	// every push until it is closed, after announcing it on arrived.
+	fail    map[string]bool
+	block   chan struct{}
+	arrived chan string
 }
 
 func (g *fakeGateway) PostToConnection(_ context.Context, in *apigatewaymanagementapi.PostToConnectionInput, _ ...func(*apigatewaymanagementapi.Options)) (*apigatewaymanagementapi.PostToConnectionOutput, error) {
+	if g.arrived != nil {
+		g.arrived <- *in.ConnectionId
+		<-g.block
+	}
 	if *in.ConnectionId == "conn-gone" {
 		return nil, &gwtypes.GoneException{}
+	}
+	if g.fail[*in.ConnectionId] {
+		return nil, errors.New("unreachable")
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -119,70 +123,17 @@ func setup(t *testing.T) *fixture {
 		return &key.PublicKey, nil
 	}, testIssuer, testClientID)
 	f := &fixture{db: fakeTable(t), gateway: &fakeGateway{sent: map[string][]string{}}, key: key}
-	f.handler = newHandler(f.db.DynamoDB(), "Skipli", tokens, func(endpoint string) Gateway {
-		if endpoint != "https://abc.execute-api.us-east-1.amazonaws.com/ws" {
-			t.Errorf("gateway endpoint %q", endpoint)
-		}
-		return f.gateway
-	})
+	f.handler = newHandler(f.db.DynamoDB(), "Skipli", tokens, f.gateway)
 	return f
 }
 
-// send delivers a message from a connection and returns the ack it got.
-func (f *fixture) send(t *testing.T, connection, body string) ack {
-	t.Helper()
-	res, err := f.handler.Handle(context.Background(), events.APIGatewayWebsocketProxyRequest{
-		Body: body,
-		RequestContext: events.APIGatewayWebsocketProxyRequestContext{
-			RouteKey:     "$default",
-			ConnectionID: connection,
-			DomainName:   "abc.execute-api.us-east-1.amazonaws.com",
-			Stage:        "ws",
-		},
-	})
-	if err != nil || res.StatusCode != 200 {
-		t.Fatalf("got %d %v, want 200", res.StatusCode, err)
-	}
-	var a ack
-	if res.Body != "" {
-		if err := json.Unmarshal([]byte(res.Body), &a); err != nil {
-			t.Fatalf("reply %q: %v", res.Body, err)
-		}
-	}
-	return a
-}
-
-func changeMessage(id, change string) string {
-	return `{"action":"change","id":"` + id + `","change":` + change + `}`
-}
-
-func TestAcceptedChangeIsAckedAndBroadcastToTheBoardsOtherConnections(t *testing.T) {
-	f := setup(t)
-	change := `{"type":"updateTask","boardId":"b1","cardId":"c1","taskId":"t1","name":"Ship it","description":"","status":"done"}`
-
-	got := f.send(t, "conn-member", changeMessage("m1", change))
-	if got != (ack{Type: "ack", ID: "m1", Status: 200}) {
-		t.Fatalf("ack = %+v", got)
-	}
-	if len(f.db.Calls("UpdateItem")) != 1 {
-		t.Errorf("change not applied: %v", f.db.Calls())
-	}
-
-	want := `{"change":` + change + `,"type":"change"}`
-	for _, conn := range []string{"conn-peer", "conn-removed"} {
-		if sent := f.gateway.sent[conn]; len(sent) != 1 || !sameJSON(sent[0], want) {
-			t.Errorf("%s received %v, want %s", conn, sent, want)
-		}
-	}
-	for _, conn := range []string{"conn-member", "conn-other"} {
-		if sent := f.gateway.sent[conn]; len(sent) != 0 {
-			t.Errorf("%s received %v, want nothing", conn, sent)
-		}
-	}
-	deletes := f.db.Calls("DeleteItem")
-	if len(deletes) != 1 || keyOf(deletes[0].Body) != "b1/CONN#conn-gone" {
-		t.Errorf("closed connection not forgotten: %v", deletes)
-	}
+var changed = broadcast.Message{
+	Type: broadcast.Change,
+	ID:   "x1",
+	Change: map[string]any{
+		"type": "updateTask", "boardId": "b1", "cardId": "c1", "taskId": "t1",
+		"name": "Ship it", "description": "", "status": "done",
+	},
 }
 
 func sameJSON(a, b string) bool {
@@ -194,94 +145,94 @@ func sameJSON(a, b string) bool {
 	return string(ja) == string(jb)
 }
 
-func TestRefusedChangeIsAckedWithItsStatusAndNotBroadcast(t *testing.T) {
+func TestBroadcastReachesEveryConnectionOnTheBoardAndForgetsClosedOnes(t *testing.T) {
 	f := setup(t)
-	got := f.send(t, "conn-member", changeMessage("m2",
-		`{"type":"updateCard","boardId":"b1","cardId":"deleted","name":"Ideas","description":""}`))
-	if got.ID != "m2" || got.Status != 404 || got.Error != "card not found" {
-		t.Fatalf("ack = %+v, want 404 card not found", got)
+	f.handler.Broadcast(context.Background(), "b1", changed)
+
+	want, _ := json.Marshal(changed)
+	for _, conn := range []string{"conn-member", "conn-peer"} {
+		if sent := f.gateway.sent[conn]; len(sent) != 1 || !sameJSON(sent[0], string(want)) {
+			t.Errorf("%s received %v, want %s", conn, sent, want)
+		}
 	}
-	if len(f.gateway.sent) != 0 {
-		t.Errorf("refused change was broadcast: %v", f.gateway.sent)
+	if sent := f.gateway.sent["conn-other"]; len(sent) != 0 {
+		t.Errorf("another board's connection received %v", sent)
+	}
+	deletes := f.db.Calls("DeleteItem")
+	if len(deletes) != 1 || keyOf(deletes[0].Body) != "CONNS#b1/conn-gone" {
+		t.Errorf("closed connection not forgotten: %v", deletes)
 	}
 }
 
-func TestMalformedMessagesAreRefused(t *testing.T) {
+func TestBroadcastGoesOutInParallelAndOneFailureDoesNotStopTheRest(t *testing.T) {
 	f := setup(t)
-	for _, body := range []string{
-		`not json`,
-		`{"boardId":"b1","event":"change","args":[]}`,
-		changeMessage("m3", `{"type":"createTask","boardId":"b1","cardId":"c1","taskId":"TASK#x","name":"x"}`),
-	} {
-		if got := f.send(t, "conn-member", body); got.Status != 400 {
-			t.Errorf("%s: ack = %+v, want 400", body, got)
+	f.gateway.fail = map[string]bool{"conn-member": true}
+	f.gateway.block = make(chan struct{})
+	f.gateway.arrived = make(chan string, 4)
+
+	done := make(chan struct{})
+	go func() {
+		f.handler.Broadcast(context.Background(), "b1", changed)
+		close(done)
+	}()
+	// All three pushes are in flight before any returns.
+	for range 3 {
+		select {
+		case <-f.gateway.arrived:
+		case <-time.After(5 * time.Second):
+			t.Fatal("pushes are not made in parallel")
 		}
 	}
-	if writes := f.db.Calls("PutItem", "UpdateItem", "TransactWriteItems", "BatchWriteItem"); len(writes) != 0 {
-		t.Errorf("malformed message wrote: %v", writes)
+	close(f.gateway.block)
+	<-done
+	if len(f.gateway.sent["conn-peer"]) != 1 {
+		t.Errorf("peer received %v after another push failed", f.gateway.sent)
 	}
+}
+
+func TestBoardLevelMessagesShareTheSameDelivery(t *testing.T) {
+	f := setup(t)
+	f.handler.Broadcast(context.Background(), "b1", broadcast.Message{Type: broadcast.BoardDeleted})
+	if sent := f.gateway.sent["conn-peer"]; len(sent) != 1 || !sameJSON(sent[0], `{"type":"deleted"}`) {
+		t.Errorf("peer received %v", sent)
+	}
+}
+
+func handle(f *fixture, route, connection string, headers map[string]string, board string) (int, error) {
+	res, err := f.handler.Handle(context.Background(), events.APIGatewayWebsocketProxyRequest{
+		Headers:               headers,
+		QueryStringParameters: map[string]string{"boardId": board},
+		RequestContext:        events.APIGatewayWebsocketProxyRequestContext{RouteKey: route, ConnectionID: connection},
+	})
+	return res.StatusCode, err
 }
 
 func TestPingOnlyKeepsTheConnectionOpen(t *testing.T) {
 	f := setup(t)
-	if got := f.send(t, "conn-member", `{"action":"ping"}`); got != (ack{}) {
-		t.Errorf("ping answered %+v", got)
+	if code, err := handle(f, "$default", "conn-member", nil, ""); err != nil || code != 200 {
+		t.Errorf("ping answered %d %v", code, err)
 	}
 	if calls := f.db.Calls(); len(calls) != 0 {
 		t.Errorf("ping reached the table: %v", calls)
 	}
 }
 
-// Every kind of Board change is only applied for a member, on a connection
-// opened on the board it changes.
-func TestEveryChangeTypeRequiresAMembersConnectionOnTheBoard(t *testing.T) {
-	changes := []string{
-		`{"type":"createCard","boardId":"{board}","cardId":"` + newID + `","name":"Card","createdAt":""}`,
-		`{"type":"updateCard","boardId":"{board}","cardId":"c1","name":"Card","description":""}`,
-		`{"type":"deleteCard","boardId":"{board}","cardId":"c2"}`,
-		`{"type":"moveCard","boardId":"{board}","cardId":"c1","beforeId":"c2","afterId":null}`,
-		`{"type":"createTask","boardId":"{board}","cardId":"c1","taskId":"` + newID + `","name":"Task"}`,
-		`{"type":"updateTask","boardId":"{board}","cardId":"c1","taskId":"t1","name":"Task","description":"","status":"done"}`,
-		`{"type":"deleteTask","boardId":"{board}","cardId":"c1","taskId":"t1"}`,
-		`{"type":"moveTask","boardId":"{board}","cardId":"c1","taskId":"t1","newCardId":"c2","beforeId":null,"afterId":null}`,
-		`{"type":"cleanUp","boardId":"{board}"}`,
+func TestDisconnectForgetsTheConnection(t *testing.T) {
+	f := setup(t)
+	handle(f, "$disconnect", "conn-member", nil, "")
+	var forgotten []string
+	for _, call := range f.db.Calls("DeleteItem") {
+		forgotten = append(forgotten, keyOf(call.Body))
 	}
-	callers := []struct {
-		name, connection, board string
-		want                    int
-	}{
-		{"member", "conn-member", "b1", 200},
-		{"removed member", "conn-removed", "b1", 403},
-		{"connection on another board", "conn-other", "b1", 403},
-		{"unknown connection", "conn-unknown", "b1", 403},
-		{"missing board", "conn-member", "missing", 404},
+	slices.Sort(forgotten)
+	if want := []string{"CONN#conn-member/BOARD", "CONNS#b1/conn-member"}; !slices.Equal(forgotten, want) {
+		t.Errorf("forgot %v, want %v", forgotten, want)
 	}
 
-	for _, change := range changes {
-		for _, c := range callers {
-			kind := strings.Split(change, `"`)[3]
-			t.Run(kind+" as "+c.name, func(t *testing.T) {
-				f := setup(t)
-				got := f.send(t, c.connection, changeMessage("m", strings.ReplaceAll(change, "{board}", c.board)))
-				if got.Status != c.want {
-					t.Fatalf("ack = %+v, want %d", got, c.want)
-				}
-				if c.want == 200 {
-					if len(f.gateway.sent["conn-peer"]) != 1 {
-						t.Errorf("accepted change not broadcast: %v", f.gateway.sent)
-					}
-					return
-				}
-				for _, call := range f.db.Calls() {
-					if call.Op != "GetItem" {
-						t.Errorf("refused change made a %s call", call.Op)
-					}
-				}
-				if len(f.gateway.sent) != 0 {
-					t.Errorf("refused change was broadcast: %v", f.gateway.sent)
-				}
-			})
-		}
+	f = setup(t)
+	handle(f, "$disconnect", "conn-orphan", nil, "")
+	if deletes := f.db.Calls("DeleteItem"); len(deletes) != 0 {
+		t.Errorf("unknown connection deleted %v", deletes)
 	}
 }
 
@@ -318,23 +269,20 @@ func TestConnectLetsOnlyMembersOpenABoardsSocket(t *testing.T) {
 		{"member", "id_token=" + f.token(t, "u-member", f.key), "b1", 200},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			res, _ := f.handler.Handle(context.Background(), events.APIGatewayWebsocketProxyRequest{
-				Headers:               map[string]string{"cookie": c.cookie},
-				QueryStringParameters: map[string]string{"boardId": c.board},
-				RequestContext:        events.APIGatewayWebsocketProxyRequestContext{RouteKey: "$connect", ConnectionID: "conn-new"},
-			})
-			if res.StatusCode != c.want {
-				t.Fatalf("got %d, want %d", res.StatusCode, c.want)
+			code, _ := handle(f, "$connect", "conn-new", map[string]string{"cookie": c.cookie}, c.board)
+			if code != c.want {
+				t.Fatalf("got %d, want %d", code, c.want)
 			}
 		})
 	}
 
-	puts := f.db.Calls("PutItem")
-	if len(puts) != 1 {
-		t.Fatalf("stored %d connections, want the member's only", len(puts))
+	var stored []string
+	for _, call := range f.db.Calls("PutItem") {
+		item := call.Body["Item"].(map[string]any)
+		stored = append(stored, fmt.Sprint(item["PK"].(map[string]any)["S"], "/", item["SK"].(map[string]any)["S"]))
 	}
-	item := puts[0].Body["Item"].(map[string]any)
-	if item["SK"].(map[string]any)["S"] != "CONN#conn-new" || item["User"].(map[string]any)["S"] != "u-member" {
-		t.Errorf("stored connection %v", item)
+	slices.Sort(stored)
+	if want := []string{"CONN#conn-new/BOARD", "CONNS#b1/conn-new"}; !slices.Equal(stored, want) {
+		t.Errorf("stored %v for the member's connection, want %v", stored, want)
 	}
 }

@@ -9,13 +9,14 @@ import (
 
 	"github.com/Schiffer116/skipli/api/internal/auth"
 	"github.com/Schiffer116/skipli/api/internal/awsfake"
+	"github.com/Schiffer116/skipli/api/internal/broadcast"
 )
 
 const clientID = "0b6f8f5e-2c3a-4f7e-9a51-1f2d3c4b5a69"
 
 func create(t *testing.T, body string, respond awsfake.Respond) (*awsfake.Server, *httptest.ResponseRecorder) {
 	fake := awsfake.New(t, respond)
-	h := NewHandler(fake.DynamoDB(), "Skipli", nil, nil, nil, nil)
+	h := NewHandler(fake.DynamoDB(), "Skipli", nil, nil, nil, nil, broadcast.Discard{})
 	req := httptest.NewRequest("POST", "/boards", strings.NewReader(body))
 	req = req.WithContext(auth.ContextWithUser(req.Context(), auth.User{ID: "u1", Email: "owner@example.com"}))
 	rec := httptest.NewRecorder()

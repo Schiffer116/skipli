@@ -56,6 +56,7 @@ const createTask: BoardChange = {
 };
 
 let socket: typeof import("./socket").socket;
+let newChangeId: typeof import("./socket").newChangeId;
 const leaves: (() => void)[] = [];
 const join = (boardId: string) => {
   const leave = socket.join(boardId);
@@ -70,7 +71,7 @@ beforeEach(async () => {
   vi.resetModules();
   FakeWebSocket.all = [];
   boardStatus = 200;
-  ({ socket } = await import("./socket"));
+  ({ socket, newChangeId } = await import("./socket"));
 });
 
 afterEach(() => {
@@ -78,88 +79,54 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("send", () => {
-  it("sends a change on its board's socket and resolves with the ack", async () => {
-    join("b1");
-    last().accept();
-    expect(last().url).toBe("wss://skipli.test/api/ws?boardId=b1");
-
-    const answer = socket.send(createTask);
-    const [message] = last().sent as { id: string }[];
-    expect(message).toEqual({
-      action: "change",
-      id: message.id,
-      change: createTask,
-    });
-
-    last().reply({ type: "ack", id: "other", status: 200 });
-    last().reply({
-      type: "ack",
-      id: message.id,
-      status: 404,
-      error: "card not found",
-    });
-    expect(await answer).toEqual({ status: 404, text: "card not found" });
-  });
-
-  it("has no answer while the socket is still opening", async () => {
-    join("b1");
-    expect(await socket.send(createTask)).toBeNull();
-    expect(last().sent).toEqual([]);
-  });
-
-  it("opens the socket for a change sent with wait, and closes it after", async () => {
-    const answer = socket.send(createTask, { wait: true });
-    await flush();
-    last().accept();
-    await flush();
-    const [message] = last().sent as { id: string }[];
-    last().reply({ type: "ack", id: message.id, status: 200 });
-
-    expect(await answer).toEqual({ status: 200, text: "" });
-    expect(last().readyState).toBe(3);
-  });
-
-  it("gives up on a socket that doesn't open in time", async () => {
-    const answer = socket.send(createTask, { wait: true });
-    await vi.advanceTimersByTimeAsync(10_000);
-    expect(await answer).toBeNull();
-  });
-
-  it("answers a change to a board that's gone with the board's status", async () => {
-    boardStatus = 404;
-    const answer = socket.send(createTask, { wait: true });
-    await flush();
-    last().close();
-    expect(await answer).toEqual({ status: 404, text: "" });
-    // And doesn't keep trying to open it.
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(FakeWebSocket.all).toHaveLength(1);
-  });
-
-  it("has no answer when the socket closes first, or the ack never comes", async () => {
-    join("b1");
-    last().accept();
-    const closed = socket.send(createTask);
-    last().close();
-    expect(await closed).toBeNull();
-
-    await vi.advanceTimersByTimeAsync(3_000);
-    last().accept();
-    const unanswered = socket.send(createTask);
-    await vi.advanceTimersByTimeAsync(15_000);
-    expect(await unanswered).toBeNull();
-  });
-});
-
 describe("a board's socket", () => {
+  it("opens on its board", () => {
+    join("b1");
+    expect(last().url).toBe("wss://skipli.test/api/ws?boardId=b1");
+  });
+
   it("passes on teammates' changes", () => {
     const received = vi.fn();
     socket.onChange(received);
     join("b1");
     last().accept();
-    last().reply({ type: "change", change: createTask });
+    last().reply({ type: "change", id: "theirs", change: createTask });
     expect(received).toHaveBeenCalledWith(createTask);
+  });
+
+  it("ignores the broadcast of a change this app made", () => {
+    const received = vi.fn();
+    const updated = vi.fn();
+    socket.onChange(received);
+    socket.onUpdated(updated);
+    join("b1");
+    last().accept();
+
+    const id = newChangeId();
+    last().reply({ type: "change", id, change: createTask });
+    last().reply({ type: "board", id, board: { name: "A", description: "" } });
+    expect(received).not.toHaveBeenCalled();
+    expect(updated).not.toHaveBeenCalled();
+  });
+
+  it("passes on renames and deletions of the board", () => {
+    const updated = vi.fn();
+    const deleted = vi.fn();
+    socket.onUpdated(updated);
+    socket.onDeleted(deleted);
+    join("b1");
+    last().accept();
+
+    last().reply({
+      type: "board",
+      board: { name: "Plans", description: "Q4" },
+    });
+    expect(updated).toHaveBeenCalledWith("b1", {
+      name: "Plans",
+      description: "Q4",
+    });
+    last().reply({ type: "deleted" });
+    expect(deleted).toHaveBeenCalledWith("b1");
   });
 
   it("pings every few minutes so API Gateway doesn't close it as idle", async () => {
@@ -169,7 +136,7 @@ describe("a board's socket", () => {
     expect(last().sent).toEqual([{ action: "ping" }]);
   });
 
-  it("reconnects after it drops, and says when it's open again", async () => {
+  it("reconnects after it drops, and says each time it opens", async () => {
     const opened = vi.fn();
     socket.onOpen(opened);
     join("b1");
@@ -179,7 +146,30 @@ describe("a board's socket", () => {
     await vi.advanceTimersByTimeAsync(3_000);
     expect(FakeWebSocket.all).toHaveLength(2);
     last().accept();
-    expect(opened).toHaveBeenCalledTimes(2);
+    expect(opened.mock.calls).toEqual([["b1"], ["b1"]]);
+  });
+
+  it("says the board was deleted when it's gone on reconnecting, and stops", async () => {
+    const deleted = vi.fn();
+    socket.onDeleted(deleted);
+    join("b1");
+    last().accept();
+    boardStatus = 404;
+    last().close();
+    await flush();
+
+    expect(deleted).toHaveBeenCalledWith("b1");
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(FakeWebSocket.all).toHaveLength(1);
+  });
+
+  it("stops reconnecting once the person is no longer a member", async () => {
+    join("b1");
+    last().accept();
+    boardStatus = 403;
+    last().close();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(FakeWebSocket.all).toHaveLength(1);
   });
 
   it("is shared, and closes once nobody needs it", () => {

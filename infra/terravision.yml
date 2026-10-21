@@ -9,7 +9,6 @@ remove:
   - aws_lambda_permission.*
   - aws_apigatewayv2_integration.*
   - aws_apigatewayv2_route.*
-  - aws_apigatewayv2_route_response.*
   - aws_apigatewayv2_stage.*
   - aws_cloudfront_function.*
   - aws_cloudfront_origin_access_control.*

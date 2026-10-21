@@ -1,6 +1,6 @@
 // Package boardchange applies Board changes, the edits to the cards and
-// tasks of one board, to the table. The realtime API takes them from a
-// board's WebSocket and broadcasts the ones it accepted.
+// tasks of one board, to the table. They arrive over HTTP, and the ones
+// accepted are broadcast to the board's open WebSockets.
 package boardchange
 
 import (

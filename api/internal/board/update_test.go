@@ -1,19 +1,22 @@
 package board
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/Schiffer116/skipli/api/internal/auth"
 	"github.com/Schiffer116/skipli/api/internal/awsfake"
+	"github.com/Schiffer116/skipli/api/internal/broadcast"
 )
 
 func TestRenameOfADeletedBoardIsNotFound(t *testing.T) {
 	fake := awsfake.New(t, func(string, map[string]any) (int, any) {
 		return 400, map[string]any{"__type": "ConditionalCheckFailedException", "message": "missing"}
 	})
-	h := NewHandler(fake.DynamoDB(), "Skipli", nil, nil, nil, nil)
+	h := NewHandler(fake.DynamoDB(), "Skipli", nil, nil, nil, nil, broadcast.Discard{})
 	req := httptest.NewRequest("PUT", "/boards/b1", strings.NewReader(`{"name":"Plans"}`))
 	req.SetPathValue("id", "b1")
 	rec := httptest.NewRecorder()
@@ -27,3 +30,56 @@ func TestRenameOfADeletedBoardIsNotFound(t *testing.T) {
 		t.Errorf("board rename not guarded against a missing board: %v", update["ConditionExpression"])
 	}
 }
+
+type sentMessages []broadcast.Message
+
+func (s *sentMessages) Broadcast(_ context.Context, boardID string, m broadcast.Message) {
+	*s = append(*s, m)
+}
+
+func TestRenameIsBroadcastUnderTheSendersChangeID(t *testing.T) {
+	fake := awsfake.New(t, func(string, map[string]any) (int, any) { return 200, map[string]any{} })
+	var sent sentMessages
+	h := NewHandler(fake.DynamoDB(), "Skipli", nil, nil, nil, nil, &sent)
+	req := httptest.NewRequest("PUT", "/boards/b1", strings.NewReader(`{"name":"Plans","description":"Q4"}`))
+	req.SetPathValue("id", "b1")
+	req.Header.Set(broadcast.ChangeIDHeader, "x1")
+	rec := httptest.NewRecorder()
+	h.put(rec, req)
+
+	want := broadcast.Message{Type: broadcast.BoardUpdated, ID: "x1", Board: &broadcast.Detail{Name: "Plans", Description: "Q4"}}
+	if rec.Code != http.StatusNoContent || len(sent) != 1 || sent[0].Type != want.Type || sent[0].ID != "x1" || *sent[0].Board != *want.Board {
+		t.Fatalf("got %d, sent %+v, want %+v", rec.Code, sent, want)
+	}
+}
+
+func TestDeletingABoardTellsItsConnectionsAfterItIsGone(t *testing.T) {
+	var order []string
+	fake := awsfake.New(t, func(op string, _ map[string]any) (int, any) {
+		order = append(order, op)
+		if op == "GetItem" {
+			return 200, map[string]any{"Item": map[string]any{"Owner": map[string]any{"S": "u1"}}}
+		}
+		if op == "Query" {
+			return 200, map[string]any{"Items": []any{map[string]any{"PK": map[string]any{"S": "b1"}, "SK": map[string]any{"S": "META"}}}}
+		}
+		return 200, map[string]any{}
+	})
+	h := NewHandler(fake.DynamoDB(), "Skipli", nil, nil, nil, nil, broadcasterFunc(func() { order = append(order, "Broadcast") }))
+	req := httptest.NewRequest("DELETE", "/boards/b1", nil)
+	req.SetPathValue("id", "b1")
+	req = req.WithContext(auth.ContextWithUser(req.Context(), auth.User{ID: "u1"}))
+	rec := httptest.NewRecorder()
+	h.delete(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("got %d %q", rec.Code, rec.Body.String())
+	}
+	if last := order[len(order)-1]; last != "Broadcast" || order[len(order)-2] != "BatchWriteItem" {
+		t.Errorf("calls %v, want the broadcast after the board was deleted", order)
+	}
+}
+
+type broadcasterFunc func()
+
+func (f broadcasterFunc) Broadcast(context.Context, string, broadcast.Message) { f() }

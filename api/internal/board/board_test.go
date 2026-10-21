@@ -9,6 +9,7 @@ import (
 
 	"github.com/Schiffer116/skipli/api/internal/auth"
 	"github.com/Schiffer116/skipli/api/internal/awsfake"
+	"github.com/Schiffer116/skipli/api/internal/broadcast"
 )
 
 func newInviteTest(t *testing.T) (*awsfake.Server, *Handler) {
@@ -25,7 +26,7 @@ func newInviteTest(t *testing.T) (*awsfake.Server, *Handler) {
 		return 200, map[string]any{}
 	})
 	idp := fake.Cognito()
-	return fake, NewHandler(fake.DynamoDB(), "Skipli", nil, auth.NewDirectory(idp, "pool"), nil, auth.CanReceiveMail)
+	return fake, NewHandler(fake.DynamoDB(), "Skipli", nil, auth.NewDirectory(idp, "pool"), nil, auth.CanReceiveMail, broadcast.Discard{})
 }
 
 func invite(h *Handler, email string) *httptest.ResponseRecorder {

@@ -2,13 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Board } from "@/pages/Boards/BoardList/BoardList";
 
-import {
-  alreadySaved,
-  applyToList,
-  isBoardChange,
-  toRequest,
-  touchedIds,
-} from "./changes";
+import { alreadySaved, applyToList, toRequest, touchedIds } from "./changes";
 
 const board = (id: string, rest: Partial<Board> = {}): Board => ({
   id,
@@ -22,18 +16,31 @@ const board = (id: string, rest: Partial<Board> = {}): Board => ({
 });
 
 describe("toRequest", () => {
-  it("sends the app's own ID with a create", () => {
+  it("sends a Board change to its board's change endpoint, as it is", () => {
+    const change = {
+      type: "createTask",
+      boardId: "b1",
+      cardId: "c1",
+      taskId: "t1",
+      name: "Buy milk",
+    } as const;
+    const { url, init } = toRequest(change);
+    expect(url).toBe("/api/boards/b1/changes");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual(change);
+  });
+
+  it("sends the app's own ID with a board create", () => {
     const { url, init } = toRequest({
       type: "createBoard",
       boardId: "b1",
-      name: "Trip",
+      name: "Plans",
       description: "",
     });
     expect(url).toBe("/api/boards");
-    expect(init.method).toBe("POST");
     expect(JSON.parse(init.body as string)).toEqual({
       id: "b1",
-      name: "Trip",
+      name: "Plans",
       description: "",
     });
   });
@@ -43,13 +50,6 @@ describe("toRequest", () => {
       url: "/api/boards/b1",
       init: { method: "DELETE" },
     });
-  });
-});
-
-describe("isBoardChange", () => {
-  it("tells changes inside a board from changes to the board list", () => {
-    expect(isBoardChange({ type: "cleanUp", boardId: "b1" })).toBe(true);
-    expect(isBoardChange({ type: "deleteBoard", boardId: "b1" })).toBe(false);
   });
 });
 

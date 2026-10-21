@@ -18,8 +18,10 @@ import (
 
 func main() {
 	c := config.Load()
-	router := server.NewRouter(c)
-	rt := realtime.NewHandler(c.AWS, c.DB, c.Table, c.Tokens)
+	// REALTIME_ENDPOINT is the WebSocket stage's https management URL; when
+	// it's not set (locally) the server holds the connections itself.
+	rt := realtime.NewHandler(c.AWS, c.DB, c.Table, os.Getenv("REALTIME_ENDPOINT"), c.Tokens)
+	router := server.NewRouter(c, rt)
 
 	if os.Getenv("AWS_LAMBDA_RUNTIME_API") != "" {
 		lambda.Start(dispatch(router, rt.Handle))

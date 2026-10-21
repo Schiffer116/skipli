@@ -19,6 +19,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/Schiffer116/skipli/api/internal/auth"
+	"github.com/Schiffer116/skipli/api/internal/broadcast"
 )
 
 const (
@@ -95,6 +96,26 @@ func (f *fakeAWS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// recordedBroadcasts remembers what the handlers broadcast, by board.
+type recordedBroadcasts struct {
+	mu   sync.Mutex
+	sent []string
+}
+
+func (r *recordedBroadcasts) Broadcast(_ context.Context, boardID string, m broadcast.Message) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.sent = append(r.sent, boardID+" "+m.Type)
+}
+
+func (r *recordedBroadcasts) take() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	sent := r.sent
+	r.sent = nil
+	return sent
+}
+
 func (f *fakeAWS) takeCalls() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -156,7 +177,8 @@ func TestBoardRoutesRequireMembership(t *testing.T) {
 	}, testIssuer, testClientID)
 
 	canReceiveMail := func(context.Context, string) bool { return true }
-	router := newRouter(db, idp, tokens, "us-east-1_test", testClientID, "Skipli", canReceiveMail)
+	broadcasts := &recordedBroadcasts{}
+	router := newRouter(db, idp, tokens, "us-east-1_test", testClientID, "Skipli", canReceiveMail, broadcasts)
 
 	// {board} is replaced with the board under test; routes without it
 	// aren't scoped to a board and only need a signed-in caller.
@@ -182,6 +204,25 @@ func TestBoardRoutesRequireMembership(t *testing.T) {
 		{"GET", "/api/boards/{board}/cards/c1/tasks/t1", "", 200, 403},
 	}
 
+	// Every kind of Board change is taken from members only.
+	for _, change := range []string{
+		`{"type":"createCard","boardId":"{board}","cardId":"0b6f8f5e-2c3a-4f7e-9a51-1f2d3c4b5a69","name":"Card","createdAt":""}`,
+		`{"type":"updateCard","boardId":"{board}","cardId":"c1","name":"Card","description":""}`,
+		`{"type":"deleteCard","boardId":"{board}","cardId":"c2"}`,
+		`{"type":"moveCard","boardId":"{board}","cardId":"c1","beforeId":"c2","afterId":null}`,
+		`{"type":"createTask","boardId":"{board}","cardId":"c1","taskId":"0b6f8f5e-2c3a-4f7e-9a51-1f2d3c4b5a69","name":"Task"}`,
+		`{"type":"updateTask","boardId":"{board}","cardId":"c1","taskId":"t1","name":"Task","description":"","status":"done"}`,
+		`{"type":"deleteTask","boardId":"{board}","cardId":"c1","taskId":"t1"}`,
+		`{"type":"moveTask","boardId":"{board}","cardId":"c1","taskId":"t1","newCardId":"c2","beforeId":null,"afterId":null}`,
+		`{"type":"cleanUp","boardId":"{board}"}`,
+	} {
+		routes = append(routes, struct {
+			method, path, body string
+			member             int
+			outsider           int
+		}{"POST", "/api/boards/{board}/changes", change, 204, 403})
+	}
+
 	callers := []struct {
 		name  string
 		token string
@@ -203,17 +244,24 @@ func TestBoardRoutesRequireMembership(t *testing.T) {
 			}
 			path := strings.ReplaceAll(r.path, "{board}", c.board)
 			t.Run(fmt.Sprintf("%s %s as %s", r.method, path, c.name), func(t *testing.T) {
-				req := httptest.NewRequest(r.method, path, strings.NewReader(r.body))
+				broadcasts.take()
+				body := strings.ReplaceAll(r.body, "{board}", c.board)
+				req := httptest.NewRequest(r.method, path, strings.NewReader(body))
 				if c.token != "" {
 					req.AddCookie(&http.Cookie{Name: "id_token", Value: c.token})
 				}
 				rec := httptest.NewRecorder()
 				router.ServeHTTP(rec, req)
 				calls := fake.takeCalls()
+				sent := broadcasts.take()
 
 				want := c.want(r.member, r.outsider)
 				if rec.Code != want {
 					t.Fatalf("status = %d, want %d (body %q)", rec.Code, want, strings.TrimSpace(rec.Body.String()))
+				}
+
+				if want == 204 && (r.method != "GET") && strings.HasSuffix(path, "/changes") && len(sent) != 1 {
+					t.Errorf("accepted change broadcast %v, want one", sent)
 				}
 
 				// Turned away before the handler ran: only the membership
@@ -222,6 +270,9 @@ func TestBoardRoutesRequireMembership(t *testing.T) {
 					t.Errorf("unauthenticated request reached AWS: %v", calls)
 				}
 				if scoped && want != r.member {
+					if len(sent) != 0 {
+						t.Errorf("rejected request was broadcast: %v", sent)
+					}
 					for _, call := range calls {
 						if call != "GetItem" {
 							t.Errorf("rejected request made a %s call: %v", call, calls)

@@ -239,6 +239,17 @@ async function fetchTasks(boardId: string, cardId: string) {
   return tasks;
 }
 
+// A board's cards with their tasks, as the server has them.
+export async function fetchBoardCards(boardId: string) {
+  const cards = await fetchCards(boardId);
+  return Promise.all(
+    cards.map(async (card: CardType) => {
+      const tasks = await fetchTasks(boardId, card.id);
+      return { ...card, tasks };
+    }),
+  );
+}
+
 export type BoardViewData = {
   cardsWithTasks: CardType[];
   name: string;
@@ -281,13 +292,7 @@ export async function boardViewLoader({
   throwIfNotOk(boardRes);
   const { name, description, owner } = await boardRes.json();
 
-  const cards = await fetchCards(boardId);
-  const cardsWithTasks = await Promise.all(
-    cards.map(async (card: CardType) => {
-      const tasks = await fetchTasks(boardId, card.id);
-      return { ...card, tasks };
-    }),
-  );
+  const cardsWithTasks = await fetchBoardCards(boardId);
 
   const res = await apiFetch(`/api/boards/${boardId}/members`);
   throwIfNotOk(res);

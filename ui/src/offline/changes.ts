@@ -1,9 +1,8 @@
 import type { Board } from "@/pages/Boards/BoardList/BoardList";
 
 // Every change the app can make, in the shape the API takes. Online, a
-// change is sent right away; offline it waits as a Pending change and is
-// sent in order on reconnect. Board changes go over their board's socket,
-// changes to the board list over HTTP.
+// change is sent right away; offline (on a Solo board, or to the board
+// list) it waits as a Pending change and is sent in order on reconnect.
 export type Change =
   | { type: "createBoard"; boardId: string; name: string; description: string }
   | { type: "updateBoard"; boardId: string; name: string; description: string }
@@ -93,19 +92,19 @@ const boardChanges = new Set<Change["type"]>([
 export const isBoardChange = (change: Change): change is BoardChange =>
   boardChanges.has(change.type);
 
-// A change to the board list, sent over HTTP.
-export type ListChange = Exclude<Change, BoardChange>;
-
-export function toRequest(change: ListChange): {
-  url: string;
-  init: RequestInit;
-} {
+// A change is one HTTP request: a Board change goes to its board's change
+// endpoint, anything else to its own route.
+export function toRequest(change: Change): { url: string; init: RequestInit } {
   const json = (method: string, body: unknown) => ({
     method,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   const board = `/api/boards/${"boardId" in change ? change.boardId : ""}`;
+
+  if (isBoardChange(change)) {
+    return { url: `${board}/changes`, init: json("POST", change) };
+  }
 
   switch (change.type) {
     case "createBoard":

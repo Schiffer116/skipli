@@ -18,6 +18,7 @@ import (
 
 	"github.com/Schiffer116/skipli/api/internal/access"
 	"github.com/Schiffer116/skipli/api/internal/auth"
+	"github.com/Schiffer116/skipli/api/internal/broadcast"
 	"github.com/Schiffer116/skipli/api/internal/clientid"
 	"github.com/Schiffer116/skipli/api/internal/profile"
 )
@@ -31,12 +32,13 @@ type Handler struct {
 	users          *auth.Directory
 	profiles       *profile.Store
 	canReceiveMail func(context.Context, string) bool
+	broadcaster    broadcast.Broadcaster
 }
 
 // NewHandler builds the board routes. canReceiveMail vets invite addresses
 // before a user is created for them; production passes auth.CanReceiveMail.
-func NewHandler(db *dynamodb.Client, table string, tokens *auth.TokenVerifier, users *auth.Directory, profiles *profile.Store, canReceiveMail func(context.Context, string) bool) *Handler {
-	return &Handler{db: db, table: table, tokens: tokens, users: users, profiles: profiles, canReceiveMail: canReceiveMail}
+func NewHandler(db *dynamodb.Client, table string, tokens *auth.TokenVerifier, users *auth.Directory, profiles *profile.Store, canReceiveMail func(context.Context, string) bool, broadcaster broadcast.Broadcaster) *Handler {
+	return &Handler{db: db, table: table, tokens: tokens, users: users, profiles: profiles, canReceiveMail: canReceiveMail, broadcaster: broadcaster}
 }
 
 func (h *Handler) RegisterRoutes(router *http.ServeMux) {
@@ -694,6 +696,7 @@ func (h *Handler) delete(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	h.broadcaster.Broadcast(ctx, id, broadcast.Message{Type: broadcast.BoardDeleted, ID: req.Header.Get(broadcast.ChangeIDHeader)})
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -787,6 +790,11 @@ func (h *Handler) put(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	h.broadcaster.Broadcast(ctx, id, broadcast.Message{
+		Type:  broadcast.BoardUpdated,
+		ID:    req.Header.Get(broadcast.ChangeIDHeader),
+		Board: &broadcast.Detail{Name: r.Name, Description: r.Description},
+	})
 
 	w.WriteHeader(http.StatusNoContent)
 }
