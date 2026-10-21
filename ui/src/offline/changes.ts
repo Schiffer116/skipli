@@ -1,8 +1,9 @@
 import type { Board } from "@/pages/Boards/BoardList/BoardList";
 
 // Every change the app can make, in the shape the API takes. Online, a
-// change is sent right away; offline (on a Solo board, or to the board
-// list) it waits as a Pending change and is sent in order on reconnect.
+// change is sent right away; offline it waits as a Pending change and is
+// sent in order on reconnect. Board changes go over their board's socket,
+// changes to the board list over HTTP.
 export type Change =
   | { type: "createBoard"; boardId: string; name: string; description: string }
   | { type: "updateBoard"; boardId: string; name: string; description: string }
@@ -77,15 +78,34 @@ export type BoardChange = Extract<
   }
 >;
 
-export function toRequest(change: Change): { url: string; init: RequestInit } {
+const boardChanges = new Set<Change["type"]>([
+  "createCard",
+  "updateCard",
+  "deleteCard",
+  "moveCard",
+  "createTask",
+  "updateTask",
+  "deleteTask",
+  "moveTask",
+  "cleanUp",
+]);
+
+export const isBoardChange = (change: Change): change is BoardChange =>
+  boardChanges.has(change.type);
+
+// A change to the board list, sent over HTTP.
+export type ListChange = Exclude<Change, BoardChange>;
+
+export function toRequest(change: ListChange): {
+  url: string;
+  init: RequestInit;
+} {
   const json = (method: string, body: unknown) => ({
     method,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   const board = `/api/boards/${"boardId" in change ? change.boardId : ""}`;
-  const card = `${board}/cards/${"cardId" in change ? change.cardId : ""}`;
-  const task = `${card}/tasks/${"taskId" in change ? change.taskId : ""}`;
 
   switch (change.type) {
     case "createBoard":
@@ -117,61 +137,6 @@ export function toRequest(change: Change): { url: string; init: RequestInit } {
         url: "/api/boards/order",
         init: json("PUT", { boardIds: change.boardIds }),
       };
-    case "createCard":
-      return {
-        url: `${board}/cards`,
-        init: json("POST", {
-          id: change.cardId,
-          name: change.name,
-          description: "",
-          createdAt: change.createdAt,
-        }),
-      };
-    case "updateCard":
-      return {
-        url: card,
-        init: json("PUT", {
-          name: change.name,
-          description: change.description,
-        }),
-      };
-    case "deleteCard":
-      return { url: card, init: { method: "DELETE" } };
-    case "moveCard":
-      return {
-        url: card,
-        init: json("PATCH", {
-          beforeId: change.beforeId,
-          afterId: change.afterId,
-        }),
-      };
-    case "createTask":
-      return {
-        url: `${card}/tasks`,
-        init: json("POST", { id: change.taskId, name: change.name }),
-      };
-    case "updateTask":
-      return {
-        url: task,
-        init: json("PUT", {
-          name: change.name,
-          description: change.description,
-          status: change.status,
-        }),
-      };
-    case "deleteTask":
-      return { url: task, init: { method: "DELETE" } };
-    case "moveTask":
-      return {
-        url: task,
-        init: json("PATCH", {
-          newCardId: change.newCardId,
-          beforeId: change.beforeId,
-          afterId: change.afterId,
-        }),
-      };
-    case "cleanUp":
-      return { url: `${board}/cleanup`, init: { method: "POST" } };
   }
 }
 

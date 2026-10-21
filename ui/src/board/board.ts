@@ -1,48 +1,28 @@
-import type { BoardChange, Change } from "@/offline/changes";
+import type { BoardChange } from "@/offline/changes";
 import { updateBoard } from "@/offline/copy";
-import { onAccepted, refused, submit } from "@/offline/sync";
+import { refused, submit } from "@/offline/sync";
 import type { CardType } from "@/pages/Boards/Board/Card";
-import { socket as liveSocket } from "@/utils/socket";
+import { socket } from "@/utils/socket";
 
 import { apply } from "./apply";
-
-type Socket = Pick<
-  typeof liveSocket,
-  "connect" | "disconnect" | "emit" | "on" | "off"
->;
 
 export type OpenBoard = {
   cards: () => CardType[];
   subscribe: (listener: () => void) => () => void;
   make: (change: BoardChange) => Promise<void>;
-  // Goes live: teammates' changes come in, and accepted ones go out to them.
+  // Goes live: opens the board's socket, which carries changes to the
+  // server and teammates' changes back.
   start: () => () => void;
 };
 
-const boardChanges = new Set<Change["type"]>([
-  "createCard",
-  "updateCard",
-  "deleteCard",
-  "moveCard",
-  "createTask",
-  "updateTask",
-  "deleteTask",
-  "moveTask",
-  "cleanUp",
-]);
-
-const isBoardChange = (change: Change): change is BoardChange =>
-  boardChanges.has(change.type);
-
 // The open board's cards, and the one way to change them. A Board change
 // shows on screen first, then goes to the server (or waits as a Pending
-// change), and reaches teammates once the server accepts it. What's on
+// change), which passes it on to teammates once it accepts it. What's on
 // screen is kept in the Offline copy too.
 export function openBoard(
   userId: string,
   boardId: string,
   loaded: CardType[],
-  socket: Socket = liveSocket,
 ): OpenBoard {
   let cards = loaded;
   const listeners = new Set<() => void>();
@@ -91,17 +71,11 @@ export function openBoard(
     },
 
     start() {
-      socket.connect(boardId);
-      socket.on("change", receive);
-      const stopRelaying = onAccepted((change) => {
-        if (isBoardChange(change) && change.boardId === boardId) {
-          socket.emit("change", change);
-        }
-      });
+      const leave = socket.join(boardId);
+      const stopReceiving = socket.onChange(receive);
       return () => {
-        stopRelaying();
-        socket.off("change", receive);
-        socket.disconnect();
+        stopReceiving();
+        leave();
         save();
       };
     },

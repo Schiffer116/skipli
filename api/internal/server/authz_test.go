@@ -156,7 +156,7 @@ func TestBoardRoutesRequireMembership(t *testing.T) {
 	}, testIssuer, testClientID)
 
 	canReceiveMail := func(context.Context, string) bool { return true }
-	router := newServer(aws.Config{}, db, idp, tokens, "us-east-1_test", testClientID, "Skipli", canReceiveMail).Router
+	router := newRouter(db, idp, tokens, "us-east-1_test", testClientID, "Skipli", canReceiveMail)
 
 	// {board} is replaced with the board under test; routes without it
 	// aren't scoped to a board and only need a signed-in caller.
@@ -174,21 +174,12 @@ func TestBoardRoutesRequireMembership(t *testing.T) {
 		{"PUT", "/api/boards/{board}/favorite", `{"favorite":true}`, 204, 403},
 		{"POST", "/api/boards/{board}/invite", `{"email":"invitee@example.com"}`, 204, 403},
 		{"DELETE", "/api/boards/{board}", "", 204, 403},
-		{"POST", "/api/boards/{board}/cleanup", "", 204, 403},
 
 		{"GET", "/api/boards/{board}/cards", "", 200, 403},
-		{"POST", "/api/boards/{board}/cards", `{"name":"Card"}`, 201, 403},
 		{"GET", "/api/boards/{board}/cards/c1", "", 200, 403},
-		{"PUT", "/api/boards/{board}/cards/c1", `{"name":"Card","description":""}`, 200, 403},
-		{"PATCH", "/api/boards/{board}/cards/c1", `{"beforeId":"c2"}`, 200, 403},
-		{"DELETE", "/api/boards/{board}/cards/c1", "", 204, 403},
 
 		{"GET", "/api/boards/{board}/cards/c1/tasks", "", 200, 403},
-		{"POST", "/api/boards/{board}/cards/c1/tasks", `{"name":"Task"}`, 201, 403},
 		{"GET", "/api/boards/{board}/cards/c1/tasks/t1", "", 200, 403},
-		{"PUT", "/api/boards/{board}/cards/c1/tasks/t1", `{"name":"Task","description":"","status":"done"}`, 200, 403},
-		{"PATCH", "/api/boards/{board}/cards/c1/tasks/t1", `{"newCardId":"c1"}`, 200, 403},
-		{"DELETE", "/api/boards/{board}/cards/c1/tasks/t1", "", 204, 403},
 	}
 
 	callers := []struct {

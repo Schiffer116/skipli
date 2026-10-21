@@ -17,6 +17,11 @@ vi.mock("@/utils/apiFetch", () => ({
   },
 }));
 
+const fake = await vi.hoisted(async () =>
+  (await import("@/utils/socket.fake")).fakeSocket(),
+);
+vi.mock("@/utils/socket", () => ({ socket: fake.socket }));
+
 const network = { onLine: true };
 vi.stubGlobal("navigator", network);
 vi.stubGlobal("window", new EventTarget());
@@ -44,9 +49,14 @@ const createTask = (taskId: string): Change => ({
   name: taskId,
 });
 
+const sentIds = () =>
+  fake.sent.map((change) => ("taskId" in change ? change.taskId : null));
+
 beforeEach(async () => {
   fetches.length = 0;
   answer = () => 200;
+  fake.reset();
+  fake.open.add("b1");
   network.onLine = true;
   await startSync(me);
 });
@@ -57,18 +67,45 @@ afterEach(async () => {
 });
 
 describe("submit", () => {
-  it("sends right away when online", async () => {
+  it("sends a Board change over its board's socket right away", async () => {
     expect(await submit(createTask("t1"))).toBe(true);
-    expect(fetches.map((f) => f.url)).toEqual([
-      "/api/boards/b1/cards/c1/tasks",
-    ]);
+    expect(sentIds()).toEqual(["t1"]);
+    expect(fetches).toEqual([]);
     expect(await loadPending(me.id)).toEqual([]);
   });
 
+  it("sends a change to the board list over HTTP", async () => {
+    expect(await submit({ type: "deleteBoard", boardId: "b1" })).toBe(true);
+    expect(fetches.map((f) => [f.init.method, f.url])).toEqual([
+      ["DELETE", "/api/boards/b1"],
+    ]);
+    expect(fake.sent).toEqual([]);
+  });
+
   it("reports an online send the server refuses as not made", async () => {
-    answer = () => 404;
+    fake.status = () => 404;
     expect(await submit(createTask("t1"))).toBe(false);
+    answer = () => 403;
+    expect(await submit({ type: "deleteBoard", boardId: "b1" })).toBe(false);
     expect(await loadPending(me.id)).toEqual([]);
+  });
+
+  it("counts a 409 on a create as saved by an earlier attempt", async () => {
+    fake.status = () => 409;
+    expect(await submit(createTask("t1"))).toBe(true);
+    expect(await loadPending(me.id)).toEqual([]);
+  });
+
+  it("keeps a change made before the board's socket opened, and sends it once it opens", async () => {
+    fake.open.clear();
+    expect(await submit(createTask("t1"))).toBe(true);
+    expect(fake.sent).toEqual([]);
+    expect(await loadPending(me.id)).toHaveLength(1);
+
+    fake.open.clear();
+    fake.connect("b1");
+    await vi.waitFor(async () => expect(await loadPending(me.id)).toEqual([]));
+    expect(sentIds()).toEqual(["t1"]);
   });
 
   it("keeps changes made offline and applies them to the saved list", async () => {
@@ -102,19 +139,15 @@ describe("sync", () => {
     goOnline();
     await sync();
 
-    expect(fetches.map((f) => JSON.parse(f.init.body as string).id)).toEqual([
-      "t1",
-      "t2",
-      "t3",
-    ]);
+    expect(sentIds()).toEqual(["t1", "t2", "t3"]);
     expect(await loadPending(me.id)).toEqual([]);
   });
 
   it("keeps what the server refuses as rejected, and sends the rest", async () => {
     goOffline();
     for (const id of ["t1", "t2", "t3"]) await submit(createTask(id));
-    answer = () =>
-      fetches.length === 2 ? 404 : fetches.length === 3 ? 409 : 201;
+    let sends = 0;
+    fake.status = () => (++sends === 2 ? 404 : sends === 3 ? 409 : 200);
 
     goOnline();
     await sync();
@@ -129,14 +162,14 @@ describe("sync", () => {
   it("stops on a server error and tries again later, in order", async () => {
     goOffline();
     for (const id of ["t1", "t2"]) await submit(createTask(id));
-    answer = () => 503;
+    fake.status = () => 503;
 
     goOnline();
     await sync();
-    expect(fetches).toHaveLength(1);
+    expect(fake.sent).toHaveLength(1);
     expect(await loadPending(me.id)).toHaveLength(2);
 
-    answer = () => 201;
+    fake.status = () => 200;
     await sync();
     expect(await loadPending(me.id)).toEqual([]);
     expect(await loadRejected(me.id)).toEqual([]);
@@ -147,17 +180,17 @@ describe("sync", () => {
     try {
       goOffline();
       await submit(createTask("t1"));
-      answer = () => 503;
+      fake.status = () => "unreachable";
       goOnline();
       await sync();
       expect(await loadPending(me.id)).toHaveLength(1);
 
-      answer = () => 201;
+      fake.status = () => 200;
       await vi.advanceTimersByTimeAsync(5_000);
       await vi.waitFor(async () =>
         expect(await loadPending(me.id)).toEqual([]),
       );
-      expect(fetches).toHaveLength(2);
+      expect(sentIds()).toEqual(["t1"]);
     } finally {
       vi.useRealTimers();
     }
@@ -173,9 +206,6 @@ describe("sync", () => {
     await running;
     await sync();
 
-    expect(fetches.map((f) => JSON.parse(f.init.body as string).id)).toEqual([
-      "t1",
-      "t2",
-    ]);
+    expect(sentIds()).toEqual(["t1", "t2"]);
   });
 });

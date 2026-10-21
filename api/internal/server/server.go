@@ -2,70 +2,35 @@ package server
 
 import (
 	"context"
-	"log"
 	"net/http"
-	"os"
-	"strings"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 
 	"github.com/Schiffer116/skipli/api/internal/auth"
 	"github.com/Schiffer116/skipli/api/internal/board"
 	"github.com/Schiffer116/skipli/api/internal/card"
+	"github.com/Schiffer116/skipli/api/internal/config"
 	"github.com/Schiffer116/skipli/api/internal/profile"
-	"github.com/Schiffer116/skipli/api/internal/realtime"
 	"github.com/Schiffer116/skipli/api/internal/task"
 )
 
-type Server struct {
-	Router   http.Handler
-	Realtime *realtime.Handler
-}
-
-func NewServer() *Server {
-	ctx := context.Background()
-
-	poolID := os.Getenv("USER_POOL_ID")
-	clientID := os.Getenv("USER_POOL_CLIENT_ID")
-	tableName := os.Getenv("TABLE_NAME")
-	if poolID == "" || clientID == "" {
-		log.Fatal("USER_POOL_ID and USER_POOL_CLIENT_ID must be set")
-	}
-	if tableName == "" {
-		tableName = "Skipli"
-	}
-
-	cfg, err := config.LoadDefaultConfig(ctx)
-	if err != nil {
-		log.Fatalf("unable to load SDK config: %v", err)
-	}
-	db := dynamodb.NewFromConfig(cfg)
-
-	poolRegion, _, _ := strings.Cut(poolID, "_")
-	idp := cognitoidentityprovider.NewFromConfig(cfg, func(o *cognitoidentityprovider.Options) {
-		o.Region = poolRegion
+// NewRouter serves the HTTP API: page loads, board-list changes, sign-in,
+// invites and profiles. Board changes go to the realtime API instead.
+func NewRouter(c config.Config) http.Handler {
+	idp := cognitoidentityprovider.NewFromConfig(c.AWS, func(o *cognitoidentityprovider.Options) {
+		o.Region = c.PoolRegion
 	})
-	tokens, err := auth.NewTokenVerifier(ctx, poolRegion, poolID, clientID)
-	if err != nil {
-		log.Fatalf("unable to load user pool keys: %v", err)
-	}
-
-	return newServer(cfg, db, idp, tokens, poolID, clientID, tableName, auth.CanReceiveMail)
+	return newRouter(c.DB, idp, c.Tokens, c.PoolID, c.ClientID, c.Table, auth.CanReceiveMail)
 }
 
-// newServer wires the routes onto already-built clients, so tests can run the
+// newRouter wires the routes onto already-built clients, so tests can run the
 // real router against fakes. canReceiveMail stands in for the invite
 // address's DNS check.
-func newServer(cfg aws.Config, db *dynamodb.Client, idp *cognitoidentityprovider.Client, tokens *auth.TokenVerifier, poolID, clientID, tableName string, canReceiveMail func(context.Context, string) bool) *Server {
+func newRouter(db *dynamodb.Client, idp *cognitoidentityprovider.Client, tokens *auth.TokenVerifier, poolID, clientID, tableName string, canReceiveMail func(context.Context, string) bool) http.Handler {
 	router := http.NewServeMux()
 
 	users := auth.NewDirectory(idp, poolID)
-
-	rt := realtime.NewHandler(cfg, db, tableName, tokens)
-	router.HandleFunc("GET /ws", rt.ServeLocal)
 
 	profiles := profile.NewStore(db, tableName)
 	profile.NewHandler(profiles, tokens).RegisterRoutes(router)
@@ -76,9 +41,5 @@ func newServer(cfg aws.Config, db *dynamodb.Client, idp *cognitoidentityprovider
 
 	api := http.NewServeMux()
 	api.Handle("/api/", http.StripPrefix("/api", router))
-
-	return &Server{
-		Router:   withCORS(api),
-		Realtime: rt,
-	}
+	return withCORS(api)
 }

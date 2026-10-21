@@ -1,5 +1,5 @@
 name: build
-description: Build the API Lambda binary and the UI
+description: Build the API Lambda binaries and the UI
 
 runs:
   using: composite

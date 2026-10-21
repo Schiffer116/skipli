@@ -87,7 +87,7 @@ jobs:
           retention-days: 1
           path: |
             infra/tfplan
-            api/bin/api.zip
+            api/bin/*.zip
             ui/dist
 
   prod-apply:

@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import type { Board } from "@/pages/Boards/BoardList/BoardList";
 
-import { alreadySaved, applyToList, toRequest, touchedIds } from "./changes";
+import {
+  alreadySaved,
+  applyToList,
+  isBoardChange,
+  toRequest,
+  touchedIds,
+} from "./changes";
 
 const board = (id: string, rest: Partial<Board> = {}): Board => ({
   id,
@@ -18,36 +24,17 @@ const board = (id: string, rest: Partial<Board> = {}): Board => ({
 describe("toRequest", () => {
   it("sends the app's own ID with a create", () => {
     const { url, init } = toRequest({
-      type: "createTask",
+      type: "createBoard",
       boardId: "b1",
-      cardId: "c1",
-      taskId: "t1",
-      name: "Buy milk",
+      name: "Trip",
+      description: "",
     });
-    expect(url).toBe("/api/boards/b1/cards/c1/tasks");
+    expect(url).toBe("/api/boards");
     expect(init.method).toBe("POST");
     expect(JSON.parse(init.body as string)).toEqual({
-      id: "t1",
-      name: "Buy milk",
-    });
-  });
-
-  it("moves a task from the card it is in on the server", () => {
-    const { url, init } = toRequest({
-      type: "moveTask",
-      boardId: "b1",
-      cardId: "c1",
-      taskId: "t1",
-      newCardId: "c2",
-      beforeId: "t0",
-      afterId: null,
-    });
-    expect(url).toBe("/api/boards/b1/cards/c1/tasks/t1");
-    expect(init.method).toBe("PATCH");
-    expect(JSON.parse(init.body as string)).toEqual({
-      newCardId: "c2",
-      beforeId: "t0",
-      afterId: null,
+      id: "b1",
+      name: "Trip",
+      description: "",
     });
   });
 
@@ -56,6 +43,13 @@ describe("toRequest", () => {
       url: "/api/boards/b1",
       init: { method: "DELETE" },
     });
+  });
+});
+
+describe("isBoardChange", () => {
+  it("tells changes inside a board from changes to the board list", () => {
+    expect(isBoardChange({ type: "cleanUp", boardId: "b1" })).toBe(true);
+    expect(isBoardChange({ type: "deleteBoard", boardId: "b1" })).toBe(false);
   });
 });
 

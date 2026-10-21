@@ -2,8 +2,15 @@ import { useSyncExternalStore } from "react";
 
 import type { Me } from "@/pages/Boards/loaders";
 import { apiFetch } from "@/utils/apiFetch";
+import { socket, type Answer } from "@/utils/socket";
 
-import { alreadySaved, toRequest, touchedIds, type Change } from "./changes";
+import {
+  alreadySaved,
+  isBoardChange,
+  toRequest,
+  touchedIds,
+  type Change,
+} from "./changes";
 import {
   addPending,
   applyChange,
@@ -52,7 +59,6 @@ export function useSync() {
 
 let me: Me | null = null;
 let onRefused: (count: number) => void = () => {};
-const acceptedListeners = new Set<(change: Change) => void>();
 
 // Starts tracking one person's pending changes; called once who is signed
 // in is known (from the server, or from the offline copy).
@@ -78,16 +84,25 @@ export function refused(count = 1) {
   onRefused(count);
 }
 
-// Calls back with each change the server accepts, whether sent right away
-// or later as a Pending change.
-export function onAccepted(listener: (change: Change) => void) {
-  acceptedListeners.add(listener);
-  return () => void acceptedListeners.delete(listener);
+// Sends a change to the server: a Board change over its board's socket,
+// any other change over HTTP. Resolves with the server's answer, or null
+// when it couldn't be reached. A board's socket that isn't open is only
+// waited for when wait is set: a change made while it's still opening
+// waits as a Pending change instead, and goes once it opens.
+async function deliver(change: Change, wait: boolean): Promise<Answer | null> {
+  if (isBoardChange(change)) return socket.send(change, { wait });
+  const { url, init } = toRequest(change);
+  try {
+    const res = await apiFetch(url, init);
+    return { status: res.status, text: await res.text() };
+  } catch {
+    return null;
+  }
 }
 
-function accepted(change: Change) {
-  acceptedListeners.forEach((listener) => listener(change));
-}
+const saved = (change: Change, answer: Answer) =>
+  (answer.status >= 200 && answer.status < 300) ||
+  alreadySaved(change, answer.status);
 
 async function refreshCounts() {
   if (!me) return;
@@ -123,20 +138,12 @@ async function submitNow(change: Change) {
     return true;
   }
 
-  const { url, init } = toRequest(change);
-  let res: Response | null;
-  try {
-    res = await apiFetch(url, init);
-  } catch {
-    res = null;
-  }
-
-  if (res && (res.ok || alreadySaved(change, res.status))) {
+  const answer = await deliver(change, false);
+  if (answer && saved(change, answer)) {
     if (me) await applyChange(me, change);
-    accepted(change);
     return true;
   }
-  if (me && (!res || res.status >= 500)) {
+  if (me && (!answer || answer.status >= 500)) {
     await keep(me, change);
     retryLater();
     return true;
@@ -188,26 +195,19 @@ async function send() {
       const pending = await nextPending(user.id);
       if (!pending) break;
 
-      const { url, init } = toRequest(pending.change);
-      let res: Response;
-      try {
-        res = await apiFetch(url, init);
-      } catch {
+      // One at a time, each answered before the next is sent, so they
+      // reach the server in order.
+      const answer = await deliver(pending.change, true);
+      if (!answer || answer.status >= 500) {
         failed = true;
         break;
-      }
-
-      if (res.ok || alreadySaved(pending.change, res.status)) {
+      } else if (saved(pending.change, answer)) {
         await removePending(user.id, pending.seq);
-        accepted(pending.change);
-      } else if (res.status >= 500) {
-        failed = true;
-        break;
-      } else if (res.status === 401) {
+      } else if (answer.status === 401) {
         // Signed out elsewhere: the next page load goes to sign-in.
         break;
       } else {
-        await reject(user.id, pending, res.status, await res.text());
+        await reject(user.id, pending, answer.status, answer.text);
         refusedCount++;
       }
       await refreshCounts();
@@ -221,6 +221,12 @@ async function send() {
   else retryDelay = FIRST_RETRY;
   if (refusedCount > 0) refused(refusedCount);
 }
+
+// A board's socket opening is a chance to send what waits: a change made
+// while it was still connecting, or after it dropped.
+socket.onOpen(() => {
+  if (state.pendingCount > 0) void sync();
+});
 
 window.addEventListener("online", () => {
   setState({ offline: false });

@@ -47,10 +47,9 @@ connect:
   aws_lambda_function.skipli:
     - aws_dynamodb_table.skipli
     - aws_cognito_user_pool.cognito
-    - aws_apigatewayv2_api.realtime: Push updates
   aws_lambda_function.realtime:
     - aws_dynamodb_table.skipli
-    - aws_cognito_user_pool.cognito
+    - aws_apigatewayv2_api.realtime: Broadcast changes
   aws_cognito_user_pool.cognito:
     - aws_sesv2_email_identity.domain: Sign-in emails
 
@@ -66,7 +65,7 @@ update:
   aws_apigatewayv2_api.realtime:
     label: WebSocket API
   aws_lambda_function.skipli:
-    label: API Lambda
+    label: HTTP Lambda
   aws_lambda_function.realtime:
     label: Realtime Lambda
   aws_dynamodb_table.skipli:

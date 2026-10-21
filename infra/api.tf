@@ -171,6 +171,37 @@ resource "aws_iam_role_policy" "cognito_access" {
   policy = data.aws_iam_policy_document.cognito_access.json
 }
 
+# The realtime Lambda has a role of its own: only it posts to WebSocket
+# connections, and it needs no Cognito access.
+data "aws_iam_policy_document" "realtime_assume_role" {
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["lambda.amazonaws.com"]
+    }
+
+    actions = ["sts:AssumeRole"]
+  }
+}
+
+resource "aws_iam_role" "realtime" {
+  name               = "SkipliRealtimeExecutionRole"
+  assume_role_policy = data.aws_iam_policy_document.realtime_assume_role.json
+}
+
+resource "aws_iam_role_policy_attachment" "realtime_logs" {
+  role       = aws_iam_role.realtime.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy" "realtime_dynamodb_access" {
+  name   = "SkipliDynamoDBAccess"
+  role   = aws_iam_role.realtime.id
+  policy = data.aws_iam_policy_document.dynamodb_access.json
+}
+
 data "aws_iam_policy_document" "realtime_access" {
   statement {
     effect    = "Allow"
@@ -181,25 +212,32 @@ data "aws_iam_policy_document" "realtime_access" {
 
 resource "aws_iam_role_policy" "realtime_access" {
   name   = "SkipliRealtimeAccess"
-  role   = aws_iam_role.lambda.id
+  role   = aws_iam_role.realtime.id
   policy = data.aws_iam_policy_document.realtime_access.json
 }
 
-data "archive_file" "zip_archive" {
+# Each API ships only its own program (make -C api build).
+data "archive_file" "http" {
   type        = "zip"
-  source_file = "${path.module}/../api/bin/bootstrap"
-  output_path = "${path.module}/../api/bin/api.zip"
+  source_file = "${path.module}/../api/bin/http/bootstrap"
+  output_path = "${path.module}/../api/bin/http.zip"
+}
+
+data "archive_file" "realtime" {
+  type        = "zip"
+  source_file = "${path.module}/../api/bin/realtime/bootstrap"
+  output_path = "${path.module}/../api/bin/realtime.zip"
 }
 
 resource "aws_lambda_function" "skipli" {
-  filename      = data.archive_file.zip_archive.output_path
+  filename      = data.archive_file.http.output_path
   function_name = "SkipliAPI"
   role          = aws_iam_role.lambda.arn
 
   handler          = "foo"
   runtime          = "provided.al2023"
   architectures    = ["arm64"]
-  source_code_hash = data.archive_file.zip_archive.output_base64sha256
+  source_code_hash = data.archive_file.http.output_base64sha256
 
   reserved_concurrent_executions = var.api_reserved_concurrency
 
@@ -278,20 +316,19 @@ resource "aws_lambda_permission" "apigw" {
 }
 
 resource "aws_lambda_function" "realtime" {
-  filename      = data.archive_file.zip_archive.output_path
+  filename      = data.archive_file.realtime.output_path
   function_name = "SkipliRealtime"
-  role          = aws_iam_role.lambda.arn
+  role          = aws_iam_role.realtime.arn
 
   handler          = "bootstrap"
   runtime          = "provided.al2023"
   architectures    = ["arm64"]
-  source_code_hash = data.archive_file.zip_archive.output_base64sha256
+  source_code_hash = data.archive_file.realtime.output_base64sha256
 
   reserved_concurrent_executions = var.realtime_reserved_concurrency
 
   environment {
     variables = {
-      WEBSOCKET           = "1"
       USER_POOL_ID        = aws_cognito_user_pool.skipli.id
       USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.skipli.id
       TABLE_NAME          = aws_dynamodb_table.skipli.name
@@ -312,11 +349,21 @@ resource "aws_apigatewayv2_integration" "realtime" {
   integration_uri    = aws_lambda_function.realtime.invoke_arn
 }
 
+# Board changes arrive on $default, and the Lambda's answer to each is sent
+# back to the sender as its ack, which needs the route response.
 resource "aws_apigatewayv2_route" "realtime" {
   for_each  = toset(["$connect", "$default"])
   api_id    = aws_apigatewayv2_api.realtime.id
   route_key = each.key
   target    = "integrations/${aws_apigatewayv2_integration.realtime.id}"
+
+  route_response_selection_expression = each.key == "$default" ? "$default" : null
+}
+
+resource "aws_apigatewayv2_route_response" "realtime_ack" {
+  api_id             = aws_apigatewayv2_api.realtime.id
+  route_id           = aws_apigatewayv2_route.realtime["$default"].id
+  route_response_key = "$default"
 }
 
 resource "aws_apigatewayv2_stage" "realtime" {

@@ -6,8 +6,12 @@ import (
 	"net/http"
 
 	"github.com/coder/websocket"
+
+	"github.com/Schiffer116/skipli/api/internal/access"
 )
 
+// ServeLocal stands in for API Gateway on a developer's machine: the same
+// board socket, with its connections kept in memory instead of the table.
 func (h *Handler) ServeLocal(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 
@@ -18,14 +22,14 @@ func (h *Handler) ServeLocal(w http.ResponseWriter, req *http.Request) {
 	}
 
 	boardID := req.URL.Query().Get("boardId")
-	member, err := h.exists(ctx, boardID, "MEMBER#"+user.ID)
+	allowed, err := access.Check(ctx, h.db, h.table, boardID, user.ID)
 	if err != nil {
 		log.Printf("failed to check membership: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if !member {
-		http.Error(w, "not a member of this board", http.StatusForbidden)
+	if allowed != http.StatusOK {
+		http.Error(w, http.StatusText(allowed), allowed)
 		return
 	}
 
@@ -53,29 +57,38 @@ func (h *Handler) ServeLocal(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		var msg message
-		if err := json.Unmarshal(data, &msg); err != nil || msg.Event == "" {
-			continue
-		}
-		out, err := json.Marshal(struct {
-			Event string          `json:"event"`
-			Args  json.RawMessage `json:"args"`
-		}{msg.Event, msg.Args})
-		if err != nil {
-			continue
-		}
-
-		h.mu.Lock()
-		var peers []*websocket.Conn
-		for peer := range h.rooms[boardID] {
-			if peer != conn {
-				peers = append(peers, peer)
+		reply, accepted := h.receive(ctx, data, func(changed string) (int, error) {
+			if changed != boardID {
+				return http.StatusForbidden, nil
 			}
+			return access.Check(ctx, h.db, h.table, boardID, user.ID)
+		})
+		if accepted != nil {
+			h.broadcastLocal(req, conn, accepted)
 		}
-		h.mu.Unlock()
+		if reply != nil {
+			conn.Write(ctx, websocket.MessageText, reply)
+		}
+	}
+}
 
-		for _, peer := range peers {
-			peer.Write(ctx, websocket.MessageText, out)
+func (h *Handler) broadcastLocal(req *http.Request, sender *websocket.Conn, accepted *broadcast) {
+	data, err := json.Marshal(accepted)
+	if err != nil {
+		log.Printf("failed to encode change: %v", err)
+		return
+	}
+
+	h.mu.Lock()
+	var peers []*websocket.Conn
+	for peer := range h.rooms[accepted.Change.BoardID] {
+		if peer != sender {
+			peers = append(peers, peer)
 		}
+	}
+	h.mu.Unlock()
+
+	for _, peer := range peers {
+		peer.Write(req.Context(), websocket.MessageText, data)
 	}
 }
