@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Prints the newest Skipli sign-in code mailed to the E2E test address
+# (e2e@e2e.dev.skipli.schifferarchitecture.com, see infra/e2e.tf), waiting up
+# to 60s for it to arrive. Only mail received at or after SINCE (unix seconds,
+# default 90s ago) counts, so take SINCE just before requesting the code.
+#
+#   since=$(date +%s); <request the code>; scripts/e2e-code "$since"
+set -euo pipefail
+
+export AWS_PROFILE=${AWS_PROFILE:-iamadmin-general} AWS_REGION=us-east-1
+since=${1:-$(($(date +%s) - 90))}
+account=$(aws sts get-caller-identity --query Account --output text)
+bucket=skipli-e2e-mail-$account
+since_iso=$(date -u -d "@$since" +%Y-%m-%dT%H:%M:%SZ)
+
+for _ in $(seq 30); do
+  key=$(aws s3api list-objects-v2 --bucket "$bucket" --prefix e2e/ \
+    --query "sort_by(Contents[?LastModified>='$since_iso'], &LastModified)[-1].Key" \
+    --output text)
+  if [[ $key != None && -n $key ]]; then
+    aws s3 cp --quiet "s3://$bucket/$key" - | python3 -I -c '
+import email, re, sys
+msg = email.message_from_binary_file(sys.stdin.buffer)
+for part in msg.walk():
+    if part.get_content_maintype() == "text":
+        text = part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8")
+        if m := re.search(r"\b\d{8}\b", text):
+            print(m.group())
+            sys.exit()
+sys.exit("no code in " + sys.argv[1])
+' "$key"
+    exit
+  fi
+  sleep 2
+done
+echo "no sign-in mail since $since_iso" >&2
+exit 1
