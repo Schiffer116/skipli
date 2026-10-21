@@ -1,18 +1,40 @@
 package realtime
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/coder/websocket"
 
 	"github.com/Schiffer116/skipli/api/internal/access"
 )
 
+// Limits are API Gateway's WebSocket limits, which the local relay enforces
+// too so the app's reconnecting is exercised the same way.
+type Limits struct {
+	// Idle closes a connection the app hasn't sent anything on for this long.
+	Idle time.Duration
+	// Lifetime closes every connection this long after it opened.
+	Lifetime time.Duration
+	// Frame is the largest message the app may send, in bytes.
+	Frame int64
+}
+
+var GatewayLimits = Limits{Idle: 10 * time.Minute, Lifetime: connectionLifetime, Frame: 128 << 10}
+
 // ServeLocal stands in for API Gateway on a developer's machine: the same
-// board socket, with its connections kept in memory instead of the table.
-func (h *Handler) ServeLocal(w http.ResponseWriter, req *http.Request) {
+// board socket, with its connections kept in memory instead of the table,
+// each change answered on the sender's connection the way the route
+// response answers it, and connections closed at API Gateway's limits.
+func (h *Handler) ServeLocal(limits Limits) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) { h.serveLocal(w, req, limits) }
+}
+
+func (h *Handler) serveLocal(w http.ResponseWriter, req *http.Request, limits Limits) {
 	ctx := req.Context()
 
 	user, err := h.tokens.VerifyCookies(req.Header.Get("Cookie"))
@@ -38,6 +60,7 @@ func (h *Handler) ServeLocal(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	defer conn.CloseNow()
+	conn.SetReadLimit(limits.Frame)
 
 	h.mu.Lock()
 	if h.rooms[boardID] == nil {
@@ -51,9 +74,20 @@ func (h *Handler) ServeLocal(w http.ResponseWriter, req *http.Request) {
 		h.mu.Unlock()
 	}()
 
+	lifetime, cancel := context.WithTimeout(ctx, limits.Lifetime)
+	defer cancel()
 	for {
-		_, data, err := conn.Read(ctx)
+		// A read that times out closes the connection, as API Gateway does
+		// once the connection is idle or at the end of its lifetime.
+		read, cancelRead := context.WithTimeout(lifetime, limits.Idle)
+		_, data, err := conn.Read(read)
+		cancelRead()
 		if err != nil {
+			if errors.Is(lifetime.Err(), context.DeadlineExceeded) {
+				log.Printf("closed a board socket at the end of its %v lifetime", limits.Lifetime)
+			} else if errors.Is(read.Err(), context.DeadlineExceeded) {
+				log.Printf("closed a board socket idle for %v", limits.Idle)
+			}
 			return
 		}
 
