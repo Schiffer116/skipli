@@ -14,22 +14,21 @@ import { throwIfNotOk } from "@/utils/throwIfNotOk";
 
 import type { Board } from "./BoardList/BoardList";
 import type { CardType } from "./Board/Card";
-import type { TaskType } from "./Board/Card/Task";
 import { apiFetch } from "@/utils/apiFetch";
+import { fetchBoard, type FetchedBoard } from "@/board/fetch";
 import { applyToList, type BoardList } from "@/offline/changes";
 import {
-  forgetBoard,
   loadBoard,
   loadBoards,
   loadList,
   loadMe,
   loadPending,
-  saveBoard,
   type SavedBoard,
   saveList,
   saveMe,
 } from "@/offline/copy";
 import { activeUser, setActiveUser } from "@/offline/session";
+import { socket } from "@/utils/socket";
 import { finishSignOut } from "@/offline/signOut";
 import { isOffline, startSync, sync } from "@/offline/sync";
 
@@ -225,31 +224,6 @@ async function offlineBoardList(userId: string): Promise<BoardListData> {
   };
 }
 
-async function fetchCards(boardId: string) {
-  const data = await apiFetch(`/api/boards/${boardId}/cards`);
-  throwIfNotOk(data);
-  const cards: CardType[] = await data.json();
-  return cards;
-}
-
-async function fetchTasks(boardId: string, cardId: string) {
-  const data = await apiFetch(`/api/boards/${boardId}/cards/${cardId}/tasks`);
-  throwIfNotOk(data);
-  const tasks: TaskType[] = await data.json();
-  return tasks;
-}
-
-// A board's cards with their tasks, as the server has them.
-export async function fetchBoardCards(boardId: string) {
-  const cards = await fetchCards(boardId);
-  return Promise.all(
-    cards.map(async (card: CardType) => {
-      const tasks = await fetchTasks(boardId, card.id);
-      return { ...card, tasks };
-    }),
-  );
-}
-
 export type BoardViewData = {
   cardsWithTasks: CardType[];
   name: string;
@@ -258,65 +232,50 @@ export type BoardViewData = {
   members: Member[];
   // When this was saved on the device, if it comes from the Offline copy.
   savedAt?: number;
+  // When this was read from the server (performance.now()), if it was.
+  fetchedAt?: number;
 };
 
 export async function boardViewLoader({
   params,
 }: LoaderFunctionArgs): Promise<BoardViewData> {
   const boardId = params.boardId!;
-  const userId = (await getMe()).id;
-
-  if (isOffline()) {
+  // The board's socket opens alongside loading it (someone was signed in
+  // here, so it likely will), so it may already be carrying changes when
+  // the board is read, and nothing saved meanwhile can be missed.
+  const leaveEarly =
+    !isOffline() && activeUser() ? socket.joinEarly(boardId) : () => {};
+  try {
+    const userId = (await getMe()).id;
     const saved = await loadBoard(userId, boardId);
-    if (!saved) notAvailableOffline("board");
-    return fromCopy(saved);
+
+    // The board this device last saw shows at once, rather than waiting on
+    // the server: online, the board loads again once its socket opens
+    // (useOpenBoard).
+    if (saved) return fromCopy(saved);
+    if (isOffline()) notAvailableOffline("board");
+
+    // Changes made offline go first, so the server has as many of them as
+    // it can take; those it can't yet are laid on top of what it answers.
+    await sync();
+    const fetchedAt = performance.now();
+    return { ...fromServer(await fetchBoard(userId, boardId)), fetchedAt };
+  } catch (error) {
+    leaveEarly();
+    throw error;
   }
+}
 
-  // Changes made offline go first. If some can't be sent yet, the server
-  // doesn't have them, so show the board as this device last saw it.
-  await sync();
-  const [pending, saved] = await Promise.all([
-    loadPending(userId),
-    loadBoard(userId, boardId),
-  ]);
-  const waiting = pending.some(
-    ({ change }) => "boardId" in change && change.boardId === boardId,
-  );
-  if (saved && waiting) return fromCopy(saved);
-
-  // Board first, so a bad id is a clean 404 rather than a failed card fetch.
-  const boardRes = await apiFetch(`/api/boards/${boardId}`);
-  if (boardRes.status === 403 || boardRes.status === 404) {
-    await forgetBoard(userId, boardId);
-  }
-  throwIfNotOk(boardRes);
-  const { name, description, owner } = await boardRes.json();
-
-  const cardsWithTasks = await fetchBoardCards(boardId);
-
-  const res = await apiFetch(`/api/boards/${boardId}/members`);
-  throwIfNotOk(res);
-
-  const members: Member[] = await res.json();
-
-  await saveBoard(userId, {
-    id: boardId,
-    name,
-    description,
-    owner,
-    members,
-    cards: cardsWithTasks,
-  });
-  return { cardsWithTasks, name, description, owner, members };
+export function fromServer(board: FetchedBoard): BoardViewData {
+  return {
+    cardsWithTasks: board.cards,
+    name: board.name,
+    description: board.description,
+    owner: board.owner,
+    members: board.members,
+  };
 }
 
 function fromCopy(saved: SavedBoard): BoardViewData {
-  return {
-    cardsWithTasks: saved.cards,
-    name: saved.name,
-    description: saved.description,
-    owner: saved.owner,
-    members: saved.members,
-    savedAt: saved.savedAt,
-  };
+  return { ...fromServer(saved), savedAt: saved.savedAt };
 }

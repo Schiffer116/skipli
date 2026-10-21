@@ -14,7 +14,7 @@ import (
 	"github.com/Schiffer116/skipli/api/internal/access"
 )
 
-// These mirror the key formats internal/card and internal/task read.
+// These mirror the key formats the board read (internal/board) expects.
 func cardSK(cardID string) string {
 	return "CARD#" + cardID
 }

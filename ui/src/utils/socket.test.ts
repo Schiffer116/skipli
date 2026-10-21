@@ -182,3 +182,48 @@ describe("a board's socket", () => {
     expect(last().readyState).toBe(3);
   });
 });
+
+describe("a socket opened ahead of its board", () => {
+  it("keeps what it brings until the board takes it", () => {
+    leaves.push(socket.joinEarly("b1"));
+    last().accept();
+    last().reply({ type: "change", id: "theirs", change: createTask });
+
+    expect(socket.takeEarly("b1")).toEqual([createTask]);
+    expect(socket.takeEarly("b1")).toBeNull();
+  });
+
+  it("says when it opened, while it's open", () => {
+    const now = vi.spyOn(performance, "now").mockReturnValue(42);
+    leaves.push(socket.joinEarly("b1"));
+    expect(socket.openedAt("b1")).toBeUndefined();
+    last().accept();
+    expect(socket.openedAt("b1")).toBe(42);
+    last().close();
+    expect(socket.openedAt("b1")).toBeUndefined();
+    now.mockRestore();
+  });
+
+  it("stays open once its board joins", async () => {
+    socket.joinEarly("b1");
+    join("b1");
+    last().accept();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(last().readyState).toBe(FakeWebSocket.OPEN);
+  });
+
+  it("closes after a while when no board joins", async () => {
+    socket.joinEarly("b1");
+    last().accept();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(last().readyState).toBe(3);
+    expect(socket.takeEarly("b1")).toBeNull();
+  });
+
+  it("closes at once when the board doesn't load", () => {
+    const leave = socket.joinEarly("b1");
+    last().accept();
+    leave();
+    expect(last().readyState).toBe(3);
+  });
+});

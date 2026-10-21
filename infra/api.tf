@@ -199,6 +199,11 @@ resource "aws_lambda_function" "skipli" {
 
   reserved_concurrent_executions = var.api_reserved_concurrency
 
+  # CPU comes with memory: at the default 128 MB a cold start and each new TLS
+  # connection to DynamoDB and Cognito crawl, and opening a board or making a
+  # Board change waits on it.
+  memory_size = 512
+
   environment {
     variables = {
       USER_POOL_ID        = aws_cognito_user_pool.skipli.id
