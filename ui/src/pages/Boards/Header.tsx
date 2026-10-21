@@ -184,31 +184,33 @@ export default function Header({ me, setMe, favorites }: HeaderProps) {
         </AlertDialogContent>
       </AlertDialog>
 
-      <nav
-        aria-label="Favorite boards"
-        className="bg-nav text-nav-muted border-t border-nav-muted/20 h-9 px-4 flex items-center gap-1 overflow-x-auto text-sm"
-      >
-        {favorites.map((board) => (
-          <Link
-            key={board.id}
-            to={`/boards/${board.id}`}
-            className="flex shrink-0 items-center gap-1.5 rounded px-2 py-1 hover:bg-nav-muted/15 hover:text-nav-foreground"
-          >
-            {board.owner === me.id ? (
-              <Star
-                className="size-3.5 fill-current text-amber-400"
-                aria-label="Your board"
-              />
-            ) : (
-              <UsersRound
-                className="size-3.5 text-sky-400"
-                aria-label="Shared with you"
-              />
-            )}
-            {board.name}
-          </Link>
-        ))}
-      </nav>
+      {favorites.length > 0 && (
+        <nav
+          aria-label="Favorite boards"
+          className="bg-nav text-nav-muted border-t border-nav-muted/20 h-9 px-4 flex items-center gap-1 overflow-x-auto text-sm"
+        >
+          {favorites.map((board) => (
+            <Link
+              key={board.id}
+              to={`/boards/${board.id}`}
+              className="flex shrink-0 items-center gap-1.5 rounded px-2 py-1 hover:bg-nav-muted/15 hover:text-nav-foreground"
+            >
+              {board.owner === me.id ? (
+                <Star
+                  className="size-3.5 fill-current text-amber-400"
+                  aria-label="Your board"
+                />
+              ) : (
+                <UsersRound
+                  className="size-3.5 text-sky-400"
+                  aria-label="Shared with you"
+                />
+              )}
+              {board.name}
+            </Link>
+          ))}
+        </nav>
+      )}
     </header>
   );
 }
