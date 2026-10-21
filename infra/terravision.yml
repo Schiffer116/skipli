@@ -9,11 +9,17 @@ remove:
   - aws_lambda_permission.*
   - aws_apigatewayv2_integration.*
   - aws_apigatewayv2_route.*
+  - aws_apigatewayv2_route_response.*
   - aws_apigatewayv2_stage.*
   - aws_cloudfront_function.*
   - aws_cloudfront_origin_access_control.*
   - aws_s3_bucket_policy.*
   - aws_acm_certificate.*
+  # Development's test inbox for E2E sign-in (e2e.tf), not part of the app
+  - aws_s3_bucket.e2e_mail*
+  - aws_ses_receipt_rule.*
+  - aws_ses_receipt_rule_set.*
+  - aws_ses_active_receipt_rule_set.*
   # Drawn as the zone below: TerraVision points record arrows the wrong way
   - aws_route53_record.*
 
@@ -23,6 +29,9 @@ add:
 
 # Reversed dependency edges, redrawn in the direction requests flow
 disconnect:
+  # It only checks tokens against the pool's public keys.
+  aws_lambda_function.realtime:
+    - aws_cognito_user_pool.cognito
   aws_dynamodb_table.skipli:
     - aws_lambda_function.realtime
     - aws_lambda_function.skipli
