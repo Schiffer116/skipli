@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -44,6 +44,15 @@ const holdBack = (e: Event) => {
   e.preventDefault();
   e.stopPropagation();
 };
+
+function footerButtons() {
+  const footer = screen
+    .getByRole("dialog")
+    .querySelector("[data-slot=dialog-footer]") as HTMLElement;
+  return within(footer)
+    .getAllByRole("button")
+    .map((b) => b.getAttribute("aria-label") ?? b.textContent);
+}
 
 const card = <EditCardDialog id="c1" name="Todo" description="" tasks={[]} />;
 
@@ -123,7 +132,55 @@ describe("Edit card", () => {
   });
 });
 
+describe("Edit card and Edit task", () => {
+  it("put Delete first and Save last", async () => {
+    const user = userEvent.setup();
+    open(card);
+    await user.click(screen.getByRole("button", { name: "Edit card" }));
+    expect(footerButtons()).toEqual(["Delete card", "Cancel", "Save"]);
+    cleanup();
+
+    open(
+      <EditTaskDialog
+        id="t1"
+        cardId="c1"
+        name="Milk"
+        description=""
+        status="pending"
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Edit task" }));
+    expect(footerButtons()).toEqual(["Delete task", "Cancel", "Save"]);
+  });
+});
+
 describe("Edit task", () => {
+  it("only offers Pending or Done as the status", async () => {
+    const user = userEvent.setup();
+    open(
+      <EditTaskDialog
+        id="t1"
+        cardId="c1"
+        name="Milk"
+        description=""
+        status="pending"
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Edit task" }));
+    const status = screen.getByLabelText("Status");
+    expect(
+      within(status)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["Pending", "Done"]);
+    await user.selectOptions(status, "done");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(make).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ type: "updateTask", status: "done" }),
+    );
+  });
+
   it("saves the new name, then closes", async () => {
     const user = userEvent.setup();
     open(

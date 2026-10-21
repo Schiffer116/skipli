@@ -1,4 +1,9 @@
-import { useLoaderData, useParams } from "react-router";
+import {
+  useLoaderData,
+  useNavigate,
+  useParams,
+  useRevalidator,
+} from "react-router";
 import { Columns3, LayoutDashboard, Plus } from "lucide-react";
 
 import {
@@ -32,7 +37,9 @@ import { useState } from "react";
 import CreateCardForm from "./Card/CreateCardForm";
 import type { BoardViewData } from "../loaders";
 import { BoardContext } from "./BoardContext";
+import EditBoardDialog from "../EditBoardDialog";
 import FavoriteButton from "../FavoriteButton";
+import { useMe } from "../favorites";
 import CleanUpButton from "./CleanUpButton";
 import { useSync } from "@/offline/sync";
 import { ago } from "@/offline/time";
@@ -42,13 +49,14 @@ export default function Board() {
   const loaderData = useLoaderData<BoardViewData>();
   const { name, description, owner, members, savedAt } = loaderData;
   const { boardId } = useParams();
-  const { cards, make } = useOpenBoard(
-    boardId!,
-    loaderData.cardsWithTasks,
-  );
+  const { cards, make } = useOpenBoard(boardId!, loaderData.cardsWithTasks);
   const { offline } = useSync();
   // Offline, only a Solo board can be changed; a Shared board is read-only.
   const readOnly = offline && members.length > 1;
+  // Like the board list, only the owner can edit or delete the board.
+  const editable = owner === useMe().id && !readOnly;
+  const { revalidate } = useRevalidator();
+  const navigate = useNavigate();
   const [layout, setLayout] = useBoardLayout();
   const [listElement, setListElement] = useState<HTMLDivElement | null>(null);
   const [masonryElement, setMasonryElement] = useState<HTMLDivElement | null>(
@@ -143,9 +151,19 @@ export default function Board() {
         <div className="flex flex-col h-full">
           <header className="mb-6">
             <div className="flex items-center gap-1 mb-1">
-              <h1 className="text-2xl font-bold">{name}</h1>
+              <h1 className="text-2xl font-bold min-w-0 break-words">{name}</h1>
               <FavoriteButton board={{ id: boardId!, name, owner }} />
-              <div className="ml-auto flex items-center gap-2">
+              {editable && (
+                <EditBoardDialog
+                  id={boardId!}
+                  name={name}
+                  description={description}
+                  // Loads again for the new name, here and in the favorites.
+                  onSaved={() => void revalidate()}
+                  onDeleted={() => void navigate("/boards")}
+                />
+              )}
+              <div className="ml-auto flex shrink-0 items-center gap-2">
                 <Button
                   variant="outline"
                   size="icon"

@@ -25,7 +25,7 @@ import { ago } from "@/offline/time";
 import { OwnKeyboardSensor } from "@/utils/keyboardSensor";
 
 import type { Board } from "./BoardList";
-import EditBoardDialog from "./EditBoardDialog";
+import EditBoardDialog from "../EditBoardDialog";
 import FavoriteButton from "../FavoriteButton";
 import { useMe } from "../favorites";
 import type { BoardListData } from "../loaders";
@@ -149,7 +149,21 @@ function BoardTile({ board, setBoards, editable, savedAt }: BoardTileProps) {
         <div className="flex items-center">
           {unsent && <UnsentMark />}
           <FavoriteButton board={board} />
-          {editable && <EditBoardDialog {...board} setBoards={setBoards} />}
+          {editable && (
+            <EditBoardDialog
+              {...board}
+              onSaved={(name, description) =>
+                setBoards((boards) =>
+                  boards.map((b) =>
+                    b.id === board.id ? { ...b, name, description } : b,
+                  ),
+                )
+              }
+              onDeleted={() =>
+                setBoards((boards) => boards.filter((b) => b.id !== board.id))
+              }
+            />
+          )}
         </div>
       </CardHeader>
       {board.description && (
