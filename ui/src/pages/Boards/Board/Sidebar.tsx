@@ -7,7 +7,7 @@ import {
   User,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useLoaderData, useParams } from "react-router";
+import { useParams } from "react-router";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,7 +22,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@radix-ui/react-dialog";
-import type { BoardViewData } from "../loaders";
+import type { Member } from "../loaders";
 import { useMe } from "../favorites";
 import { updateBoard } from "@/offline/copy";
 import { useSync } from "@/offline/sync";
@@ -40,11 +40,15 @@ function readCollapsed() {
   }
 }
 
-export default function Sidebar() {
+export default function Sidebar({ members: loaded }: { members: Member[] }) {
   const { boardId } = useParams();
-  const [members, setMembers] = useState(
-    useLoaderData<BoardViewData>().members,
-  );
+  const [members, setMembers] = useState(loaded);
+  // The server's members, once they come, replace the ones loaded first.
+  const [shown, setShown] = useState(loaded);
+  if (loaded !== shown) {
+    setShown(loaded);
+    setMembers(loaded);
+  }
   const me = useMe();
   // Inviting needs the server, to send the invitation email.
   const { offline } = useSync();

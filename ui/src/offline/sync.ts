@@ -54,12 +54,14 @@ export function useSync() {
 let me: Me | null = null;
 let onRefused: (count: number) => void = () => {};
 
-// Starts tracking one person's pending changes; called once who is signed
-// in is known (from the server, or from the offline copy).
+// Starts tracking one person's pending changes, and sends them; called
+// once who is signed in is known (from the server, or from the offline
+// copy). Doesn't wait for them to be sent: a page that needs them on the
+// server first waits for sync() itself.
 export async function startSync(user: Me) {
   me = user;
   await refreshCounts();
-  if (!isOffline()) await sync();
+  if (!isOffline()) void sync();
 }
 
 export function stopSync() {

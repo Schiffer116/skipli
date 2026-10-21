@@ -262,6 +262,27 @@ describe("when the socket opens", () => {
     expect(taskIds(board.cards())).toEqual(["t1"]);
   });
 
+  it("waits for a drag to end", async () => {
+    serverCards = [
+      { id: "c1", name: "Todo", description: "", tasks: [task("t9")] },
+    ];
+    board.hold(true);
+    await catchUp();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(taskIds(board.cards())).toEqual([]);
+
+    board.hold(false);
+    await vi.waitFor(() => expect(taskIds(board.cards())).toEqual(["t9"]));
+  });
+
+  it("doesn't tell anyone when nothing changed", async () => {
+    const listener = vi.fn();
+    board.subscribe(listener);
+    await catchUp();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it("ignores other boards' sockets", async () => {
     socket.open("b2");
     await new Promise((resolve) => setTimeout(resolve, 20));

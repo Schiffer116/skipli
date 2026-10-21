@@ -12,6 +12,9 @@ export type OpenBoard = {
   make: (change: BoardChange) => Promise<void>;
   // Goes live: opens the board's socket, which brings teammates' changes in.
   start: () => () => void;
+  // While held (during a drag), the server's board waits, and shows once
+  // let go.
+  hold: (held: boolean) => void;
 };
 
 // A refetch is started again when a change was made while it was loading,
@@ -67,6 +70,8 @@ export function openBoard(
   };
 
   let live = false;
+  let held = false;
+  let letGo: (() => void) | null = null;
 
   // Replaces the cards with the server's, with this device's Pending
   // changes laid on top. Waits for the changes made so far to reach the
@@ -84,13 +89,14 @@ export function openBoard(
       const pending = (await loadPending(userId)).filter(
         ({ change }) => "boardId" in change && change.boardId === boardId,
       );
+      if (held) await new Promise<void>((resolve) => (letGo = resolve));
       if (!live || shown !== before) continue;
-      set(
-        pending.reduce(
-          (cards, { change }) => apply(cards, change as BoardChange),
-          fresh,
-        ),
+      const next = pending.reduce(
+        (cards, { change }) => apply(cards, change as BoardChange),
+        fresh,
       );
+      // Most often the board on screen was already up to date.
+      if (JSON.stringify(next) !== JSON.stringify(cards)) set(next);
       return;
     }
   };
@@ -113,6 +119,13 @@ export function openBoard(
       refused();
     },
 
+    hold(hold) {
+      held = hold;
+      if (held) return;
+      letGo?.();
+      letGo = null;
+    },
+
     start() {
       live = true;
       const leave = socket.join(boardId);
@@ -122,6 +135,7 @@ export function openBoard(
       });
       return () => {
         live = false;
+        letGo?.();
         stopCatchingUp();
         stopReceiving();
         leave();

@@ -1,9 +1,4 @@
-import {
-  useLoaderData,
-  useNavigate,
-  useParams,
-  useRevalidator,
-} from "react-router";
+import { useNavigate, useParams, useRevalidator } from "react-router";
 import { Columns3, LayoutDashboard, Plus } from "lucide-react";
 
 import {
@@ -44,12 +39,25 @@ import CleanUpButton from "./CleanUpButton";
 import { useSync } from "@/offline/sync";
 import { ago } from "@/offline/time";
 import useOpenBoard from "@/board/useOpenBoard";
+import type { FetchedBoard } from "@/board/fetch";
 
-export default function Board() {
-  const loaderData = useLoaderData<BoardViewData>();
-  const { name, description, owner, members, savedAt } = loaderData;
+export default function Board({
+  board,
+  onFresh,
+}: {
+  board: BoardViewData;
+  onFresh: (board: FetchedBoard | "gone") => void;
+}) {
+  const { name, description, owner, members, savedAt } = board;
   const { boardId } = useParams();
-  const { cards, make } = useOpenBoard(boardId!, loaderData.cardsWithTasks);
+  const [activeTask, setActiveTask] = useState<TaskType | null>(null);
+  const [activeCard, setActiveCard] = useState<CardType | null>(null);
+  const { cards, make } = useOpenBoard(boardId!, {
+    cards: board.cardsWithTasks,
+    // Newer cards from the server wait for a drag to end.
+    held: activeCard !== null || activeTask !== null,
+    onFresh,
+  });
   const { offline } = useSync();
   // Offline, only a Solo board can be changed; a Shared board is read-only.
   const readOnly = offline && members.length > 1;
@@ -63,8 +71,6 @@ export default function Board() {
     null,
   );
 
-  const [activeTask, setActiveTask] = useState<TaskType | null>(null);
-  const [activeCard, setActiveCard] = useState<CardType | null>(null);
   const [showCreateCardForm, setShowCreateCardForm] = useState(false);
   const [createTaskFormId, setCreateTaskFormId] = useState<string | null>(null);
 
