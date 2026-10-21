@@ -16,7 +16,7 @@ export default function UpdatePrompt() {
   return (
     <div
       role="status"
-      className="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-lg border bg-card px-4 py-3 text-sm shadow-lg"
+      className="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-lg border bg-card px-4 py-3 text-sm shadow-lg dark:shadow-black/50"
     >
       <p>A new version of Skipli is available.</p>
       <Button variant="ghost" size="sm" onClick={() => setNeedRefresh(false)}>

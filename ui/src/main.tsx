@@ -21,6 +21,7 @@ import {
 import UpdatePrompt from "@/components/UpdatePrompt";
 import { setOnRejected } from "@/offline/sync";
 import { keepFocusVisible } from "@/utils/keepFocusVisible";
+import { watchTheme } from "@/utils/theme";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -38,6 +39,7 @@ declare global {
 }
 
 keepFocusVisible();
+watchTheme();
 
 // This code is for all users
 window.__TANSTACK_QUERY_CLIENT__ = queryClient;

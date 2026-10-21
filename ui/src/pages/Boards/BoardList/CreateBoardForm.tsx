@@ -50,7 +50,7 @@ export default function CreateBoardForm(props: BoardFormProps) {
     <div className="w-full max-w-xs aspect-video">
       <Card className="aspect-video w-full">
         <CardHeader>
-          <CardTitle>Create a new board</CardTitle>
+          <CardTitle className="text-heading">Create a new board</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={createBoard} className="space-y-3">
