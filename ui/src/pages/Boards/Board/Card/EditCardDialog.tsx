@@ -102,21 +102,12 @@ export default function EditCardDialog(props: CardType) {
               </div>
             </div>
             <DialogFooter className="mt-4">
-              {/* Not a DialogClose: closing unmounts the form before the
-                  browser submits it, and the edit is lost. */}
-              <Button type="submit">Save</Button>
-              <DialogClose asChild>
-                <Button type="button" variant="outline">
-                  Cancel
-                </Button>
-              </DialogClose>
-
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button
                     type="button"
                     variant="destructive"
-                    className="ml-auto"
+                    className="sm:mr-auto"
                     aria-label="Delete card"
                   >
                     <Trash className="h-5 w-5" />
@@ -140,6 +131,15 @@ export default function EditCardDialog(props: CardType) {
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
+
+              <DialogClose asChild>
+                <Button type="button" variant="outline">
+                  Cancel
+                </Button>
+              </DialogClose>
+              {/* Not a DialogClose: closing unmounts the form before the
+                  browser submits it, and the edit is lost. */}
+              <Button type="submit">Save</Button>
             </DialogFooter>
           </form>
         </DialogContent>

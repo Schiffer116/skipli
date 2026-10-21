@@ -113,21 +113,12 @@ export default function EditTaskDialog(props: TaskType) {
               </div>
             </div>
             <DialogFooter className="mt-4">
-              {/* Not a DialogClose: closing unmounts the form before the
-                  browser submits it, and the edit is lost. */}
-              <Button type="submit">Save</Button>
-              <DialogClose asChild>
-                <Button type="button" variant="outline">
-                  Cancel
-                </Button>
-              </DialogClose>
-
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button
                     type="button"
                     variant="destructive"
-                    className="ml-auto"
+                    className="sm:mr-auto"
                     aria-label="Delete task"
                   >
                     <Trash className="h-5 w-5" />
@@ -151,6 +142,15 @@ export default function EditTaskDialog(props: TaskType) {
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
+
+              <DialogClose asChild>
+                <Button type="button" variant="outline">
+                  Cancel
+                </Button>
+              </DialogClose>
+              {/* Not a DialogClose: closing unmounts the form before the
+                  browser submits it, and the edit is lost. */}
+              <Button type="submit">Save</Button>
             </DialogFooter>
           </form>
         </DialogContent>

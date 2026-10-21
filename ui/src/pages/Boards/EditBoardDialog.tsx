@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Edit, Trash } from "lucide-react";
 
 import {
@@ -23,16 +24,21 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import type { Board } from "./BoardList";
 import { DialogDescription } from "@radix-ui/react-dialog";
 import { submit } from "@/offline/sync";
 
-type UpdateBoardDialogProps = Board & {
-  setBoards: React.Dispatch<React.SetStateAction<Board[]>>;
+type EditBoardDialogProps = {
+  id: string;
+  name: string;
+  description: string;
+  // Called once the change is accepted, to show it.
+  onSaved: (name: string, description: string) => void;
+  onDeleted: () => void;
 };
 
-export default function EditBoardDialog(props: UpdateBoardDialogProps) {
-  const { id, name, description, setBoards } = props;
+export default function EditBoardDialog(props: EditBoardDialogProps) {
+  const { id, name, description, onSaved, onDeleted } = props;
+  const [open, setOpen] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -44,17 +50,14 @@ export default function EditBoardDialog(props: UpdateBoardDialogProps) {
       return;
     }
 
+    setOpen(false);
     if (
       !(await submit({ type: "updateBoard", boardId: id, name, description }))
     ) {
       return;
     }
 
-    setBoards((boards) =>
-      boards.map((board) => {
-        return board.id === id ? { ...board, name, description } : board;
-      }),
-    );
+    onSaved(name, description);
   };
 
   const deleteBoard = async () => {
@@ -62,11 +65,11 @@ export default function EditBoardDialog(props: UpdateBoardDialogProps) {
       return;
     }
 
-    setBoards((boards) => boards.filter((board) => board.id !== id));
+    onDeleted();
   };
 
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button
           variant="ghost"
@@ -107,18 +110,12 @@ export default function EditBoardDialog(props: UpdateBoardDialogProps) {
             </div>
           </div>
           <DialogFooter className="mt-4">
-            <DialogClose asChild>
-              <Button type="submit">Save</Button>
-            </DialogClose>
-            <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
-            </DialogClose>
-
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button
+                  type="button"
                   variant="destructive"
-                  className="ml-auto"
+                  className="sm:mr-auto"
                   aria-label="Delete board"
                 >
                   <Trash className="h-5 w-5" />
@@ -134,12 +131,21 @@ export default function EditBoardDialog(props: UpdateBoardDialogProps) {
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={deleteBoard}>
-                    Delete
+                  <AlertDialogAction asChild>
+                    <DialogClose onClick={deleteBoard}>Delete</DialogClose>
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+
+            <DialogClose asChild>
+              <Button type="button" variant="outline">
+                Cancel
+              </Button>
+            </DialogClose>
+            {/* Not a DialogClose: closing unmounts the form before the
+                browser submits it, and the edit is lost. */}
+            <Button type="submit">Save</Button>
           </DialogFooter>
         </form>
       </DialogContent>

@@ -22,10 +22,7 @@ type CleanUpButtonProps = {
   cards: CardType[];
 };
 
-export default function CleanUpButton({
-  boardId,
-  cards,
-}: CleanUpButtonProps) {
+export default function CleanUpButton({ boardId, cards }: CleanUpButtonProps) {
   const { make } = useContext(BoardContext)!;
   const doneCount = cards
     .flatMap((card) => card.tasks)
