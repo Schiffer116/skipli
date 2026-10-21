@@ -1,6 +1,8 @@
 # Lets agents sign in to Development unattended: SES receives mail for a
 # dev-only subdomain and keeps it briefly in a private bucket, where
-# scripts/e2e-code reads the sign-in code. Production gets none of it.
+# scripts/e2e-code reads the sign-in code. Production gets none of it. Any
+# address at the subdomain is accepted, so each agent can sign in as its own
+# test user (SES cannot key objects by recipient, scripts/e2e-code filters on To).
 variable "e2e_mail" {
   description = "Receive sign-in mail for the E2E test address. Development only."
   type        = bool
@@ -113,7 +115,7 @@ resource "aws_ses_receipt_rule" "e2e_store" {
   region        = "us-east-1"
   name          = "store"
   rule_set_name = aws_ses_receipt_rule_set.e2e[0].rule_set_name
-  recipients    = ["e2e@${local.e2e_mail_domain}"]
+  recipients    = [local.e2e_mail_domain]
   enabled       = true
   scan_enabled  = true
 
