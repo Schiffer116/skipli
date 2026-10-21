@@ -33,6 +33,8 @@ export function openBoard(
   boardId: string,
   loaded: CardType[],
   reload: () => Promise<CardType[]>,
+  // When loaded was read from the server (performance.now()), if it was.
+  fetchedAt?: number,
 ): OpenBoard {
   let cards = loaded;
   const listeners = new Set<() => void>();
@@ -133,6 +135,18 @@ export function openBoard(
       const stopCatchingUp = socket.onOpen((opened) => {
         if (opened === boardId) void catchUp();
       });
+      // A socket opened ahead of the board (joinEarly) is already open, so
+      // it won't say so again. If it opened before loaded was read, it has
+      // carried every change saved since, and nothing was missed.
+      const early = socket.takeEarly(boardId);
+      early?.forEach(receive);
+      const openedAt = socket.openedAt(boardId);
+      const missedNothing =
+        early !== null &&
+        openedAt !== undefined &&
+        fetchedAt !== undefined &&
+        openedAt <= fetchedAt;
+      if (openedAt !== undefined && !missedNothing) void catchUp();
       return () => {
         live = false;
         letGo?.();

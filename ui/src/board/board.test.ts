@@ -43,6 +43,9 @@ const socket = await vi.hoisted(async () => {
     };
   return {
     joined: [] as string[],
+    // A socket opened ahead of the board: when, and what it brought since.
+    openedAt: undefined as number | undefined,
+    early: null as unknown[] | null,
     receive: (change: unknown) => changes.forEach((handler) => handler(change)),
     open: (boardId: string) => opens.forEach((handler) => handler(boardId)),
     module: {
@@ -53,6 +56,12 @@ const socket = await vi.hoisted(async () => {
       },
       onChange: on(changes),
       onOpen: on(opens),
+      openedAt: () => socket.openedAt,
+      takeEarly() {
+        const early = socket.early;
+        socket.early = null;
+        return early;
+      },
       newChangeId: () => "id",
     },
   };
@@ -101,6 +110,8 @@ beforeEach(async () => {
   await startSync(me);
   serverCards = loaded;
   reload.mockClear();
+  socket.openedAt = undefined;
+  socket.early = null;
   board = openBoard(me.id, "b1", loaded, reload);
   stop = board.start();
 });
@@ -287,6 +298,53 @@ describe("when the socket opens", () => {
     socket.open("b2");
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(reload).not.toHaveBeenCalled();
+  });
+});
+
+describe("a socket opened ahead of the board", () => {
+  const reopen = (fetchedAt?: number) => {
+    stop();
+    board = openBoard(me.id, "b1", loaded, reload, fetchedAt);
+    stop = board.start();
+  };
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+  it("misses nothing when it opened before the board was read", async () => {
+    socket.openedAt = 100;
+    socket.early = [createTask("t1")];
+    reopen(200);
+    await settle();
+    expect(reload).not.toHaveBeenCalled();
+    // What it brought before the board opened still shows.
+    expect(taskIds(board.cards())).toEqual(["t1"]);
+  });
+
+  it("catches up when it opened after the board was read", async () => {
+    socket.openedAt = 300;
+    socket.early = [];
+    reopen(200);
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
+  });
+
+  it("catches up when the board came from the Offline copy", async () => {
+    socket.openedAt = 100;
+    socket.early = [];
+    reopen(undefined);
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
+  });
+
+  it("catches up when it wasn't opened early, so changes may have gone by", async () => {
+    socket.openedAt = 100;
+    reopen(200);
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
+  });
+
+  it("still catches up each time it opens again", async () => {
+    socket.openedAt = 100;
+    socket.early = [];
+    reopen(200);
+    socket.open("b1");
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
   });
 });
 

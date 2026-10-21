@@ -57,6 +57,7 @@ export default function Board({
     // Newer cards from the server wait for a drag to end.
     held: activeCard !== null || activeTask !== null,
     onFresh,
+    fetchedAt: board.fetchedAt,
   });
   const { offline } = useSync();
   // Offline, only a Solo board can be changed; a Shared board is read-only.

@@ -10,6 +10,9 @@ export type BoardDetail = { name: string; description: string };
 // API Gateway closes a connection that's been quiet for 10 minutes.
 const KEEPALIVE = 5 * 60_000;
 const RETRY = 3_000;
+// How long a socket opened ahead of its board (joinEarly) stays open for the
+// board to take it over.
+const EARLY_HOLD = 10_000;
 
 // The ids of the writes this app made. The server broadcasts every write it
 // accepts to everyone on the board, the sender included, and what the app
@@ -33,6 +36,11 @@ type Room = {
   boardId: string;
   ws: WebSocket | null;
   holders: number;
+  // When the socket last opened (performance.now()), while it's open.
+  openedAt?: number;
+  // Teammates' changes received while opened ahead of its board, for the
+  // board to take once it opens.
+  early: BoardChange[] | null;
   retry?: ReturnType<typeof setTimeout>;
   keepalive?: ReturnType<typeof setInterval>;
   waitForOnline?: () => void;
@@ -54,6 +62,7 @@ function open(room: Room) {
   room.ws = ws;
 
   ws.onopen = () => {
+    room.openedAt = performance.now();
     room.keepalive = setInterval(
       () => ws.send(JSON.stringify({ action: "ping" })),
       KEEPALIVE,
@@ -65,6 +74,7 @@ function open(room: Room) {
     const message = JSON.parse(e.data);
     if (message.id && ownIds.has(message.id)) return;
     if (message.type === "change") {
+      room.early?.push(message.change);
       changeHandlers.forEach((handler) => handler(message.change));
     } else if (message.type === "board") {
       updatedHandlers.forEach((handler) =>
@@ -79,6 +89,7 @@ function open(room: Room) {
     clearInterval(room.keepalive);
     if (room.ws !== ws) return;
     room.ws = null;
+    room.openedAt = undefined;
     void reconnect(room);
   };
 }
@@ -121,7 +132,7 @@ async function reconnect(room: Room) {
 function join(boardId: string) {
   let room = rooms.get(boardId);
   if (!room) {
-    room = { boardId, ws: null, holders: 0 };
+    room = { boardId, ws: null, holders: 0, early: null };
     rooms.set(boardId, room);
     open(room);
   }
@@ -145,6 +156,23 @@ function join(boardId: string) {
   };
 }
 
+// Opens a board's socket ahead of the board, as its page starts loading, and
+// keeps the changes it brings until the board takes them (takeEarly). It
+// closes after a while unless the board has joined it by then, or at once
+// when the returned function is called.
+function joinEarly(boardId: string) {
+  const leave = join(boardId);
+  const room = rooms.get(boardId)!;
+  room.early ??= [];
+  const timer = setTimeout(done, EARLY_HOLD);
+  function done() {
+    clearTimeout(timer);
+    room.early = null;
+    leave();
+  }
+  return done;
+}
+
 const on =
   <A extends unknown[]>(handlers: Set<(...args: A) => void>) =>
   (handler: (...args: A) => void) => {
@@ -158,6 +186,21 @@ export const socket = {
   // Keeps a board's socket open, reconnecting as needed, until the
   // returned function is called.
   join,
+
+  joinEarly,
+
+  // The changes received since the socket was opened early, once; null
+  // when it wasn't, or they were already taken.
+  takeEarly(boardId: string): BoardChange[] | null {
+    const room = rooms.get(boardId);
+    const early = room?.early ?? null;
+    if (room) room.early = null;
+    return early;
+  },
+
+  // When the board's socket opened (performance.now()), if it's open: it
+  // has carried every change saved since.
+  openedAt: (boardId: string) => rooms.get(boardId)?.openedAt,
 
   // Calls back with each change a teammate made to a board whose socket
   // is open.

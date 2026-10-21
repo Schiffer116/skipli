@@ -18,25 +18,34 @@ export default function useOpenBoard(
     cards: loaded,
     held,
     onFresh,
+    fetchedAt,
   }: {
     cards: CardType[];
     held: boolean;
     onFresh: (board: FetchedBoard | "gone") => void;
+    // When cards were read from the server, if they were.
+    fetchedAt?: number;
   },
 ) {
   const userId = useMe().id;
   const [board] = useState(() =>
-    openBoard(userId, boardId, loaded, async () => {
-      try {
-        const fresh = await fetchBoard(userId, boardId);
-        onFresh(fresh);
-        return fresh.cards;
-      } catch (error) {
-        // A board that's gone has left the Offline copy.
-        if (!(await loadBoard(userId, boardId))) onFresh("gone");
-        throw error;
-      }
-    }),
+    openBoard(
+      userId,
+      boardId,
+      loaded,
+      async () => {
+        try {
+          const fresh = await fetchBoard(userId, boardId);
+          onFresh(fresh);
+          return fresh.cards;
+        } catch (error) {
+          // A board that's gone has left the Offline copy.
+          if (!(await loadBoard(userId, boardId))) onFresh("gone");
+          throw error;
+        }
+      },
+      fetchedAt,
+    ),
   );
   useEffect(() => board.start(), [board]);
   useEffect(() => board.hold(held), [board, held]);

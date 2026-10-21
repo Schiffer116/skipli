@@ -28,6 +28,7 @@ import {
   saveMe,
 } from "@/offline/copy";
 import { activeUser, setActiveUser } from "@/offline/session";
+import { socket } from "@/utils/socket";
 import { finishSignOut } from "@/offline/signOut";
 import { isOffline, startSync, sync } from "@/offline/sync";
 
@@ -231,25 +232,38 @@ export type BoardViewData = {
   members: Member[];
   // When this was saved on the device, if it comes from the Offline copy.
   savedAt?: number;
+  // When this was read from the server (performance.now()), if it was.
+  fetchedAt?: number;
 };
 
 export async function boardViewLoader({
   params,
 }: LoaderFunctionArgs): Promise<BoardViewData> {
   const boardId = params.boardId!;
-  const userId = (await getMe()).id;
-  const saved = await loadBoard(userId, boardId);
+  // The board's socket opens alongside loading it (someone was signed in
+  // here, so it likely will), so it may already be carrying changes when
+  // the board is read, and nothing saved meanwhile can be missed.
+  const leaveEarly =
+    !isOffline() && activeUser() ? socket.joinEarly(boardId) : () => {};
+  try {
+    const userId = (await getMe()).id;
+    const saved = await loadBoard(userId, boardId);
 
-  // The board this device last saw shows at once, rather than waiting on
-  // the server: online, the board loads again once its socket opens
-  // (useOpenBoard), as it must anyway to catch what was saved before then.
-  if (saved) return fromCopy(saved);
-  if (isOffline()) notAvailableOffline("board");
+    // The board this device last saw shows at once, rather than waiting on
+    // the server: online, the board loads again once its socket opens
+    // (useOpenBoard).
+    if (saved) return fromCopy(saved);
+    if (isOffline()) notAvailableOffline("board");
 
-  // Changes made offline go first, so the server has as many of them as it
-  // can take; those it can't yet are laid on top of what it answers.
-  await sync();
-  return fromServer(await fetchBoard(userId, boardId));
+    // Changes made offline go first, so the server has as many of them as
+    // it can take; those it can't yet are laid on top of what it answers.
+    await sync();
+    const fetchedAt = performance.now();
+    return { ...fromServer(await fetchBoard(userId, boardId)), fetchedAt };
+  } catch (error) {
+    leaveEarly();
+    throw error;
+  }
 }
 
 export function fromServer(board: FetchedBoard): BoardViewData {
