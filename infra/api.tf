@@ -1,6 +1,6 @@
 # Abuse limits for the public API. API Gateway throttles are account-wide per
 # route rather than per client, and reserved concurrency caps how many copies of
-# each Lambda can run at once, which bounds cost if the API is flooded.
+# the Lambda can run at once, which bounds cost if the API is flooded.
 variable "api_throttle_rate_limit" {
   description = "Steady-state requests per second allowed across every HTTP API route."
   type        = number
@@ -26,13 +26,7 @@ variable "auth_send_throttle_burst_limit" {
 }
 
 variable "api_reserved_concurrency" {
-  description = "Maximum concurrent executions of the HTTP API Lambda."
-  type        = number
-  default     = null
-}
-
-variable "realtime_reserved_concurrency" {
-  description = "Maximum concurrent executions of the WebSocket Lambda."
+  description = "Maximum concurrent executions of the API Lambda, which serves both the HTTP and the WebSocket API."
   type        = number
   default     = null
 }
@@ -171,37 +165,6 @@ resource "aws_iam_role_policy" "cognito_access" {
   policy = data.aws_iam_policy_document.cognito_access.json
 }
 
-# The realtime Lambda has a role of its own: only it posts to WebSocket
-# connections, and it needs no Cognito access.
-data "aws_iam_policy_document" "realtime_assume_role" {
-  statement {
-    effect = "Allow"
-
-    principals {
-      type        = "Service"
-      identifiers = ["lambda.amazonaws.com"]
-    }
-
-    actions = ["sts:AssumeRole"]
-  }
-}
-
-resource "aws_iam_role" "realtime" {
-  name               = "SkipliRealtimeExecutionRole"
-  assume_role_policy = data.aws_iam_policy_document.realtime_assume_role.json
-}
-
-resource "aws_iam_role_policy_attachment" "realtime_logs" {
-  role       = aws_iam_role.realtime.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-}
-
-resource "aws_iam_role_policy" "realtime_dynamodb_access" {
-  name   = "SkipliDynamoDBAccess"
-  role   = aws_iam_role.realtime.id
-  policy = data.aws_iam_policy_document.dynamodb_access.json
-}
-
 data "aws_iam_policy_document" "realtime_access" {
   statement {
     effect    = "Allow"
@@ -212,32 +175,27 @@ data "aws_iam_policy_document" "realtime_access" {
 
 resource "aws_iam_role_policy" "realtime_access" {
   name   = "SkipliRealtimeAccess"
-  role   = aws_iam_role.realtime.id
+  role   = aws_iam_role.lambda.id
   policy = data.aws_iam_policy_document.realtime_access.json
 }
 
-# Each API ships only its own program (make -C api build).
-data "archive_file" "http" {
+data "archive_file" "zip_archive" {
   type        = "zip"
-  source_file = "${path.module}/../api/bin/http/bootstrap"
-  output_path = "${path.module}/../api/bin/http.zip"
+  source_file = "${path.module}/../api/bin/bootstrap"
+  output_path = "${path.module}/../api/bin/api.zip"
 }
 
-data "archive_file" "realtime" {
-  type        = "zip"
-  source_file = "${path.module}/../api/bin/realtime/bootstrap"
-  output_path = "${path.module}/../api/bin/realtime.zip"
-}
-
+# One function serves both the HTTP API and the WebSocket API; it tells their
+# events apart by shape (api/cmd/skipli).
 resource "aws_lambda_function" "skipli" {
-  filename      = data.archive_file.http.output_path
+  filename      = data.archive_file.zip_archive.output_path
   function_name = "SkipliAPI"
   role          = aws_iam_role.lambda.arn
 
   handler          = "foo"
   runtime          = "provided.al2023"
   architectures    = ["arm64"]
-  source_code_hash = data.archive_file.http.output_base64sha256
+  source_code_hash = data.archive_file.zip_archive.output_base64sha256
 
   reserved_concurrent_executions = var.api_reserved_concurrency
 
@@ -315,27 +273,6 @@ resource "aws_lambda_permission" "apigw" {
   }
 }
 
-resource "aws_lambda_function" "realtime" {
-  filename      = data.archive_file.realtime.output_path
-  function_name = "SkipliRealtime"
-  role          = aws_iam_role.realtime.arn
-
-  handler          = "bootstrap"
-  runtime          = "provided.al2023"
-  architectures    = ["arm64"]
-  source_code_hash = data.archive_file.realtime.output_base64sha256
-
-  reserved_concurrent_executions = var.realtime_reserved_concurrency
-
-  environment {
-    variables = {
-      USER_POOL_ID        = aws_cognito_user_pool.skipli.id
-      USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.skipli.id
-      TABLE_NAME          = aws_dynamodb_table.skipli.name
-    }
-  }
-}
-
 resource "aws_apigatewayv2_api" "realtime" {
   name                       = "skipli-realtime"
   protocol_type              = "WEBSOCKET"
@@ -346,7 +283,7 @@ resource "aws_apigatewayv2_integration" "realtime" {
   api_id             = aws_apigatewayv2_api.realtime.id
   integration_type   = "AWS_PROXY"
   integration_method = "POST"
-  integration_uri    = aws_lambda_function.realtime.invoke_arn
+  integration_uri    = aws_lambda_function.skipli.invoke_arn
 }
 
 # Board changes arrive on $default, and the Lambda's answer to each is sent
@@ -374,7 +311,7 @@ resource "aws_apigatewayv2_stage" "realtime" {
 
 resource "aws_lambda_permission" "realtime" {
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.realtime.function_name
+  function_name = aws_lambda_function.skipli.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.realtime.execution_arn}/*"
 }

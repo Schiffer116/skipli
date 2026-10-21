@@ -29,14 +29,9 @@ add:
 
 # Reversed dependency edges, redrawn in the direction requests flow
 disconnect:
-  # It only checks tokens against the pool's public keys.
-  aws_lambda_function.realtime:
-    - aws_cognito_user_pool.cognito
   aws_dynamodb_table.skipli:
-    - aws_lambda_function.realtime
     - aws_lambda_function.skipli
   aws_cognito_user_pool.cognito:
-    - aws_lambda_function.realtime
     - aws_lambda_function.skipli
   aws_sesv2_email_identity.domain:
     - aws_cognito_user_pool.cognito
@@ -52,12 +47,10 @@ connect:
   aws_apigatewayv2_api.skipli:
     - aws_lambda_function.skipli
   aws_apigatewayv2_api.realtime:
-    - aws_lambda_function.realtime
+    - aws_lambda_function.skipli
   aws_lambda_function.skipli:
     - aws_dynamodb_table.skipli
     - aws_cognito_user_pool.cognito
-  aws_lambda_function.realtime:
-    - aws_dynamodb_table.skipli
     - aws_apigatewayv2_api.realtime: Broadcast changes
   aws_cognito_user_pool.cognito:
     - aws_sesv2_email_identity.domain: Sign-in emails
@@ -74,9 +67,7 @@ update:
   aws_apigatewayv2_api.realtime:
     label: WebSocket API
   aws_lambda_function.skipli:
-    label: HTTP Lambda
-  aws_lambda_function.realtime:
-    label: Realtime Lambda
+    label: API Lambda
   aws_dynamodb_table.skipli:
     label: DynamoDB
   aws_cognito_user_pool.cognito:

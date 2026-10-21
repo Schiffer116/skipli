@@ -1,4 +1,4 @@
-.PHONY: build run dev test smoke fmt vet clean FORCE
+.PHONY: build run dev test smoke fmt vet clean
 
 run dev: export AWS_PROFILE ?= lambda-role
 run dev: export AWS_REGION ?= $(shell terraform -chdir=../infra output -raw region)
@@ -6,22 +6,16 @@ run dev: export TABLE_NAME ?= Skipli
 run dev: export USER_POOL_ID ?= $(shell terraform -chdir=../infra output -raw user_pool_id)
 run dev: export USER_POOL_CLIENT_ID ?= $(shell terraform -chdir=../infra output -raw user_pool_client_id)
 
-# One Lambda binary per API, each in its own folder since Lambda wants the
-# file named bootstrap.
-build: bin/http/bootstrap bin/realtime/bootstrap
-
-bin/%/bootstrap: FORCE
+build:
 	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
-	go build -tags lambda,lambda.norpc -trimpath -ldflags="-s -w" \
-			 -o "$@" ./cmd/$*
-
-FORCE:
+	go build -tags lambda.norpc -trimpath -ldflags="-s -w" \
+			 -o "bin/bootstrap" ./cmd/skipli
 
 run:
-	go run ./cmd/http
+	go run ./cmd/skipli
 
 dev:
-	find . -name '*.go' | entr -rcn go run ./cmd/http
+	find . -name '*.go' | entr -rcn go run ./cmd/skipli
 
 test:
 	go test ./...
