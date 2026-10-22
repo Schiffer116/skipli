@@ -1,5 +1,5 @@
 import type { BoardChange } from "@/offline/changes";
-import { newId } from "@/offline/ids";
+import { isOwnChange } from "@/offline/pending";
 
 import { apiFetch } from "./apiFetch";
 
@@ -16,23 +16,6 @@ const RETRY = 3_000;
 // How long a socket opened ahead of its board (joinEarly) stays open for the
 // board to take it over.
 const EARLY_HOLD = 10_000;
-
-// The ids of the writes this app made. The server broadcasts every write it
-// accepts to everyone on the board, the sender included, and what the app
-// already shows mustn't be applied again.
-const OWN_IDS_KEPT = 500;
-const ownIds = new Set<string>();
-
-// An id for a write the app is about to send, to put in its X-Change-Id
-// header so the server's broadcast of it can be recognised as ours.
-export function newChangeId() {
-  const id = newId();
-  ownIds.add(id);
-  if (ownIds.size > OWN_IDS_KEPT) {
-    ownIds.delete(ownIds.values().next().value!);
-  }
-  return id;
-}
 
 // One board's socket, shared by everyone that needs it open.
 type Room = {
@@ -106,7 +89,10 @@ function open(room: Room) {
 
   ws.onmessage = (e) => {
     const message = JSON.parse(e.data);
-    if (message.id && ownIds.has(message.id)) return;
+    // The server broadcasts every write it accepts to everyone on the
+    // board, the sender included, and what this app already shows mustn't
+    // be applied again.
+    if (message.id && isOwnChange(message.id)) return;
     if (message.type === "change") {
       room.early?.push(message.change);
       changeHandlers.forEach((handler) => handler(message.change));

@@ -1,6 +1,6 @@
 import type { BoardChange } from "@/offline/changes";
 import { loadPending, updateBoard } from "@/offline/copy";
-import { refused, settled, submit } from "@/offline/sync";
+import { onDropped, pending } from "@/offline/pending";
 import type { CardType } from "@/pages/Boards/Board/Card";
 import { socket } from "@/utils/socket";
 
@@ -26,8 +26,8 @@ const REFETCHES = 3;
 // Pending change), which broadcasts it to teammates once it accepts it.
 // Teammates' changes come in over the board's socket, and the whole board
 // is fetched again with reload whenever that socket opens, to catch up on
-// anything saved while it wasn't. What's on screen is kept in the Offline
-// copy too.
+// anything saved while it wasn't, or when one of this person's changes to
+// it was dropped. What's on screen is kept in the Offline copy too.
 export function openBoard(
   userId: string,
   boardId: string,
@@ -80,7 +80,7 @@ export function openBoard(
   // server first, and starts over if more are made while it loads.
   const catchUp = async () => {
     for (let attempt = 0; attempt < REFETCHES && live; attempt++) {
-      await settled();
+      await pending().settled();
       const before = shown;
       let fresh: CardType[];
       try {
@@ -88,12 +88,12 @@ export function openBoard(
       } catch {
         return; // The next time the socket opens will try again.
       }
-      const pending = (await loadPending(userId)).filter(
+      const waiting = (await loadPending(userId)).filter(
         ({ change }) => "boardId" in change && change.boardId === boardId,
       );
       if (held) await new Promise<void>((resolve) => (letGo = resolve));
       if (!live || shown !== before) continue;
-      const next = pending.reduce(
+      const next = waiting.reduce(
         (cards, { change }) => apply(cards, change as BoardChange),
         fresh,
       );
@@ -113,12 +113,7 @@ export function openBoard(
 
     async make(change) {
       show(change);
-      if (await submit(change)) return;
-      // The server has the board otherwise: what's on screen is about to
-      // be replaced, so it mustn't overwrite the Offline copy.
-      unsaved = false;
-      clearTimeout(saveTimer);
-      refused();
+      await pending().make(change);
     },
 
     hold(hold) {
@@ -135,6 +130,9 @@ export function openBoard(
       const stopCatchingUp = socket.onOpen((opened) => {
         if (opened === boardId) void catchUp();
       });
+      const stopDropped = onDropped((change) => {
+        if ("boardId" in change && change.boardId === boardId) void catchUp();
+      });
       // A socket opened ahead of the board (joinEarly) is already open, so
       // it won't say so again. If it opened before loaded was read, it has
       // carried every change saved since, and nothing was missed.
@@ -150,6 +148,7 @@ export function openBoard(
       return () => {
         live = false;
         letGo?.();
+        stopDropped();
         stopCatchingUp();
         stopReceiving();
         leave();

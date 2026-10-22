@@ -1,7 +1,7 @@
 import md5 from "md5";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useSync } from "@/offline/sync";
+import { useOffline } from "@/offline/network";
 
 type UserAvatarProps = {
   email: string;
@@ -17,7 +17,7 @@ export default function UserAvatar({
   name,
   className,
 }: UserAvatarProps) {
-  const { offline } = useSync();
+  const offline = useOffline();
   const hash = md5(email.trim().toLowerCase());
   const initial = (name || email).trim().charAt(0).toUpperCase();
 

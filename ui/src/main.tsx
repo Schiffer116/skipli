@@ -22,7 +22,6 @@ import UpdatePrompt from "@/components/UpdatePrompt";
 import { Toaster } from "@/components/ui/sonner";
 import { forgetBoard } from "@/offline/copy";
 import { activeUser } from "@/offline/session";
-import { setOnRefused } from "@/offline/sync";
 import { socket } from "@/utils/socket";
 import { toast } from "sonner";
 import { keepFocusVisible } from "@/utils/keepFocusVisible";
@@ -104,17 +103,6 @@ const router = createBrowserRouter([
     ],
   },
 ]);
-// The server refused some changes, so what's on screen is ahead of it:
-// say so and load the page's data again.
-setOnRefused((count) => {
-  toast.error(
-    count === 1
-      ? "Couldn't save your change"
-      : `Couldn't save ${count} of your changes`,
-  );
-  void router.revalidate();
-});
-
 // A teammate renamed the open board: load its data again.
 socket.onUpdated(() => void router.revalidate());
 

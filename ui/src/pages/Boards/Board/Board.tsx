@@ -39,7 +39,7 @@ import CleanUpButton from "./CleanUpButton";
 import PresenceAvatars from "./PresenceAvatars";
 import ShareDialog from "./ShareDialog";
 import usePresence from "@/board/usePresence";
-import { useSync } from "@/offline/sync";
+import { useOffline } from "@/offline/network";
 import { ago } from "@/offline/time";
 import useOpenBoard from "@/board/useOpenBoard";
 import type { FetchedBoard } from "@/board/fetch";
@@ -62,7 +62,7 @@ export default function Board({
     onFresh,
     fetchedAt: board.fetchedAt,
   });
-  const { offline } = useSync();
+  const offline = useOffline();
   const others = usePresence(boardId!);
   // Offline, only a Solo board can be changed; a Shared board is read-only.
   const readOnly = offline && members.length > 1;

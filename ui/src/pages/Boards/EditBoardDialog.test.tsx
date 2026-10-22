@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import EditBoardDialog from "./EditBoardDialog";
 
-const submit = vi.hoisted(() => vi.fn(async () => true));
-vi.mock("@/offline/sync", () => ({ submit }));
+const make = vi.hoisted(() => vi.fn(async () => "accepted"));
+vi.mock("@/offline/pending", () => ({ make }));
 
 afterEach(cleanup);
 
@@ -14,7 +14,7 @@ const onSaved = vi.fn();
 const onDeleted = vi.fn();
 
 async function open() {
-  submit.mockClear();
+  make.mockClear();
   onSaved.mockClear();
   onDeleted.mockClear();
   const user = userEvent.setup();
@@ -38,7 +38,7 @@ describe("Edit board", () => {
     await user.type(screen.getByLabelText("Description"), "Chores");
     await user.click(screen.getByRole("button", { name: "Save" }));
 
-    expect(submit).toHaveBeenCalledExactlyOnceWith({
+    expect(make).toHaveBeenCalledExactlyOnceWith({
       type: "updateBoard",
       boardId: "b1",
       name: "Home office",
@@ -54,7 +54,7 @@ describe("Edit board", () => {
     await user.click(screen.getByRole("button", { name: "Cancel" }));
 
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(submit).not.toHaveBeenCalled();
+    expect(make).not.toHaveBeenCalled();
   });
 
   it("deletes once confirmed", async () => {
@@ -62,7 +62,7 @@ describe("Edit board", () => {
     await user.click(screen.getByRole("button", { name: "Delete board" }));
     await user.click(screen.getByRole("button", { name: "Delete" }));
 
-    expect(submit).toHaveBeenCalledExactlyOnceWith({
+    expect(make).toHaveBeenCalledExactlyOnceWith({
       type: "deleteBoard",
       boardId: "b1",
     });

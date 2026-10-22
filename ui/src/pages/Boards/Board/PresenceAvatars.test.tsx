@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import PresenceAvatars from "./PresenceAvatars";
 
-vi.mock("@/offline/sync", () => ({ useSync: () => ({ offline: true }) }));
+vi.mock("@/offline/network", () => ({ useOffline: () => true }));
 
 afterEach(cleanup);
 

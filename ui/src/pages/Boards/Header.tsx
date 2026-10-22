@@ -27,7 +27,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { signOut } from "@/offline/signOut";
-import { useSync } from "@/offline/sync";
+import { useOffline } from "@/offline/network";
+import { usePending } from "@/offline/pending";
 import { apiFetch } from "@/utils/apiFetch";
 import { readTheme, setTheme, type Theme } from "@/utils/theme";
 
@@ -43,9 +44,9 @@ export default function Header({ me, setMe, favorites }: HeaderProps) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
   const [confirmSignOut, setConfirmSignOut] = useState(false);
-  const { offline, pendingCount, rejectedCount } = useSync();
+  const offline = useOffline();
+  const unsaved = usePending().queued;
   const navigate = useNavigate();
-  const unsaved = pendingCount + rejectedCount;
 
   const finishSignOut = async () => {
     await signOut();
@@ -170,9 +171,8 @@ export default function Header({ me, setMe, favorites }: HeaderProps) {
               Sign out and discard unsaved changes?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              You have {unsavedSummary(pendingCount, rejectedCount)}. Signing
-              out deletes your boards from this device, and those changes with
-              them.
+              You have {changes(unsaved)} waiting to sync. Signing out deletes
+              your boards from this device, and those changes with them.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -260,13 +260,5 @@ function ThemePicker() {
   );
 }
 
-const changes = (n: number) => `${n} ${n === 1 ? "change" : "changes"}`;
-
 // In the words the offline banner uses for the same changes.
-function unsavedSummary(pending: number, rejected: number) {
-  const waiting = `${changes(pending)} waiting to sync`;
-  const refused = `${changes(rejected)} that couldn't be saved`;
-  if (rejected === 0) return waiting;
-  if (pending === 0) return refused;
-  return `${waiting} and ${rejected} that couldn't be saved`;
-}
+const changes = (n: number) => `${n} ${n === 1 ? "change" : "changes"}`;

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { useSync } from "@/offline/sync";
+import { useOffline } from "@/offline/network";
 import { useMe } from "@/pages/Boards/favorites";
 import { socket, type Person } from "@/utils/socket";
 
@@ -9,7 +9,7 @@ import { socket, type Person } from "@/utils/socket";
 export default function usePresence(boardId: string): Person[] {
   const myId = useMe().id;
   // A socket can linger a while after the connection is lost.
-  const { offline } = useSync();
+  const offline = useOffline();
   // The socket may have heard before this was listening.
   const [people, setPeople] = useState(() => socket.presentAt(boardId));
   useEffect(() => {

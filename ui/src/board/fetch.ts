@@ -1,14 +1,12 @@
-import { isBoardChange, type Change } from "@/offline/changes";
 import {
   forgetBoard,
   loadPending,
   saveBoard,
+  withChange,
   type SavedBoard,
 } from "@/offline/copy";
 import { apiFetch } from "@/utils/apiFetch";
 import { throwIfNotOk } from "@/utils/throwIfNotOk";
-
-import { apply } from "./apply";
 
 // A board as GET /api/boards/{id} answers it: all of it, in one request.
 export type FetchedBoard = Omit<SavedBoard, "savedAt">;
@@ -35,16 +33,5 @@ export async function fetchBoard(
     fetched,
   );
   await saveBoard(userId, board);
-  return board;
-}
-
-function withChange(board: FetchedBoard, change: Change): FetchedBoard {
-  if (!("boardId" in change) || change.boardId !== board.id) return board;
-  if (isBoardChange(change)) {
-    return { ...board, cards: apply(board.cards, change) };
-  }
-  if (change.type === "updateBoard") {
-    return { ...board, name: change.name, description: change.description };
-  }
   return board;
 }

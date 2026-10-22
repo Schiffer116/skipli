@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Outlet, useLoaderData } from "react-router";
 
-import { submit } from "@/offline/sync";
+import { make } from "@/offline/pending";
 import { revisionOf } from "@/utils/revision";
 
 import Header from "./Header";
@@ -30,11 +30,12 @@ function Boards({
       favorite ? [...old, board] : old.filter((f) => f.id !== board.id),
     );
 
-    if (
-      !(await submit({ type: "favoriteBoard", boardId: board.id, favorite }))
-    ) {
-      setFavorites(old);
-    }
+    const outcome = await make({
+      type: "favoriteBoard",
+      boardId: board.id,
+      favorite,
+    });
+    if (outcome === "dropped") setFavorites(old);
   };
 
   return (
