@@ -6,6 +6,7 @@ import { NOT_OFFLINE } from "./Boards/loaders";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { isUnreachable } from "@/utils/unreachable";
 
 type ErrorCopy = {
   status?: number;
@@ -14,12 +15,6 @@ type ErrorCopy = {
   Icon: typeof CircleAlert;
   retryable: boolean;
 };
-
-// fetch rejects with a TypeError when a request never got an answer; each
-// browser words it differently.
-const isUnreachable = (error: unknown) =>
-  error instanceof TypeError &&
-  /fetch|network|load failed/i.test(error.message);
 
 function describe(error: unknown): ErrorCopy {
   if (isRouteErrorResponse(error)) {

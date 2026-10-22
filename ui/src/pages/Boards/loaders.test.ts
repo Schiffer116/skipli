@@ -28,23 +28,40 @@ const onServer = {
 };
 
 const fetched: string[] = [];
+// False: no request gets an answer, as with no connection.
+let reachable = true;
 let answer: (url: string) => Response = () => Response.json(onServer);
 
 vi.mock("@/utils/apiFetch", () => ({
   apiFetch: async (url: string) => {
     fetched.push(url);
+    if (!reachable) throw new TypeError("Failed to fetch");
     if (url === "/api/me") return Response.json(me);
     return answer(url);
   },
 }));
 
+// With someone signed in here, opening a board joins its socket early.
+vi.mock("@/utils/socket", () => ({
+  socket: { joinEarly: () => () => {} },
+  newChangeId: () => "change",
+}));
+
 const network = { onLine: true };
 vi.stubGlobal("navigator", network);
 vi.stubGlobal("window", new EventTarget());
+const stored = new Map<string, string>();
+vi.stubGlobal("localStorage", {
+  getItem: (key: string) => stored.get(key) ?? null,
+  setItem: (key: string, value: string) => stored.set(key, value),
+  removeItem: (key: string) => stored.delete(key),
+});
 
-const { addPending, deleteCopy, loadBoard, saveBoard } =
+const { addPending, deleteCopy, loadBoard, saveBoard, saveMe } =
   await import("@/offline/copy");
-const { boardViewLoader, forgetMe } = await import("./loaders");
+const { setActiveUser } = await import("@/offline/session");
+const { boardListLoader, boardsLoader, boardViewLoader, forgetMe } =
+  await import("./loaders");
 const { fetchBoard } = await import("@/board/fetch");
 
 const load = () =>
@@ -59,11 +76,13 @@ const boardReads = () => fetched.filter((url) => url.startsWith("/api/boards"));
 beforeEach(() => {
   fetched.length = 0;
   network.onLine = true;
+  reachable = true;
   answer = () => Response.json(onServer);
 });
 
 afterEach(async () => {
   forgetMe();
+  setActiveUser(null);
   await deleteCopy(me.id);
 });
 
@@ -122,4 +141,39 @@ describe("opening a board", () => {
       expect(await loadBoard(me.id, "b1")).toBeUndefined();
     },
   );
+});
+
+// Phones often say they're online with no connection to speak of.
+describe("online with no answer from the server", () => {
+  beforeEach(async () => {
+    setActiveUser(me.id);
+    await saveMe(me);
+    reachable = false;
+  });
+
+  it("opens a board from the Offline copy", async () => {
+    await saveBoard(me.id, saved);
+    expect(await load()).toMatchObject({ name: "Old name" });
+  });
+
+  it("says a board not on this device isn't available offline", async () => {
+    await expect(load()).rejects.toMatchObject({
+      init: { status: 503 },
+      data: "board",
+    });
+  });
+
+  it("lists the boards on this device", async () => {
+    await saveBoard(me.id, saved);
+    expect((await boardsLoader()).me).toEqual(me);
+    expect(await boardListLoader()).toMatchObject({
+      offline: { missing: false },
+    });
+  });
+
+  it("still shows a server error as one", async () => {
+    reachable = true;
+    answer = () => new Response(null, { status: 500 });
+    await expect(boardListLoader()).rejects.toBeDefined();
+  });
 });
