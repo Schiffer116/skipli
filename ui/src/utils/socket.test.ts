@@ -4,8 +4,16 @@ import type { BoardChange } from "@/offline/changes";
 
 // What the server says about the board when a socket drops.
 let boardStatus = 200;
+// Who the server says has the board open.
+let presenceBody: unknown[] = [];
 vi.mock("@/utils/apiFetch", () => ({
-  apiFetch: async () => new Response("", { status: boardStatus }),
+  apiFetch: async (url: string) =>
+    new Response(
+      url.endsWith("/presence") ? JSON.stringify(presenceBody) : "",
+      {
+        status: boardStatus,
+      },
+    ),
 }));
 
 // A browser WebSocket the test plays the server for.
@@ -71,6 +79,7 @@ beforeEach(async () => {
   vi.resetModules();
   FakeWebSocket.all = [];
   boardStatus = 200;
+  presenceBody = [];
   ({ socket, newChangeId } = await import("./socket"));
 });
 
@@ -225,5 +234,61 @@ describe("a socket opened ahead of its board", () => {
     last().accept();
     leave();
     expect(last().readyState).toBe(3);
+  });
+});
+
+describe("Presence", () => {
+  const ann = { id: "u1", name: "Ann", email: "ann@example.com" };
+  const bo = { id: "u2", name: "Bo", email: "bo@example.com" };
+
+  it("reads who is here when the socket opens", async () => {
+    const heard = vi.fn();
+    socket.onPresence(heard);
+    presenceBody = [ann];
+    join("b1");
+    last().accept();
+    await flush();
+    expect(heard).toHaveBeenCalledExactlyOnceWith("b1", [ann]);
+  });
+
+  it("follows the people coming and going", () => {
+    const heard = vi.fn();
+    socket.onPresence(heard);
+    join("b1");
+    last().accept();
+    last().reply({ type: "presence", people: [ann, bo] });
+    last().reply({ type: "presence" });
+    expect(heard).toHaveBeenNthCalledWith(1, "b1", [ann, bo]);
+    expect(heard).toHaveBeenNthCalledWith(2, "b1", []);
+  });
+
+  it("drops a list read that a push overtook", async () => {
+    const heard = vi.fn();
+    socket.onPresence(heard);
+    presenceBody = [ann];
+    join("b1");
+    last().accept();
+    last().reply({ type: "presence", people: [ann, bo] });
+    await flush();
+    expect(heard).toHaveBeenCalledExactlyOnceWith("b1", [ann, bo]);
+  });
+
+  it("keeps the latest list for a listener that comes late", async () => {
+    presenceBody = [ann];
+    join("b1");
+    last().accept();
+    await flush();
+    expect(socket.presentAt("b1")).toEqual([ann]);
+    last().close();
+    expect(socket.presentAt("b1")).toEqual([]);
+  });
+
+  it("shows nobody while the socket is down", () => {
+    const heard = vi.fn();
+    join("b1");
+    last().accept();
+    socket.onPresence(heard);
+    last().close();
+    expect(heard).toHaveBeenCalledExactlyOnceWith("b1", []);
   });
 });

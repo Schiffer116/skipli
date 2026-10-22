@@ -36,6 +36,9 @@ import EditBoardDialog from "../EditBoardDialog";
 import FavoriteButton from "../FavoriteButton";
 import { useMe } from "../favorites";
 import CleanUpButton from "./CleanUpButton";
+import PresenceAvatars from "./PresenceAvatars";
+import ShareDialog from "./ShareDialog";
+import usePresence from "@/board/usePresence";
 import { useSync } from "@/offline/sync";
 import { ago } from "@/offline/time";
 import useOpenBoard from "@/board/useOpenBoard";
@@ -60,6 +63,7 @@ export default function Board({
     fetchedAt: board.fetchedAt,
   });
   const { offline } = useSync();
+  const others = usePresence(boardId!);
   // Offline, only a Solo board can be changed; a Shared board is read-only.
   const readOnly = offline && members.length > 1;
   // Like the board list, only the owner can edit or delete the board.
@@ -171,6 +175,7 @@ export default function Board({
                 />
               )}
               <div className="ml-auto flex shrink-0 items-center gap-2">
+                <PresenceAvatars people={others} />
                 <Button
                   variant="outline"
                   size="icon"
@@ -183,6 +188,12 @@ export default function Board({
                 {!readOnly && (
                   <CleanUpButton boardId={boardId!} cards={cards} />
                 )}
+                <ShareDialog
+                  boardId={boardId!}
+                  name={name}
+                  owner={owner}
+                  members={members}
+                />
               </div>
             </div>
             {description && (

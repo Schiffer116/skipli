@@ -11,6 +11,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/Schiffer116/skipli/api/internal/access"
+	"github.com/Schiffer116/skipli/api/internal/broadcast"
 )
 
 // Limits are API Gateway's WebSocket limits, which the local relay enforces
@@ -54,6 +55,7 @@ func (h *Handler) serveLocal(w http.ResponseWriter, req *http.Request, limits Li
 		return
 	}
 
+	person := h.person(ctx, user)
 	conn, err := websocket.Accept(w, req, &websocket.AcceptOptions{OriginPatterns: []string{"localhost:*"}})
 	if err != nil {
 		return
@@ -63,14 +65,16 @@ func (h *Handler) serveLocal(w http.ResponseWriter, req *http.Request, limits Li
 
 	h.mu.Lock()
 	if h.rooms[boardID] == nil {
-		h.rooms[boardID] = map[*websocket.Conn]struct{}{}
+		h.rooms[boardID] = map[*websocket.Conn]broadcast.Person{}
 	}
-	h.rooms[boardID][conn] = struct{}{}
+	h.rooms[boardID][conn] = person
 	h.mu.Unlock()
+	h.send(ctx, boardID, presence(h.Present(ctx, boardID)), "")
 	defer func() {
 		h.mu.Lock()
 		delete(h.rooms[boardID], conn)
 		h.mu.Unlock()
+		h.send(context.WithoutCancel(ctx), boardID, presence(h.Present(context.WithoutCancel(ctx), boardID)), "")
 	}()
 
 	lifetime, cancel := context.WithTimeout(ctx, limits.Lifetime)

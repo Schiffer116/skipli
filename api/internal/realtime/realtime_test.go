@@ -34,8 +34,9 @@ const (
 var table = map[string]map[string]any{
 	"b1/META":                {},
 	"b1/MEMBER#u-member":     {},
-	"CONNS#b1/conn-member":   {},
-	"CONNS#b1/conn-peer":     {},
+	"CONNS#b1/conn-member":   {"UserID": map[string]any{"S": "u-member"}, "UserName": map[string]any{"S": "Mem"}, "Email": map[string]any{"S": "mem@example.com"}},
+	"CONNS#b1/conn-peer":     {"UserID": map[string]any{"S": "u-peer"}, "UserName": map[string]any{"S": "Peer"}, "Email": map[string]any{"S": "peer@example.com"}},
+	"CONNS#b1/conn-peer2":    {"UserID": map[string]any{"S": "u-peer"}, "UserName": map[string]any{"S": "Peer"}, "Email": map[string]any{"S": "peer@example.com"}},
 	"CONNS#b1/conn-gone":     {},
 	"CONNS#b2/conn-other":    {},
 	"CONN#conn-member/BOARD": {"Board": map[string]any{"S": "b1"}},
@@ -64,7 +65,11 @@ func fakeTable(t *testing.T) *awsfake.Server {
 			for key := range table {
 				pk, sk, _ := strings.Cut(key, "/")
 				if strings.Contains(string(values), `"`+pk+`"`) && strings.HasPrefix(pk, "CONNS#") {
-					items = append(items, map[string]any{"SK": map[string]any{"S": sk}})
+					item := map[string]any{"SK": map[string]any{"S": sk}}
+					for k, v := range table[key] {
+						item[k] = v
+					}
+					items = append(items, item)
 				}
 			}
 			return 200, map[string]any{"Items": items}
@@ -225,7 +230,8 @@ func TestDisconnectForgetsTheConnection(t *testing.T) {
 		forgotten = append(forgotten, keyOf(call.Body))
 	}
 	slices.Sort(forgotten)
-	if want := []string{"CONN#conn-member/BOARD", "CONNS#b1/conn-member"}; !slices.Equal(forgotten, want) {
+	// conn-gone is dropped too, when the presence update finds it closed.
+	if want := []string{"CONN#conn-member/BOARD", "CONNS#b1/conn-gone", "CONNS#b1/conn-member"}; !slices.Equal(forgotten, want) {
 		t.Errorf("forgot %v, want %v", forgotten, want)
 	}
 
@@ -284,5 +290,52 @@ func TestConnectLetsOnlyMembersOpenABoardsSocket(t *testing.T) {
 	slices.Sort(stored)
 	if want := []string{"CONN#conn-new/BOARD", "CONNS#b1/conn-new"}; !slices.Equal(stored, want) {
 		t.Errorf("stored %v for the member's connection, want %v", stored, want)
+	}
+}
+
+func TestPresenceListsEachPersonOnce(t *testing.T) {
+	f := setup(t)
+	got := f.handler.Present(context.Background(), "b1")
+	want := []broadcast.Person{
+		{ID: "u-member", Name: "Mem", Email: "mem@example.com"},
+		{ID: "u-peer", Name: "Peer", Email: "peer@example.com"},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("present %v, want %v", got, want)
+	}
+	if got := f.handler.Present(context.Background(), "b2"); len(got) != 0 {
+		t.Errorf("another board's connection without a person listed: %v", got)
+	}
+}
+
+func TestConnectAndDisconnectTellTheOthersWhoIsPresent(t *testing.T) {
+	f := setup(t)
+	cookie := "id_token=" + f.token(t, "u-new", f.key)
+	table["b1/MEMBER#u-new"] = map[string]any{}
+	defer delete(table, "b1/MEMBER#u-new")
+	if code, _ := handle(f, "$connect", "conn-new", map[string]string{"cookie": cookie}, "b1"); code != 200 {
+		t.Fatalf("connect answered %d", code)
+	}
+	for _, conn := range []string{"conn-member", "conn-peer"} {
+		sent := f.gateway.sent[conn]
+		if len(sent) != 1 || !strings.Contains(sent[0], `"type":"presence"`) || !strings.Contains(sent[0], `"u-member"`) {
+			t.Errorf("%s received %v, want the presence list", conn, sent)
+		}
+	}
+	// The connection that is still connecting can't be posted to.
+	if sent := f.gateway.sent["conn-new"]; len(sent) != 0 {
+		t.Errorf("newcomer received %v", sent)
+	}
+	if sent := f.gateway.sent["conn-other"]; len(sent) != 0 {
+		t.Errorf("another board heard of it: %v", sent)
+	}
+
+	f.gateway.sent = map[string][]string{}
+	handle(f, "$disconnect", "conn-member", nil, "")
+	if sent := f.gateway.sent["conn-peer"]; len(sent) != 1 || !strings.Contains(sent[0], `"presence"`) {
+		t.Errorf("peer received %v after a disconnect", sent)
+	}
+	if sent := f.gateway.sent["conn-member"]; len(sent) != 0 {
+		t.Errorf("the closing connection was posted to: %v", sent)
 	}
 }
