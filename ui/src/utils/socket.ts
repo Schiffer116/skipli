@@ -7,6 +7,9 @@ import { apiFetch } from "./apiFetch";
 // teammate changes them.
 export type BoardDetail = { name: string; description: string };
 
+// A person with a board open, as the server names them.
+export type Person = { id: string; name: string; email: string };
+
 // API Gateway closes a connection that's been quiet for 10 minutes.
 const KEEPALIVE = 5 * 60_000;
 const RETRY = 3_000;
@@ -44,6 +47,11 @@ type Room = {
   retry?: ReturnType<typeof setTimeout>;
   keepalive?: ReturnType<typeof setInterval>;
   waitForOnline?: () => void;
+  // Counts the Presence updates pushed, so a list read over HTTP that was
+  // overtaken by a push is dropped.
+  presenceSeen: number;
+  // The latest list, for whoever starts listening after it came.
+  people: Person[];
 };
 
 const rooms = new Map<string, Room>();
@@ -53,6 +61,31 @@ const updatedHandlers = new Set<
 >();
 const deletedHandlers = new Set<(boardId: string) => void>();
 const openHandlers = new Set<(boardId: string) => void>();
+const presenceHandlers = new Set<(boardId: string, people: Person[]) => void>();
+
+function setPeople(room: Room, people: Person[]) {
+  room.people = people;
+  presenceHandlers.forEach((handler) => handler(room.boardId, people));
+}
+
+// Everyone with the board open, now (yourself included) and after each
+// change to it. The socket only pushes changes, so the first list is read
+// over HTTP each time the socket opens.
+async function readPresence(room: Room, ws: WebSocket) {
+  const seen = room.presenceSeen;
+  try {
+    const res = await apiFetch(
+      `/api/boards/${encodeURIComponent(room.boardId)}/presence`,
+    );
+    if (!res.ok) return;
+    const people: Person[] = await res.json();
+    if (room.ws === ws && room.presenceSeen === seen) {
+      setPeople(room, people);
+    }
+  } catch {
+    // The next push or reconnect brings it.
+  }
+}
 
 function open(room: Room) {
   const protocol = location.protocol === "https:" ? "wss" : "ws";
@@ -68,6 +101,7 @@ function open(room: Room) {
       KEEPALIVE,
     );
     openHandlers.forEach((handler) => handler(room.boardId));
+    void readPresence(room, ws);
   };
 
   ws.onmessage = (e) => {
@@ -80,6 +114,9 @@ function open(room: Room) {
       updatedHandlers.forEach((handler) =>
         handler(room.boardId, message.board),
       );
+    } else if (message.type === "presence") {
+      room.presenceSeen++;
+      setPeople(room, message.people ?? []);
     } else if (message.type === "deleted") {
       deletedHandlers.forEach((handler) => handler(room.boardId));
     }
@@ -90,6 +127,8 @@ function open(room: Room) {
     if (room.ws !== ws) return;
     room.ws = null;
     room.openedAt = undefined;
+    // Nobody can be seen on a board while its socket is down.
+    setPeople(room, []);
     void reconnect(room);
   };
 }
@@ -132,7 +171,14 @@ async function reconnect(room: Room) {
 function join(boardId: string) {
   let room = rooms.get(boardId);
   if (!room) {
-    room = { boardId, ws: null, holders: 0, early: null };
+    room = {
+      boardId,
+      ws: null,
+      holders: 0,
+      early: null,
+      presenceSeen: 0,
+      people: [],
+    };
     rooms.set(boardId, room);
     open(room);
   }
@@ -217,4 +263,11 @@ export const socket = {
   // drop. Whatever was saved while it wasn't open was never sent, so this
   // is when to load the board again.
   onOpen: on(openHandlers),
+
+  // Everyone who has the board open, as last heard.
+  presentAt: (boardId: string) => rooms.get(boardId)?.people ?? [],
+
+  // Calls back with everyone who has the board open, each time that
+  // changes; empty while the socket is down.
+  onPresence: on(presenceHandlers),
 };

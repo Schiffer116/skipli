@@ -17,17 +17,20 @@ import (
 
 // NewRouter serves the HTTP API: page loads, every change, sign-in, invites
 // and profiles. What it saves on a board is passed to broadcaster.
-func NewRouter(c config.Config, broadcaster broadcast.Broadcaster) http.Handler {
+func NewRouter(c config.Config, rt interface {
+	broadcast.Broadcaster
+	broadcast.Roster
+}) http.Handler {
 	idp := cognitoidentityprovider.NewFromConfig(c.AWS, func(o *cognitoidentityprovider.Options) {
 		o.Region = c.PoolRegion
 	})
-	return newRouter(c.DB, idp, c.Tokens, c.PoolID, c.ClientID, c.Table, auth.CanReceiveMail, broadcaster)
+	return newRouter(c.DB, idp, c.Tokens, c.PoolID, c.ClientID, c.Table, auth.CanReceiveMail, rt, rt)
 }
 
 // newRouter wires the routes onto already-built clients, so tests can run the
 // real router against fakes. canReceiveMail stands in for the invite
 // address's DNS check.
-func newRouter(db *dynamodb.Client, idp *cognitoidentityprovider.Client, tokens *auth.TokenVerifier, poolID, clientID, tableName string, canReceiveMail func(context.Context, string) bool, broadcaster broadcast.Broadcaster) http.Handler {
+func newRouter(db *dynamodb.Client, idp *cognitoidentityprovider.Client, tokens *auth.TokenVerifier, poolID, clientID, tableName string, canReceiveMail func(context.Context, string) bool, broadcaster broadcast.Broadcaster, roster broadcast.Roster) http.Handler {
 	router := http.NewServeMux()
 
 	users := auth.NewDirectory(idp, poolID)
@@ -37,6 +40,7 @@ func newRouter(db *dynamodb.Client, idp *cognitoidentityprovider.Client, tokens 
 	board.NewHandler(db, tableName, tokens, users, profiles, canReceiveMail, broadcaster).RegisterRoutes(router)
 	auth.NewHandler(idp, clientID, users, tokens, auth.NewCooldown(db, tableName)).RegisterRoutes(router)
 	boardchange.NewHandler(db, tableName, tokens, broadcaster).RegisterRoutes(router)
+	registerPresence(router, db, tableName, tokens, roster)
 
 	api := http.NewServeMux()
 	api.Handle("/api/", http.StripPrefix("/api", router))

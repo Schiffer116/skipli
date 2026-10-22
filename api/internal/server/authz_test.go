@@ -126,6 +126,10 @@ func (r *recordedBroadcasts) Broadcast(_ context.Context, boardID string, m broa
 	r.sent = append(r.sent, boardID+" "+m.Type)
 }
 
+func (r *recordedBroadcasts) Present(context.Context, string) []broadcast.Person {
+	return []broadcast.Person{{ID: "u-member", Name: "Member", Email: "member@example.com"}}
+}
+
 func (r *recordedBroadcasts) take() []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -196,7 +200,7 @@ func TestBoardRoutesRequireMembership(t *testing.T) {
 
 	canReceiveMail := func(context.Context, string) bool { return true }
 	broadcasts := &recordedBroadcasts{}
-	router := newRouter(db, idp, tokens, "us-east-1_test", testClientID, "Skipli", canReceiveMail, broadcasts)
+	router := newRouter(db, idp, tokens, "us-east-1_test", testClientID, "Skipli", canReceiveMail, broadcasts, broadcasts)
 
 	// {board} is replaced with the board under test; routes without it
 	// aren't scoped to a board and only need a signed-in caller.
@@ -209,6 +213,7 @@ func TestBoardRoutesRequireMembership(t *testing.T) {
 		{"POST", "/api/boards", `{"name":"New"}`, 201, 201},
 		{"PUT", "/api/boards/order", `{"boardIds":["b1"]}`, 204, 403},
 		{"GET", "/api/boards/{board}", "", 200, 403},
+		{"GET", "/api/boards/{board}/presence", "", 200, 403},
 		{"PUT", "/api/boards/{board}", `{"name":"Renamed","description":""}`, 204, 403},
 		{"PUT", "/api/boards/{board}/favorite", `{"favorite":true}`, 204, 403},
 		{"POST", "/api/boards/{board}/invite", `{"email":"invitee@example.com"}`, 204, 403},

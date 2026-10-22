@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -24,7 +25,18 @@ func (f *fixture) dial(t *testing.T, url string) *websocket.Conn {
 	return conn
 }
 
+// read is the next message that isn't about Presence.
 func read(t *testing.T, conn *websocket.Conn) (map[string]any, error) {
+	t.Helper()
+	for {
+		message, err := readAny(t, conn)
+		if err != nil || message["type"] != "presence" {
+			return message, err
+		}
+	}
+}
+
+func readAny(t *testing.T, conn *websocket.Conn) (map[string]any, error) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -92,5 +104,39 @@ func TestLocalRelayRefusesFramesOverTheLimit(t *testing.T) {
 	conn.Write(context.Background(), websocket.MessageText, []byte(strings.Repeat("x", 100)))
 	if _, err := read(t, conn); err == nil {
 		t.Fatal("frame over the limit accepted")
+	}
+}
+
+func TestLocalRelayTellsPresenceOnConnectAndDisconnect(t *testing.T) {
+	f := setup(t)
+	srv := httptest.NewServer(f.handler.ServeLocal(GatewayLimits))
+	t.Cleanup(srv.Close)
+	names := func(message map[string]any) (ids []string) {
+		for _, p := range message["people"].([]any) {
+			ids = append(ids, p.(map[string]any)["id"].(string))
+		}
+		return ids
+	}
+
+	first := f.dial(t, srv.URL)
+	if got, err := readAny(t, first); err != nil || got["type"] != "presence" {
+		t.Fatalf("got %v %v, want presence", got, err)
+	}
+	// Two tabs of one person are one avatar.
+	second := f.dial(t, srv.URL)
+	var got map[string]any
+	for _, conn := range []*websocket.Conn{first, second} {
+		var err error
+		if got, err = readAny(t, conn); err != nil || got["type"] != "presence" {
+			t.Fatalf("got %v %v, want presence", got, err)
+		}
+	}
+	if ids := names(got); !slices.Equal(ids, []string{"u-peer", "u-member"}) {
+		t.Errorf("present %v, want the peer and the member (two tabs) once, by name", ids)
+	}
+
+	second.Close(websocket.StatusNormalClosure, "")
+	if got, err := readAny(t, first); err != nil || got["type"] != "presence" {
+		t.Fatalf("got %v %v, want presence after a tab closed", got, err)
 	}
 }

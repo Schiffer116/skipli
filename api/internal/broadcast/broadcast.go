@@ -16,6 +16,8 @@ const (
 	BoardUpdated = "board"
 	// BoardDeleted says the board is gone.
 	BoardDeleted = "deleted"
+	// PresenceChanged carries who has the board open now.
+	PresenceChanged = "presence"
 )
 
 type Message struct {
@@ -24,6 +26,15 @@ type Message struct {
 	ID     string  `json:"id,omitempty"`
 	Change any     `json:"change,omitempty"`
 	Board  *Detail `json:"board,omitempty"`
+	// People is everyone with the board open, for PresenceChanged.
+	People []Person `json:"people,omitempty"`
+}
+
+// Person is a member with a board open.
+type Person struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
 }
 
 // Detail is what a board's header shows.
@@ -42,3 +53,9 @@ type Broadcaster interface {
 type Discard struct{}
 
 func (Discard) Broadcast(context.Context, string, Message) {}
+
+// Roster says who has a board open right now: one Person each, however many
+// tabs they have it open in.
+type Roster interface {
+	Present(ctx context.Context, boardID string) []Person
+}
