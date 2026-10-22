@@ -1,66 +1,72 @@
-import { useEffect, useState } from "react";
-import { CloudOff, RefreshCw, TriangleAlert } from "lucide-react";
+import { useEffect } from "react";
+import { Link, useRevalidator } from "react-router";
+import { CloudOff, LogIn, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
-import { loadRejectedSeen, saveRejectedSeen } from "@/offline/copy";
-import { activeUser } from "@/offline/session";
-import { useSync } from "@/offline/sync";
+import { isBoardChange } from "@/offline/changes";
+import { useOffline } from "@/offline/network";
+import { onDropped, seenDropped, usePending } from "@/offline/pending";
 
 const changes = (n: number) => `${n} ${n === 1 ? "change" : "changes"}`;
 
 // Says when the app is working from the Offline copy, how many changes
-// haven't reached the server, and when some were refused. Refused ones are
-// kept on the device; reviewing them is still to come.
+// haven't reached the server, and when they can't be sent until this
+// person signs in again. Dropped changes are told of in a toast.
 export default function OfflineBanner() {
-  const { offline, syncing, pendingCount, rejectedCount } = useSync();
-  const [rejectedSeen, setRejectedSeen] = useState<number | null>(null);
-
-  useEffect(() => {
-    const userId = activeUser();
-    if (userId) void loadRejectedSeen(userId).then(setRejectedSeen);
-  }, []);
-
-  const unseenRejected =
-    rejectedSeen === null ? 0 : Math.max(0, rejectedCount - rejectedSeen);
-  const dismissRejected = () => {
-    const userId = activeUser();
-    setRejectedSeen(rejectedCount);
-    if (userId) void saveRejectedSeen(userId, rejectedCount);
-  };
+  const offline = useOffline();
+  const { queued, waiting, sending, paused } = usePending();
+  useToldOfDrops();
 
   return (
     <div role="status" aria-live="polite">
       {offline ? (
         <Bar Icon={CloudOff}>
-          You're offline.{" "}
-          {pendingCount > 0 && `${changes(pendingCount)} waiting to sync. `}
+          You're offline. {queued > 0 && `${changes(queued)} waiting to sync. `}
           Boards shared with others are read-only until you reconnect.
         </Bar>
+      ) : paused ? (
+        <Bar Icon={LogIn} tone="warning">
+          <Link to="/login" className="font-medium underline">
+            Sign in again
+          </Link>{" "}
+          to send {queued} waiting {queued === 1 ? "change" : "changes"}.
+        </Bar>
       ) : (
-        pendingCount > 0 && (
-          <Bar Icon={RefreshCw} spin={syncing}>
-            {syncing
-              ? `Syncing ${changes(pendingCount)}…`
-              : `${changes(pendingCount)} waiting to sync. They'll be sent when Skipli can be reached.`}
+        waiting > 0 && (
+          <Bar Icon={RefreshCw} spin={sending}>
+            {sending
+              ? `Syncing ${changes(queued)}…`
+              : `${changes(queued)} waiting to sync. They'll be sent when Skipli can be reached.`}
           </Bar>
         )
       )}
-      {unseenRejected > 0 && (
-        <Bar Icon={TriangleAlert} tone="warning">
-          {changes(unseenRejected)} made offline couldn't be saved.{" "}
-          {unseenRejected === 1 ? "It's" : "They're"} kept on this device.
-          <Button
-            variant="link"
-            size="sm"
-            className="h-auto p-0 ml-2"
-            onClick={dismissRejected}
-          >
-            Dismiss
-          </Button>
-        </Bar>
-      )}
     </div>
   );
+}
+
+// Tells the person how many of their changes were dropped, in one toast
+// that counts up while more are, and loads the board list again when one
+// was to it. An open board catches up on its own.
+function useToldOfDrops() {
+  const { dropped } = usePending();
+  const { revalidate } = useRevalidator();
+
+  useEffect(
+    () =>
+      onDropped((change) => {
+        if (!isBoardChange(change)) void revalidate();
+      }),
+    [revalidate],
+  );
+
+  useEffect(() => {
+    if (dropped === 0) return;
+    toast.error(`${changes(dropped)} couldn't be saved`, {
+      id: "dropped",
+      onDismiss: seenDropped,
+      onAutoClose: seenDropped,
+    });
+  }, [dropped]);
 }
 
 function Bar({

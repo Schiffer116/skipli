@@ -25,13 +25,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { DialogDescription } from "@radix-ui/react-dialog";
-import { submit } from "@/offline/sync";
+import { make } from "@/offline/pending";
 
 type EditBoardDialogProps = {
   id: string;
   name: string;
   description: string;
-  // Called once the change is accepted, to show it.
+  // Called once the change is accepted or waits to be sent, to show it.
   onSaved: (name: string, description: string) => void;
   onDeleted: () => void;
 };
@@ -51,17 +51,19 @@ export default function EditBoardDialog(props: EditBoardDialogProps) {
     }
 
     setOpen(false);
-    if (
-      !(await submit({ type: "updateBoard", boardId: id, name, description }))
-    ) {
-      return;
-    }
+    const outcome = await make({
+      type: "updateBoard",
+      boardId: id,
+      name,
+      description,
+    });
+    if (outcome === "dropped") return;
 
     onSaved(name, description);
   };
 
   const deleteBoard = async () => {
-    if (!(await submit({ type: "deleteBoard", boardId: id }))) {
+    if ((await make({ type: "deleteBoard", boardId: id })) === "dropped") {
       return;
     }
 

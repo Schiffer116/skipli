@@ -16,6 +16,11 @@ vi.mock("@/utils/apiFetch", () => ({
     ),
 }));
 
+// The changes this app made, as its Pending changes know them.
+vi.mock("@/offline/pending", () => ({
+  isOwnChange: (id: string) => id === "mine",
+}));
+
 // A browser WebSocket the test plays the server for.
 class FakeWebSocket {
   static OPEN = 1;
@@ -64,7 +69,6 @@ const createTask: BoardChange = {
 };
 
 let socket: typeof import("./socket").socket;
-let newChangeId: typeof import("./socket").newChangeId;
 const leaves: (() => void)[] = [];
 const join = (boardId: string) => {
   const leave = socket.join(boardId);
@@ -80,7 +84,7 @@ beforeEach(async () => {
   FakeWebSocket.all = [];
   boardStatus = 200;
   presenceBody = [];
-  ({ socket, newChangeId } = await import("./socket"));
+  ({ socket } = await import("./socket"));
 });
 
 afterEach(() => {
@@ -111,7 +115,7 @@ describe("a board's socket", () => {
     join("b1");
     last().accept();
 
-    const id = newChangeId();
+    const id = "mine";
     last().reply({ type: "change", id, change: createTask });
     last().reply({ type: "board", id, board: { name: "A", description: "" } });
     expect(received).not.toHaveBeenCalled();

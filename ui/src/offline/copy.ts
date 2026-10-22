@@ -1,12 +1,20 @@
 import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from "idb";
 
+import { apply } from "@/board/apply";
 import type { CardType } from "@/pages/Boards/Board/Card";
 import type { Me, Member } from "@/pages/Boards/loaders";
 
-import { applyToList, type BoardList, type Change } from "./changes";
+import {
+  applyToList,
+  isBoardChange,
+  type BoardList,
+  type Change,
+} from "./changes";
+import { newId } from "./ids";
+import type { PendingStore } from "./pending";
 
 // The Offline copy: what one person's boards looked like when last seen
-// on this device, plus their Pending and Rejected changes. Each person
+// on this device, plus their Pending changes. Each person
 // gets a database of their own, so someone else signing in here never sees
 // it, and signing out deletes just that one.
 
@@ -18,28 +26,25 @@ export type SavedBoard = {
   members: Member[];
   cards: CardType[];
   savedAt: number;
+  // A change to it was dropped, so it may show what the server never
+  // had: online, it loads from the server next time it's opened.
+  outOfDate?: true;
 };
 
-export type SavedList = BoardList & { savedAt: number };
+export type SavedList = BoardList & { savedAt: number; outOfDate?: true };
 
-export type PendingChange = { seq: number; change: Change; at: number };
-
-export type RejectedChange = {
+// id is the change id every attempt to send it carries (X-Change-Id).
+export type PendingChange = {
   seq: number;
+  id: string;
   change: Change;
-  status: number;
-  message: string;
   at: number;
 };
 
 interface Schema extends DBSchema {
-  meta: {
-    key: "me" | "list" | "rejectedSeen";
-    value: Me | SavedList | number;
-  };
+  meta: { key: "me" | "list"; value: Me | SavedList };
   boards: { key: string; value: SavedBoard };
   pending: { key: number; value: PendingChange };
-  rejected: { key: number; value: RejectedChange };
 }
 
 const databases = new Map<string, Promise<IDBPDatabase<Schema>>>();
@@ -49,18 +54,28 @@ const nameFor = (userId: string) => `skipli-offline-${userId}`;
 function open(userId: string) {
   let db = databases.get(userId);
   if (!db) {
-    db = openDB<Schema>(nameFor(userId), 1, {
-      upgrade(db) {
-        db.createObjectStore("meta");
-        db.createObjectStore("boards", { keyPath: "id" });
-        db.createObjectStore("pending", {
-          keyPath: "seq",
-          autoIncrement: true,
-        });
-        db.createObjectStore("rejected", {
-          keyPath: "seq",
-          autoIncrement: true,
-        });
+    db = openDB<Schema>(nameFor(userId), 2, {
+      async upgrade(db, oldVersion, _, tx) {
+        if (oldVersion < 1) {
+          db.createObjectStore("meta");
+          db.createObjectStore("boards", { keyPath: "id" });
+          db.createObjectStore("pending", {
+            keyPath: "seq",
+            autoIncrement: true,
+          });
+          return;
+        }
+        // Version 1 kept refused changes for a review that never came, and
+        // gave pending ones no change id.
+        if (oldVersion < 2) {
+          db.deleteObjectStore("rejected" as never);
+          await tx.objectStore("meta").delete("rejectedSeen" as never);
+          let cursor = await tx.objectStore("pending").openCursor();
+          while (cursor) {
+            await cursor.update({ ...cursor.value, id: newId() });
+            cursor = await cursor.continue();
+          }
+        }
       },
     });
     databases.set(userId, db);
@@ -136,95 +151,89 @@ export async function forgetBoard(userId: string, boardId: string) {
   await (await open(userId)).delete("boards", boardId);
 }
 
-// Applies a change the server accepted, or one waiting to be sent, to the
-// saved board list, and to the saved board it creates, renames or deletes.
-export async function applyChange(me: Me, change: Change) {
-  const db = await open(me.id);
-  const tx = db.transaction(["meta", "boards"], "readwrite");
-  const meta = tx.objectStore("meta");
-  const boards = tx.objectStore("boards");
-
-  const list = (await meta.get("list")) as SavedList | undefined;
-  if (list) {
-    await meta.put({ ...list, ...applyToList(list, change, me.id) }, "list");
+// A board with a change laid on top: a Board change to its cards, or a
+// rename of it.
+export function withChange<B extends Omit<SavedBoard, "savedAt">>(
+  board: B,
+  change: Change,
+): B {
+  if (!("boardId" in change) || change.boardId !== board.id) return board;
+  if (isBoardChange(change)) {
+    return { ...board, cards: apply(board.cards, change) };
   }
-
-  if (change.type === "createBoard") {
-    await boards.put({
-      id: change.boardId,
-      name: change.name,
-      description: change.description,
-      owner: me.id,
-      members: [me],
-      cards: [],
-      savedAt: Date.now(),
-    });
-  } else if (change.type === "updateBoard") {
-    const board = await boards.get(change.boardId);
-    if (board) {
-      await boards.put({
-        ...board,
-        name: change.name,
-        description: change.description,
-      });
-    }
-  } else if (change.type === "deleteBoard") {
-    await boards.delete(change.boardId);
+  if (change.type === "updateBoard") {
+    return { ...board, name: change.name, description: change.description };
   }
-  await tx.done;
-}
-
-export async function addPending(userId: string, change: Change) {
-  await (
-    await open(userId)
-  ).add("pending", {
-    change,
-    at: Date.now(),
-  } as PendingChange);
+  return board;
 }
 
 export async function loadPending(userId: string) {
   return (await open(userId)).getAll("pending");
 }
 
-// The oldest Pending change, the next one to send.
-export async function nextPending(userId: string) {
-  const [pending] = await (await open(userId)).getAll("pending", null, 1);
-  return pending as PendingChange | undefined;
-}
+// Where one person's Pending changes are kept.
+export function pendingStore(me: Me): PendingStore {
+  return {
+    // Keeps a change and shows it in the Offline copy, both or neither.
+    async queue(change, id) {
+      const db = await open(me.id);
+      const tx = db.transaction(["pending", "meta", "boards"], "readwrite");
+      const meta = tx.objectStore("meta");
+      const boards = tx.objectStore("boards");
+      await tx.objectStore("pending").add({
+        id,
+        change,
+        at: Date.now(),
+      } as PendingChange);
 
-export async function removePending(userId: string, seq: number) {
-  await (await open(userId)).delete("pending", seq);
-}
+      const list = (await meta.get("list")) as SavedList | undefined;
+      if (list) {
+        await meta.put(
+          { ...list, ...applyToList(list, change, me.id) },
+          "list",
+        );
+      }
+      if (change.type === "createBoard") {
+        await boards.put({
+          id: change.boardId,
+          name: change.name,
+          description: change.description,
+          owner: me.id,
+          members: [me],
+          cards: [],
+          savedAt: Date.now(),
+        });
+      } else if (change.type === "deleteBoard") {
+        await boards.delete(change.boardId);
+      } else if ("boardId" in change) {
+        const board = await boards.get(change.boardId);
+        if (board) await boards.put(withChange(board, change));
+      }
+      await tx.done;
+    },
 
-export async function reject(
-  userId: string,
-  pending: PendingChange,
-  status: number,
-  message: string,
-) {
-  const db = await open(userId);
-  const tx = db.transaction(["pending", "rejected"], "readwrite");
-  await tx.objectStore("rejected").add({
-    change: pending.change,
-    status,
-    message,
-    at: Date.now(),
-  } as RejectedChange);
-  await tx.objectStore("pending").delete(pending.seq);
-  await tx.done;
-}
+    all: () => loadPending(me.id),
 
-export async function loadRejected(userId: string) {
-  return (await open(userId)).getAll("rejected");
-}
+    async remove(seq) {
+      await (await open(me.id)).delete("pending", seq);
+    },
 
-// How many Rejected changes this person has already been told about.
-export async function loadRejectedSeen(userId: string) {
-  return ((await (await open(userId)).get("meta", "rejectedSeen")) ??
-    0) as number;
-}
-
-export async function saveRejectedSeen(userId: string, seen: number) {
-  await (await open(userId)).put("meta", seen, "rejectedSeen");
+    // Discards a change, and marks what it touched as out of date.
+    async drop({ seq, change }) {
+      const db = await open(me.id);
+      const tx = db.transaction(["pending", "meta", "boards"], "readwrite");
+      await tx.objectStore("pending").delete(seq);
+      if (!isBoardChange(change)) {
+        const meta = tx.objectStore("meta");
+        const list = (await meta.get("list")) as SavedList | undefined;
+        if (list) await meta.put({ ...list, outOfDate: true }, "list");
+      }
+      if ("boardId" in change) {
+        const boards = tx.objectStore("boards");
+        const board = await boards.get(change.boardId);
+        if (board) await boards.put({ ...board, outOfDate: true });
+      }
+      await tx.done;
+    },
+  };
 }

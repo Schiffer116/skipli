@@ -5,15 +5,16 @@ import {
   setSignOutPending,
   signOutPending,
 } from "./session";
-import { isOffline, stopSync } from "./sync";
+import { isOffline } from "./network";
+import { stopPending } from "./pending";
 
 // Signs out on this device: deletes this person's Offline copy, including
-// Pending and Rejected changes (the caller confirms that first), and ends
+// Pending changes (the caller confirms that first), and ends
 // the session. Offline the server can't clear the session cookie, so that
 // is left to finishSignOut once the device is back online.
 export async function signOut() {
   const userId = activeUser();
-  stopSync();
+  stopPending();
   setActiveUser(null);
   if (userId) await deleteCopy(userId);
 

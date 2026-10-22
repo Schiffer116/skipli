@@ -8,7 +8,7 @@ import { CheckCircle2, Circle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useParams } from "react-router";
 import { BoardContext } from "../../BoardContext";
-import { useSync } from "@/offline/sync";
+import { usePending } from "@/offline/pending";
 import UnsentMark from "@/components/UnsentMark";
 
 export type TaskType = {
@@ -87,7 +87,7 @@ const TaskBody = memo(function TaskBody(
   const { id, name, description, status, listeners, cardId } = props;
   const { boardId } = useParams();
   const { readOnly, make } = useContext(BoardContext)!;
-  const unsent = useSync().pendingIds.has(id);
+  const unsent = usePending().waitingIds.has(id);
 
   const toggleStatus = () => {
     void make({

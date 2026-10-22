@@ -32,7 +32,8 @@ import {
 import { activeUser, setActiveUser } from "@/offline/session";
 import { socket } from "@/utils/socket";
 import { finishSignOut } from "@/offline/signOut";
-import { isOffline, startSync, sync } from "@/offline/sync";
+import { isOffline } from "@/offline/network";
+import { pending, startPending } from "@/offline/pending";
 
 export type Favorite = Pick<Board, "id" | "name" | "owner">;
 
@@ -115,7 +116,7 @@ async function meFromCopy(): Promise<Me> {
   const userId = activeUser();
   const me = userId && (await loadMe(userId));
   if (!me) notAvailableOffline("signed-out");
-  await startSync(me);
+  startPending(me);
   return me;
 }
 
@@ -129,7 +130,7 @@ async function meFromServer(): Promise<Me> {
   const me: Me = await res.json();
   setActiveUser(me.id);
   await saveMe(me);
-  await startSync(me);
+  startPending(me);
   return me;
 }
 
@@ -195,7 +196,7 @@ export const boardListLoader = async (): Promise<BoardListData> => {
 };
 
 async function serverBoardList(userId: string): Promise<BoardListData> {
-  await sync();
+  await pending().send();
   const res = await apiFetch("/api/boards");
 
   if (!res.ok) {
@@ -282,19 +283,20 @@ export async function boardViewLoader({
 
     // The board this device last saw shows at once, rather than waiting on
     // the server: online, the board loads again once its socket opens
-    // (useOpenBoard).
-    if (saved) return fromCopy(saved);
+    // (useOpenBoard). One a dropped change left out of date waits for the
+    // server, unless offline.
+    if (saved && (!saved.outOfDate || isOffline())) return fromCopy(saved);
 
     return await serverOrCopy(
       async () => {
         // Changes made offline go first, so the server has as many of them
         // as it can take; those it can't yet are laid on top of what it
         // answers.
-        await sync();
+        await pending().send();
         const fetchedAt = performance.now();
         return { ...fromServer(await fetchBoard(userId, boardId)), fetchedAt };
       },
-      () => notAvailableOffline("board"),
+      async () => (saved ? fromCopy(saved) : notAvailableOffline("board")),
     );
   } catch (error) {
     leaveEarly();

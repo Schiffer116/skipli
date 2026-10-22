@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { updateBoard } from "@/offline/copy";
-import { useSync } from "@/offline/sync";
+import { useOffline } from "@/offline/network";
 import { apiFetch } from "@/utils/apiFetch";
 
 import { useMe } from "../favorites";
@@ -36,7 +36,7 @@ export default function ShareDialog({
 }) {
   const me = useMe();
   // Inviting needs the server, to send the invitation email.
-  const { offline } = useSync();
+  const offline = useOffline();
   const [members, setMembers] = useState(loaded);
   // The server's members, once they come, replace the ones loaded first.
   const [shown, setShown] = useState(loaded);

@@ -3,6 +3,8 @@ import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LoaderFunctionArgs } from "react-router";
 
+import type { Change } from "@/offline/changes";
+
 const me = { id: "u1", email: "me@example.com", name: "Me" };
 
 const card = (id: string, ...taskIds: string[]) => ({
@@ -44,7 +46,6 @@ vi.mock("@/utils/apiFetch", () => ({
 // With someone signed in here, opening a board joins its socket early.
 vi.mock("@/utils/socket", () => ({
   socket: { joinEarly: () => () => {} },
-  newChangeId: () => "change",
 }));
 
 const network = { onLine: true };
@@ -57,8 +58,11 @@ vi.stubGlobal("localStorage", {
   removeItem: (key: string) => stored.delete(key),
 });
 
-const { addPending, deleteCopy, loadBoard, saveBoard, saveMe } =
+const { deleteCopy, loadBoard, pendingStore, saveBoard, saveMe } =
   await import("@/offline/copy");
+const { stopPending } = await import("@/offline/pending");
+const addPending = (change: Change) =>
+  pendingStore(me).queue(change, `change-${change.type}`);
 const { setActiveUser } = await import("@/offline/session");
 const { boardListLoader, boardsLoader, boardViewLoader, forgetMe } =
   await import("./loaders");
@@ -81,6 +85,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  stopPending();
   forgetMe();
   setActiveUser(null);
   await deleteCopy(me.id);
@@ -105,14 +110,14 @@ describe("opening a board", () => {
   });
 
   it("lays Pending changes on top of the server's board", async () => {
-    await addPending(me.id, {
+    await addPending({
       type: "createTask",
       boardId: "b1",
       cardId: "c2",
       taskId: "t2",
       name: "t2",
     });
-    await addPending(me.id, {
+    await addPending({
       type: "updateBoard",
       boardId: "b1",
       name: "Renamed offline",

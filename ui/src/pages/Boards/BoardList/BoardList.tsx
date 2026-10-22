@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
 
 import { Button } from "@/components/ui/button";
-import { useSync } from "@/offline/sync";
+import { useOffline } from "@/offline/network";
 
 import { revisionOf } from "@/utils/revision";
 
@@ -32,7 +32,7 @@ export default function BoardListRoute() {
 // list loads again when the connection comes or goes. Changes made from the
 // list are already in the Offline copy, so nothing on screen is lost.
 function useReloadOnConnectionChange(loaderData: BoardListData) {
-  const { offline } = useSync();
+  const offline = useOffline();
   const { revalidate, state } = useRevalidator();
   const loadedOffline = loaderData.offline !== undefined;
 

@@ -11,7 +11,7 @@ import { CSS } from "@dnd-kit/utilities";
 
 import { Button } from "@/components/ui/button";
 import UnsentMark from "@/components/UnsentMark";
-import { useSync } from "@/offline/sync";
+import { usePending } from "@/offline/pending";
 import {
   Card,
   CardContent,
@@ -122,7 +122,7 @@ const CardBody = memo(function CardBody(
     setCreateTaskFormId,
     setShowCreateCardForm,
   } = useContext(BoardContext)!;
-  const unsent = useSync().pendingIds.has(id);
+  const unsent = usePending().waitingIds.has(id);
 
   return (
     <Card className="bg-card gap-0 py-0 overflow-hidden">

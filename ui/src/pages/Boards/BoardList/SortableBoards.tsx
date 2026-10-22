@@ -20,7 +20,7 @@ import { CSS } from "@dnd-kit/utilities";
 
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import UnsentMark from "@/components/UnsentMark";
-import { submit, useSync } from "@/offline/sync";
+import { make, usePending } from "@/offline/pending";
 import { ago } from "@/offline/time";
 import { OwnKeyboardSensor } from "@/utils/keyboardSensor";
 
@@ -68,13 +68,11 @@ export default function SortableBoards({
     );
     setBoards(newBoards);
 
-    const saved = await submit({
+    const outcome = await make({
       type: "orderBoards",
       boardIds: newBoards.map((board) => board.id),
     });
-    if (!saved) {
-      setBoards(oldBoards);
-    }
+    if (outcome === "dropped") setBoards(oldBoards);
   };
 
   return (
@@ -113,7 +111,7 @@ type BoardTileProps = {
 function BoardTile({ board, setBoards, editable, savedAt }: BoardTileProps) {
   const navigate = useNavigate();
   const me = useMe();
-  const unsent = useSync().pendingIds.has(board.id);
+  const unsent = usePending().waitingIds.has(board.id);
 
   const {
     attributes,

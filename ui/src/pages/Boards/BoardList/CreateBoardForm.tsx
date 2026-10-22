@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import type { Board } from "./BoardList";
 import useEscape from "@/hooks/useEscape";
 import { newId } from "@/offline/ids";
-import { submit } from "@/offline/sync";
+import { make } from "@/offline/pending";
 import { useMe } from "../favorites";
 
 type BoardFormProps = {
@@ -29,9 +29,13 @@ export default function CreateBoardForm(props: BoardFormProps) {
     }
 
     const boardId = newId();
-    if (!(await submit({ type: "createBoard", boardId, name, description }))) {
-      return;
-    }
+    const outcome = await make({
+      type: "createBoard",
+      boardId,
+      name,
+      description,
+    });
+    if (outcome === "dropped") return;
 
     const newBoard: Board = {
       id: boardId,

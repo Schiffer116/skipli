@@ -25,8 +25,9 @@ vi.stubGlobal("window", new EventTarget());
 
 const { deleteCopy, loadBoard, loadPending, saveBoard } =
   await import("@/offline/copy");
-const { setOnRefused, startSync, stopSync, sync } =
-  await import("@/offline/sync");
+const { pending, startPending, stopPending } =
+  await import("@/offline/pending");
+const sync = () => pending().send();
 const { openBoard } = await import("./board");
 
 const me = { id: "u1", email: "me@example.com", name: "Me" };
@@ -62,14 +63,10 @@ const socket = await vi.hoisted(async () => {
         socket.early = null;
         return early;
       },
-      newChangeId: () => "id",
     },
   };
 });
-vi.mock("@/utils/socket", () => ({
-  socket: socket.module,
-  newChangeId: socket.module.newChangeId,
-}));
+vi.mock("@/utils/socket", () => ({ socket: socket.module }));
 
 const loaded: CardType[] = [
   { id: "c1", name: "Todo", description: "", tasks: [] },
@@ -99,15 +96,13 @@ let serverCards = loaded;
 const reload = vi.fn(async () => serverCards);
 let board: ReturnType<typeof openBoard>;
 let stop: () => void;
-const refused = vi.fn();
 
 beforeEach(async () => {
   fetches.length = 0;
   answer = () => 200;
   network.onLine = true;
-  refused.mockClear();
-  setOnRefused(refused);
-  await startSync(me);
+  startPending(me);
+  await pending().settled();
   serverCards = loaded;
   reload.mockClear();
   socket.openedAt = undefined;
@@ -118,7 +113,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   stop();
-  stopSync();
+  stopPending();
   await deleteCopy(me.id);
 });
 
@@ -156,7 +151,7 @@ describe("make", () => {
 
     expect(taskIds(board.cards())).toEqual(["t1"]);
     expect(await loadPending(me.id)).toHaveLength(1);
-    expect(refused).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
 
     // Later changes wait behind it, so they still arrive in order.
     answer = () => 200;
@@ -167,12 +162,31 @@ describe("make", () => {
     ).toEqual(["t1", "t2"]);
   });
 
-  it("reloads the board and says so when the server refuses", async () => {
+  it("catches up with the server when the change is dropped", async () => {
     answer = () => 404;
     await board.make(createTask("t1"));
 
-    expect(refused).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(taskIds(board.cards())).toEqual([]));
+    expect(reload).toHaveBeenCalledOnce();
     expect(await loadPending(me.id)).toEqual([]);
+  });
+
+  it("catches up when a change that waited is dropped later", async () => {
+    network.onLine = false;
+    await board.make(createTask("t1"));
+    expect(reload).not.toHaveBeenCalled();
+
+    answer = () => 404;
+    network.onLine = true;
+    await sync();
+    await vi.waitFor(() => expect(taskIds(board.cards())).toEqual([]));
+  });
+
+  it("leaves other boards' drops alone", async () => {
+    answer = () => 404;
+    await board.make({ ...createTask("t1"), boardId: "b2" });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(reload).not.toHaveBeenCalled();
   });
 
   it("sends changes in the order they were made", async () => {
