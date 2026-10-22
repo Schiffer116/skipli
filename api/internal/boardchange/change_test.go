@@ -3,6 +3,7 @@ package boardchange
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -178,5 +179,118 @@ func TestChangesAreSentOnInTheShapeTheAppUses(t *testing.T) {
 		if string(wantJSON) != string(gotJSON) {
 			t.Errorf("got %s, want %s", gotJSON, wantJSON)
 		}
+	}
+}
+
+// deleteFake serves a card holding the given task keys across pages of
+// pageSize, and records how the writes arrive. unprocessed makes the first
+// BatchWriteItem leave its last request undone.
+func deleteFake(t *testing.T, tasks, pageSize int, unprocessed bool) *awsfake.Server {
+	left := true
+	return awsfake.New(t, func(op string, body map[string]any) (int, any) {
+		switch op {
+		case "Query":
+			start := 0
+			if key, ok := body["ExclusiveStartKey"].(map[string]any); ok {
+				fmt.Sscanf(key["SK"].(map[string]any)["S"].(string), "TASK#c1#%d", &start)
+				start++
+			}
+			end := min(start+pageSize, tasks)
+			items := []any{}
+			for i := start; i < end; i++ {
+				items = append(items, map[string]any{"SK": map[string]any{"S": fmt.Sprintf("TASK#c1#%d", i)}})
+			}
+			out := map[string]any{"Items": items}
+			if end < tasks {
+				out["LastEvaluatedKey"] = map[string]any{
+					"PK": map[string]any{"S": "b1"},
+					"SK": map[string]any{"S": fmt.Sprintf("TASK#c1#%d", end-1)},
+				}
+			}
+			return 200, out
+		case "BatchWriteItem":
+			reqs := body["RequestItems"].(map[string]any)["Skipli"].([]any)
+			if unprocessed && left {
+				left = false
+				return 200, map[string]any{"UnprocessedItems": map[string]any{"Skipli": reqs[len(reqs)-1:]}}
+			}
+		}
+		return 200, map[string]any{}
+	})
+}
+
+func deleteCard(t *testing.T, fake *awsfake.Server) error {
+	return NewStore(fake.DynamoDB(), "Skipli").Apply(context.Background(),
+		Change{Type: "deleteCard", BoardID: "b1", CardID: "c1"})
+}
+
+func TestDeleteCardWithManyTasksDeletesThemInBatchesThenTheCard(t *testing.T) {
+	fake := deleteFake(t, 130, 50, false)
+	if err := deleteCard(t, fake); err != nil {
+		t.Fatal(err)
+	}
+
+	if calls := fake.Calls("TransactWriteItems"); len(calls) != 0 {
+		t.Errorf("got %d transactions, want none", len(calls))
+	}
+	deleted := map[string]bool{}
+	for _, call := range fake.Calls("BatchWriteItem") {
+		reqs := call.Body["RequestItems"].(map[string]any)["Skipli"].([]any)
+		if len(reqs) > 25 {
+			t.Errorf("batch of %d, want at most 25", len(reqs))
+		}
+		for _, r := range reqs {
+			key := r.(map[string]any)["DeleteRequest"].(map[string]any)["Key"].(map[string]any)
+			deleted[key["SK"].(map[string]any)["S"].(string)] = true
+		}
+	}
+	if len(deleted) != 130 {
+		t.Errorf("deleted %d tasks, want 130", len(deleted))
+	}
+
+	calls := fake.Calls()
+	last := calls[len(calls)-1]
+	if last.Op != "DeleteItem" {
+		t.Fatalf("last call is %s, want DeleteItem of the card", last.Op)
+	}
+	if sk := last.Body["Key"].(map[string]any)["SK"].(map[string]any)["S"]; sk != "CARD#c1" {
+		t.Errorf("deleted %v, want CARD#c1", sk)
+	}
+}
+
+func TestDeleteCardRetriesWhatDynamoDBLeavesUnprocessed(t *testing.T) {
+	fake := deleteFake(t, 10, 100, true)
+	if err := deleteCard(t, fake); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(fake.Calls("BatchWriteItem")); got != 2 {
+		t.Errorf("got %d batch writes, want 2", got)
+	}
+}
+
+func TestDeleteCardThatIsGoneIsDeleted(t *testing.T) {
+	fake := deleteFake(t, 0, 100, false)
+	if err := deleteCard(t, fake); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(fake.Calls("BatchWriteItem")); got != 0 {
+		t.Errorf("got %d batch writes, want none", got)
+	}
+}
+
+func TestDeleteCardKeepsTheCardWhenATaskBatchFails(t *testing.T) {
+	fake := awsfake.New(t, func(op string, _ map[string]any) (int, any) {
+		switch op {
+		case "Query":
+			return 200, map[string]any{"Items": []any{map[string]any{"SK": map[string]any{"S": "TASK#c1#1"}}}}
+		case "BatchWriteItem":
+			return 500, map[string]any{"__type": "InternalServerError", "message": "boom"}
+		}
+		return 200, map[string]any{}
+	})
+	err := deleteCard(t, fake)
+	wantStatus(t, err, http.StatusInternalServerError, "")
+	if calls := fake.Calls("DeleteItem"); len(calls) != 0 {
+		t.Errorf("card deleted although its tasks were not")
 	}
 }
