@@ -39,13 +39,18 @@ export default function Task(props: TaskType) {
     opacity: isDragging ? 0.5 : 1,
   };
 
+  // The keyboard picks it up where focus is, on the whole task; a pointer,
+  // by its name.
+  const { onKeyDown, ...pointer } = listeners ?? {};
+
   return (
     <DummyTask
       ref={setNodeRef}
       style={style}
       {...props}
       {...attributes}
-      listeners={listeners}
+      onKeyDown={onKeyDown as React.KeyboardEventHandler<HTMLDivElement>}
+      listeners={pointer}
     />
   );
 }
