@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -195,6 +196,10 @@ const batchSize = 25
 // queue retries the whole delete after that.
 const maxBatchAttempts = 5
 
+// retryDelay is the wait before the first retry of unprocessed items; it
+// doubles with each one, as AWS advises when DynamoDB is throttling.
+const retryDelay = 50 * time.Millisecond
+
 // deleteCard deletes the card's tasks in batches, then the card. It isn't
 // atomic, which the 100-item transaction limit would make it for small cards
 // only: a crash midway leaves a card with some tasks gone, and the retry
@@ -246,6 +251,13 @@ func (s *Store) deleteTasks(ctx context.Context, boardID string, tasks []map[str
 	for attempt := 0; len(requests) > 0; attempt++ {
 		if attempt == maxBatchAttempts {
 			return fmt.Errorf("deleting tasks: %d still unprocessed", len(requests))
+		}
+		if attempt > 0 {
+			select {
+			case <-time.After(retryDelay << (attempt - 1)):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 		}
 		out, err := s.db.BatchWriteItem(ctx, &dynamodb.BatchWriteItemInput{
 			RequestItems: map[string][]types.WriteRequest{s.table: requests},
