@@ -2,7 +2,8 @@
 // only export components and stay hot-reloadable.
 //
 // Online they load from the server and keep what they load in the Offline
-// copy; offline (the browser says so) they read the Offline copy instead.
+// copy; offline (the browser says so), or when the server doesn't answer at
+// all, they read the Offline copy instead.
 import {
   data,
   redirect,
@@ -11,6 +12,7 @@ import {
 } from "react-router";
 
 import { throwIfNotOk } from "@/utils/throwIfNotOk";
+import { isUnreachable } from "@/utils/unreachable";
 
 import type { Board } from "./BoardList/BoardList";
 import type { CardType } from "./Board/Card";
@@ -70,12 +72,30 @@ async function withPending(userId: string, list: BoardList, me: string) {
   );
 }
 
+// Loads from the server, or from the Offline copy when offline or when the
+// server doesn't answer at all: phones often say they're online with no
+// connection to speak of (a weak signal, a Wi-Fi without internet). A
+// server that answers with an error is still an error.
+async function serverOrCopy<T>(
+  server: () => Promise<T>,
+  copy: () => Promise<T>,
+): Promise<T> {
+  if (isOffline()) return copy();
+  try {
+    return await server();
+  } catch (error) {
+    if (isUnreachable(error)) return copy();
+    throw error;
+  }
+}
+
 let signedIn: Promise<Me> | null = null;
 
 // Who is signed in, asked once and shared by every loader: the router runs
 // parent and child loaders at the same time, so none can rely on another
 // having found out first. Online it asks the server and starts syncing
-// that person's Pending changes; offline it trusts the Offline copy.
+// that person's Pending changes; without an answer it trusts the Offline
+// copy.
 function getMe(): Promise<Me> {
   signedIn ??= findMe().catch((error) => {
     signedIn = null;
@@ -89,15 +109,17 @@ export function forgetMe() {
   signedIn = null;
 }
 
-async function findMe(): Promise<Me> {
-  if (isOffline()) {
-    const userId = activeUser();
-    const me = userId && (await loadMe(userId));
-    if (!me) notAvailableOffline("signed-out");
-    await startSync(me);
-    return me;
-  }
+const findMe = () => serverOrCopy(meFromServer, meFromCopy);
 
+async function meFromCopy(): Promise<Me> {
+  const userId = activeUser();
+  const me = userId && (await loadMe(userId));
+  if (!me) notAvailableOffline("signed-out");
+  await startSync(me);
+  return me;
+}
+
+async function meFromServer(): Promise<Me> {
   if (await finishSignOut()) throw redirect("/login");
 
   const res = await apiFetch("/api/me");
@@ -123,28 +145,32 @@ export const boardsShouldRevalidate: ShouldRevalidateFunction = ({
 
 export async function boardsLoader() {
   const me = await getMe();
-  boardsLoadedOffline = isOffline();
-  if (boardsLoadedOffline) {
-    // Only boards on this device can be opened offline.
-    const [list, saved] = await Promise.all([
-      loadList(me.id),
-      loadBoards(me.id),
-    ]);
-    const onDevice = new Set(saved.map((board) => board.id));
-    const favorites = list ? favoritesOf(list) : [];
-    return {
-      me,
-      favorites: favorites.filter((favorite) => onDevice.has(favorite.id)),
-    };
-  }
+  return serverOrCopy(
+    async () => {
+      const res = await apiFetch("/api/boards");
+      if (res.status === 401) throw redirect("/login");
+      throwIfNotOk(res);
 
-  const res = await apiFetch("/api/boards");
-  if (res.status === 401) throw redirect("/login");
-  throwIfNotOk(res);
-
-  const list = await withPending(me.id, await res.json(), me.id);
-  await saveList(me.id, list);
-  return { me, favorites: favoritesOf(list) };
+      const list = await withPending(me.id, await res.json(), me.id);
+      await saveList(me.id, list);
+      boardsLoadedOffline = false;
+      return { me, favorites: favoritesOf(list) };
+    },
+    async () => {
+      // Only boards on this device can be opened offline.
+      const [list, saved] = await Promise.all([
+        loadList(me.id),
+        loadBoards(me.id),
+      ]);
+      const onDevice = new Set(saved.map((board) => board.id));
+      const favorites = list ? favoritesOf(list) : [];
+      boardsLoadedOffline = true;
+      return {
+        me,
+        favorites: favorites.filter((favorite) => onDevice.has(favorite.id)),
+      };
+    },
+  );
 }
 
 export type BoardListData = {
@@ -162,16 +188,21 @@ export type BoardListData = {
 
 export const boardListLoader = async (): Promise<BoardListData> => {
   const me = await getMe();
-  if (isOffline()) return offlineBoardList(me.id);
+  return serverOrCopy(
+    () => serverBoardList(me.id),
+    () => offlineBoardList(me.id),
+  );
+};
 
+async function serverBoardList(userId: string): Promise<BoardListData> {
   await sync();
   const res = await apiFetch("/api/boards");
 
   if (!res.ok) {
     throw redirect("/login");
   }
-  const list = await withPending(me.id, await res.json(), me.id);
-  await saveList(me.id, list);
+  const list = await withPending(userId, await res.json(), userId);
+  await saveList(userId, list);
   const boardIds = list.boards.map((board: Board) => board.id);
 
   return {
@@ -180,7 +211,7 @@ export const boardListLoader = async (): Promise<BoardListData> => {
       (board: Board) => !boardIds.includes(board.id),
     ),
   };
-};
+}
 
 async function offlineBoardList(userId: string): Promise<BoardListData> {
   const [list, saved] = await Promise.all([
@@ -253,13 +284,18 @@ export async function boardViewLoader({
     // the server: online, the board loads again once its socket opens
     // (useOpenBoard).
     if (saved) return fromCopy(saved);
-    if (isOffline()) notAvailableOffline("board");
 
-    // Changes made offline go first, so the server has as many of them as
-    // it can take; those it can't yet are laid on top of what it answers.
-    await sync();
-    const fetchedAt = performance.now();
-    return { ...fromServer(await fetchBoard(userId, boardId)), fetchedAt };
+    return await serverOrCopy(
+      async () => {
+        // Changes made offline go first, so the server has as many of them
+        // as it can take; those it can't yet are laid on top of what it
+        // answers.
+        await sync();
+        const fetchedAt = performance.now();
+        return { ...fromServer(await fetchBoard(userId, boardId)), fetchedAt };
+      },
+      () => notAvailableOffline("board"),
+    );
   } catch (error) {
     leaveEarly();
     throw error;

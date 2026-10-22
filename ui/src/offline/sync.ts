@@ -15,8 +15,9 @@ import {
   removePending,
 } from "./copy";
 
-// Offline means the browser says so, nothing else: a server that can't be
-// reached while the browser is online is an error, not offline mode.
+// Offline means the browser says so. A server that can't be reached while
+// the browser is online keeps changes waiting all the same, and loaders
+// read the Offline copy then too.
 export const isOffline = () => !navigator.onLine;
 
 type SyncState = {
