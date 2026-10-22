@@ -2,7 +2,7 @@ package realtime
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -77,23 +77,25 @@ func (h *Handler) serveLocal(w http.ResponseWriter, req *http.Request, limits Li
 		h.send(context.WithoutCancel(ctx), boardID, presence(h.Present(context.WithoutCancel(ctx), boardID)), "")
 	}()
 
-	lifetime, cancel := context.WithTimeout(ctx, limits.Lifetime)
-	defer cancel()
+	// API Gateway closes a connection that's idle or at the end of its
+	// lifetime with 1001 Going Away. A read that times out would drop the
+	// line without a close frame instead (1006), so timers close it.
+	goAway := func(why string) func() {
+		return func() {
+			log.Print(why)
+			conn.Close(websocket.StatusGoingAway, "Going away")
+		}
+	}
+	lifetime := time.AfterFunc(limits.Lifetime, goAway(fmt.Sprintf("closed a board socket at the end of its %v lifetime", limits.Lifetime)))
+	defer lifetime.Stop()
+	idle := time.AfterFunc(limits.Idle, goAway(fmt.Sprintf("closed a board socket idle for %v", limits.Idle)))
+	defer idle.Stop()
 	for {
-		// A read that times out closes the connection, as API Gateway does
-		// once the connection is idle or at the end of its lifetime. What
-		// the app sends is only a keepalive, so it's read and dropped.
-		read, cancelRead := context.WithTimeout(lifetime, limits.Idle)
-		_, _, err := conn.Read(read)
-		cancelRead()
-		if err != nil {
-			if errors.Is(lifetime.Err(), context.DeadlineExceeded) {
-				log.Printf("closed a board socket at the end of its %v lifetime", limits.Lifetime)
-			} else if errors.Is(read.Err(), context.DeadlineExceeded) {
-				log.Printf("closed a board socket idle for %v", limits.Idle)
-			}
+		// What the app sends is only a keepalive, so it's read and dropped.
+		if _, _, err := conn.Read(ctx); err != nil {
 			return
 		}
+		idle.Reset(limits.Idle)
 	}
 }
 
