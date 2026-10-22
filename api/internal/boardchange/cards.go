@@ -2,8 +2,11 @@ package boardchange
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -186,9 +189,21 @@ func (s *Store) moveCard(ctx context.Context, c Change) error {
 		expression.Set(expression.Name("Order"), expression.Value(order)), "card not found")
 }
 
-// deleteCard cascades to the card's tasks, all in one transaction so a card
-// can't be left half-deleted (tasks gone but card still there, or vice
-// versa). Caps out at DynamoDB's 100-items-per-transaction limit.
+// batchSize is DynamoDB's limit on items in one BatchWriteItem.
+const batchSize = 25
+
+// maxBatchAttempts bounds the retries for unprocessed items; the change
+// queue retries the whole delete after that.
+const maxBatchAttempts = 5
+
+// retryDelay is the wait before the first retry of unprocessed items; it
+// doubles with each one, as AWS advises when DynamoDB is throttling.
+const retryDelay = 50 * time.Millisecond
+
+// deleteCard deletes the card's tasks in batches, then the card. It isn't
+// atomic, which the 100-item transaction limit would make it for small cards
+// only: a crash midway leaves a card with some tasks gone, and the retry
+// finishes the job. A card that is already gone counts as deleted.
 func (s *Store) deleteCard(ctx context.Context, c Change) error {
 	keyEx := expression.Key("PK").Equal(expression.Value(c.BoardID)).
 		And(expression.Key("SK").BeginsWith(taskPrefix(c.CardID)))
@@ -197,29 +212,60 @@ func (s *Store) deleteCard(ctx context.Context, c Change) error {
 		return err
 	}
 
-	tasks, err := s.db.Query(ctx, &dynamodb.QueryInput{
+	pages := dynamodb.NewQueryPaginator(s.db, &dynamodb.QueryInput{
 		TableName:                 aws.String(s.table),
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
 		KeyConditionExpression:    expr.KeyCondition(),
 		ProjectionExpression:      aws.String("SK"),
 	})
-	if err != nil {
-		return err
+	for pages.HasMorePages() {
+		page, err := pages.NextPage(ctx)
+		if err != nil {
+			return err
+		}
+		for batch := range slices.Chunk(page.Items, batchSize) {
+			if err := s.deleteTasks(ctx, c.BoardID, batch); err != nil {
+				return err
+			}
+		}
 	}
 
-	items := make([]types.TransactWriteItem, 0, len(tasks.Items)+1)
-	for _, task := range tasks.Items {
-		items = append(items, types.TransactWriteItem{Delete: &types.Delete{
-			TableName: aws.String(s.table),
-			Key:       map[string]types.AttributeValue{"PK": &types.AttributeValueMemberS{Value: c.BoardID}, "SK": task["SK"]},
-		}})
-	}
-	items = append(items, types.TransactWriteItem{Delete: &types.Delete{
+	_, err = s.db.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: aws.String(s.table),
 		Key:       access.Key(c.BoardID, cardSK(c.CardID)),
-	}})
-
-	_, err = s.db.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: items})
+	})
 	return err
+}
+
+// deleteTasks deletes the tasks whose keys are given, trying again for those
+// DynamoDB leaves unprocessed.
+func (s *Store) deleteTasks(ctx context.Context, boardID string, tasks []map[string]types.AttributeValue) error {
+	requests := make([]types.WriteRequest, 0, len(tasks))
+	for _, task := range tasks {
+		requests = append(requests, types.WriteRequest{DeleteRequest: &types.DeleteRequest{
+			Key: map[string]types.AttributeValue{"PK": &types.AttributeValueMemberS{Value: boardID}, "SK": task["SK"]},
+		}})
+	}
+
+	for attempt := 0; len(requests) > 0; attempt++ {
+		if attempt == maxBatchAttempts {
+			return fmt.Errorf("deleting tasks: %d still unprocessed", len(requests))
+		}
+		if attempt > 0 {
+			select {
+			case <-time.After(retryDelay << (attempt - 1)):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+		out, err := s.db.BatchWriteItem(ctx, &dynamodb.BatchWriteItemInput{
+			RequestItems: map[string][]types.WriteRequest{s.table: requests},
+		})
+		if err != nil {
+			return err
+		}
+		requests = out.UnprocessedItems[s.table]
+	}
+	return nil
 }
