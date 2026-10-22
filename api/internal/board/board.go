@@ -277,7 +277,7 @@ func (h *Handler) list(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// The Member index is KEYS_ONLY, so it only gives back which boards this
-	// member belongs to — fetch each board's META item for the full data, and
+	// member belongs to: fetch each board's META item for the full data, and
 	// the caller's own MEMBER# item for their Order. BatchGetItem caps at 100
 	// keys per call (so 50 boards, at two keys each) and can return
 	// UnprocessedKeys under throttling; neither is handled here yet.
@@ -635,9 +635,11 @@ func (h *Handler) deleteItems(ctx context.Context, builder expression.Builder) e
 	return nil
 }
 
+// PutBoardRequest carries only the fields changed, so a rename and a
+// teammate's new description both survive.
 type PutBoardRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	Name        *string `json:"name"`
+	Description *string `json:"description"`
 }
 
 func (h *Handler) put(w http.ResponseWriter, req *http.Request) {
@@ -653,22 +655,32 @@ func (h *Handler) put(w http.ResponseWriter, req *http.Request) {
 	}
 	defer req.Body.Close()
 
-	_, err := h.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+	var update expression.UpdateBuilder
+	for name, value := range map[string]*string{"Name": r.Name, "Description": r.Description} {
+		if value != nil {
+			update = update.Set(expression.Name(name), expression.Value(*value))
+		}
+	}
+	if r.Name == nil && r.Description == nil {
+		http.Error(w, "nothing to update", http.StatusBadRequest)
+		return
+	}
+	expr, err := expression.NewBuilder().WithUpdate(update).Build()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	_, err = h.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName: aws.String(h.table),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: id},
 			"SK": &types.AttributeValueMemberS{Value: "META"},
 		},
-		UpdateExpression: aws.String("SET #name = :name, #description = :description"),
-		ExpressionAttributeNames: map[string]string{
-			"#name":        "Name",
-			"#description": "Description",
-		},
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":name":        &types.AttributeValueMemberS{Value: r.Name},
-			":description": &types.AttributeValueMemberS{Value: r.Description},
-		},
-		ConditionExpression: aws.String("attribute_exists(SK)"),
+		UpdateExpression:          expr.Update(),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		ConditionExpression:       aws.String("attribute_exists(SK)"),
 	})
 	var missing *types.ConditionalCheckFailedException
 	if errors.As(err, &missing) {

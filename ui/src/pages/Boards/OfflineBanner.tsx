@@ -22,7 +22,7 @@ export default function OfflineBanner() {
       {offline ? (
         <Bar Icon={CloudOff}>
           You're offline. {queued > 0 && `${changes(queued)} waiting to sync. `}
-          Boards shared with others are read-only until you reconnect.
+          Changes you make will sync when you reconnect.
         </Bar>
       ) : paused ? (
         <Bar Icon={LogIn} tone="warning">

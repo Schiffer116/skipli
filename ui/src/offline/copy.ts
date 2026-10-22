@@ -6,6 +6,7 @@ import type { Me, Member } from "@/pages/Boards/loaders";
 
 import {
   applyToList,
+  fields,
   isBoardChange,
   type BoardList,
   type Change,
@@ -54,7 +55,7 @@ const nameFor = (userId: string) => `skipli-offline-${userId}`;
 function open(userId: string) {
   let db = databases.get(userId);
   if (!db) {
-    db = openDB<Schema>(nameFor(userId), 2, {
+    db = openDB<Schema>(nameFor(userId), 3, {
       async upgrade(db, oldVersion, _, tx) {
         if (oldVersion < 1) {
           db.createObjectStore("meta");
@@ -73,6 +74,19 @@ function open(userId: string) {
           let cursor = await tx.objectStore("pending").openCursor();
           while (cursor) {
             await cursor.update({ ...cursor.value, id: newId() });
+            cursor = await cursor.continue();
+          }
+        }
+        // Version 2's clean ups deleted whatever was done on the server when
+        // they arrived; one now names the tasks it deletes. Which tasks an
+        // old one saw is lost, so it is discarded.
+        if (oldVersion < 3) {
+          let cursor = await tx.objectStore("pending").openCursor();
+          while (cursor) {
+            const { change } = cursor.value;
+            if (change.type === "cleanUp" && !change.taskIds) {
+              await cursor.delete();
+            }
             cursor = await cursor.continue();
           }
         }
@@ -162,7 +176,7 @@ export function withChange<B extends Omit<SavedBoard, "savedAt">>(
     return { ...board, cards: apply(board.cards, change) };
   }
   if (change.type === "updateBoard") {
-    return { ...board, name: change.name, description: change.description };
+    return { ...board, ...fields(change) };
   }
   return board;
 }

@@ -1,0 +1,2281 @@
+{
+  "comment": "Every Board change's result, for both the app's reducer (ui/src/board/apply.ts, run by apply.test.ts) and the server (api/internal/boardchange, run by table_test.go), so they can't drift. Each case applies change to before (the board below when absent) and gives the board after, or dropped when the server refuses it and the app drops it. Tasks are listed in their cards.",
+  "board": [
+    {
+      "id": "c1",
+      "name": "Launch",
+      "description": "Q4",
+      "tasks": [
+        {
+          "id": "t1",
+          "name": "Write copy",
+          "description": "",
+          "status": "pending"
+        },
+        {
+          "id": "t2",
+          "name": "Fix bug",
+          "description": "",
+          "status": "done"
+        },
+        {
+          "id": "t3",
+          "name": "Ship",
+          "description": "",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "c2",
+      "name": "Later",
+      "description": "",
+      "tasks": [
+        {
+          "id": "t4",
+          "name": "Plan",
+          "description": "",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "c3",
+      "name": "Ideas",
+      "description": "",
+      "tasks": []
+    }
+  ],
+  "cases": [
+    {
+      "name": "createCard adds the card at the end",
+      "change": {
+        "type": "createCard",
+        "cardId": "c0000000-0000-4000-8000-000000000001",
+        "name": "Bugs",
+        "createdAt": "2026-10-22T00:00:00Z"
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        },
+        {
+          "id": "c0000000-0000-4000-8000-000000000001",
+          "name": "Bugs",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "name": "createCard of an id the board has is already saved",
+      "before": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        },
+        {
+          "id": "c0000000-0000-4000-8000-000000000001",
+          "name": "Bugs",
+          "description": "",
+          "tasks": []
+        }
+      ],
+      "change": {
+        "type": "createCard",
+        "cardId": "c0000000-0000-4000-8000-000000000001",
+        "name": "Bugs again",
+        "createdAt": "2026-10-22T00:00:00Z"
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        },
+        {
+          "id": "c0000000-0000-4000-8000-000000000001",
+          "name": "Bugs",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "name": "updateCard of the name keeps the description",
+      "change": {
+        "type": "updateCard",
+        "cardId": "c1",
+        "name": "Go live"
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Go live",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "name": "updateCard of the description keeps the name",
+      "change": {
+        "type": "updateCard",
+        "cardId": "c1",
+        "description": "Next week"
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Next week",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "name": "updateCard of a deleted card is dropped",
+      "change": {
+        "type": "updateCard",
+        "cardId": "gone",
+        "name": "Go live"
+      },
+      "after": "dropped"
+    },
+    {
+      "name": "updateCard that changes nothing is dropped",
+      "change": {
+        "type": "updateCard",
+        "cardId": "c1"
+      },
+      "after": "dropped"
+    },
+    {
+      "name": "deleteCard deletes the card and its tasks",
+      "change": {
+        "type": "deleteCard",
+        "cardId": "c1"
+      },
+      "after": [
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "name": "deleteCard of a deleted card changes nothing",
+      "change": {
+        "type": "deleteCard",
+        "cardId": "gone"
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "name": "moveCard goes right after the card before it",
+      "change": {
+        "type": "moveCard",
+        "cardId": "c3",
+        "beforeId": "c1",
+        "afterId": "c2"
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "moveCard to the end",
+      "change": {
+        "type": "moveCard",
+        "cardId": "c1",
+        "beforeId": "c3",
+        "afterId": null
+      },
+      "after": [
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        },
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "moveCard to the start",
+      "change": {
+        "type": "moveCard",
+        "cardId": "c3",
+        "beforeId": null,
+        "afterId": "c1"
+      },
+      "after": [
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        },
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "moveCard whose card before was deleted goes right before the card after it",
+      "change": {
+        "type": "moveCard",
+        "cardId": "c1",
+        "beforeId": "gone",
+        "afterId": "c3"
+      },
+      "after": [
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "name": "moveCard whose neighbours were both deleted goes to the end",
+      "change": {
+        "type": "moveCard",
+        "cardId": "c1",
+        "beforeId": "gone",
+        "afterId": "gone too"
+      },
+      "after": [
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        },
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "moveCard with no neighbours goes to the end",
+      "change": {
+        "type": "moveCard",
+        "cardId": "c1",
+        "beforeId": null,
+        "afterId": null
+      },
+      "after": [
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        },
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "moveCard goes right after the card before it, even when a teammate moved another card in between",
+      "before": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        },
+        {
+          "id": "c4",
+          "name": "Done",
+          "description": "",
+          "tasks": []
+        }
+      ],
+      "change": {
+        "type": "moveCard",
+        "cardId": "c4",
+        "beforeId": "c1",
+        "afterId": "c3"
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c4",
+          "name": "Done",
+          "description": "",
+          "tasks": []
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "name": "moveCard of a deleted card is dropped",
+      "change": {
+        "type": "moveCard",
+        "cardId": "gone",
+        "beforeId": "c1",
+        "afterId": null
+      },
+      "after": "dropped"
+    },
+    {
+      "name": "createTask adds the task at the end of its card",
+      "change": {
+        "type": "createTask",
+        "cardId": "c2",
+        "taskId": "70000000-0000-4000-8000-000000000001",
+        "name": "Hire"
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "70000000-0000-4000-8000-000000000001",
+              "name": "Hire",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "name": "createTask in a deleted card is dropped",
+      "change": {
+        "type": "createTask",
+        "cardId": "gone",
+        "taskId": "70000000-0000-4000-8000-000000000001",
+        "name": "Hire"
+      },
+      "after": "dropped"
+    },
+    {
+      "name": "createTask of an id the board has is already saved",
+      "before": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "70000000-0000-4000-8000-000000000001",
+              "name": "Hire",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ],
+      "change": {
+        "type": "createTask",
+        "cardId": "c2",
+        "taskId": "70000000-0000-4000-8000-000000000001",
+        "name": "Hire again"
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "70000000-0000-4000-8000-000000000001",
+              "name": "Hire",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "name": "createTask of an id a teammate has since moved to another card is already saved",
+      "before": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "70000000-0000-4000-8000-000000000001",
+              "name": "Hire",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ],
+      "change": {
+        "type": "createTask",
+        "cardId": "c1",
+        "taskId": "70000000-0000-4000-8000-000000000001",
+        "name": "Hire"
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "70000000-0000-4000-8000-000000000001",
+              "name": "Hire",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "name": "updateTask of the status keeps the name and description",
+      "change": {
+        "type": "updateTask",
+        "cardId": "c1",
+        "taskId": "t1",
+        "status": "done"
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "name": "updateTask of the name and description keeps the status",
+      "change": {
+        "type": "updateTask",
+        "cardId": "c1",
+        "taskId": "t2",
+        "name": "Fix the bug",
+        "description": "Login"
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix the bug",
+              "description": "Login",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "name": "updateTask finds a task a teammate moved to another card",
+      "change": {
+        "type": "updateTask",
+        "cardId": "c1",
+        "taskId": "t4",
+        "status": "done"
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "done"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "name": "updateTask of a deleted task is dropped",
+      "change": {
+        "type": "updateTask",
+        "cardId": "c1",
+        "taskId": "gone",
+        "status": "done"
+      },
+      "after": "dropped"
+    },
+    {
+      "name": "updateTask that changes nothing is dropped",
+      "change": {
+        "type": "updateTask",
+        "cardId": "c1",
+        "taskId": "t1"
+      },
+      "after": "dropped"
+    },
+    {
+      "name": "deleteTask deletes the task",
+      "change": {
+        "type": "deleteTask",
+        "cardId": "c1",
+        "taskId": "t2"
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "name": "deleteTask finds a task a teammate moved to another card",
+      "change": {
+        "type": "deleteTask",
+        "cardId": "c1",
+        "taskId": "t4"
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": []
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "name": "deleteTask of a deleted task changes nothing",
+      "change": {
+        "type": "deleteTask",
+        "cardId": "c1",
+        "taskId": "gone"
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "name": "moveTask within its card",
+      "change": {
+        "type": "moveTask",
+        "cardId": "c1",
+        "taskId": "t3",
+        "newCardId": "c1",
+        "beforeId": null,
+        "afterId": "t1"
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "name": "moveTask to another card",
+      "change": {
+        "type": "moveTask",
+        "cardId": "c1",
+        "taskId": "t3",
+        "newCardId": "c2",
+        "beforeId": "t4",
+        "afterId": null
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "name": "moveTask whose task before was deleted goes right before the task after it",
+      "change": {
+        "type": "moveTask",
+        "cardId": "c1",
+        "taskId": "t1",
+        "newCardId": "c2",
+        "beforeId": "gone",
+        "afterId": "t4"
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "name": "moveTask whose neighbours were both deleted goes to the end of the card",
+      "change": {
+        "type": "moveTask",
+        "cardId": "c1",
+        "taskId": "t1",
+        "newCardId": "c2",
+        "beforeId": "gone",
+        "afterId": "gone too"
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "name": "moveTask whose neighbour was moved to another card goes to the end of the card",
+      "change": {
+        "type": "moveTask",
+        "cardId": "c1",
+        "taskId": "t1",
+        "newCardId": "c1",
+        "beforeId": "t4",
+        "afterId": null
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "name": "moveTask to an empty card",
+      "change": {
+        "type": "moveTask",
+        "cardId": "c1",
+        "taskId": "t1",
+        "newCardId": "c3",
+        "beforeId": null,
+        "afterId": null
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "moveTask from a card other than the one a teammate moved it to",
+      "change": {
+        "type": "moveTask",
+        "cardId": "c1",
+        "taskId": "t4",
+        "newCardId": "c3",
+        "beforeId": null,
+        "afterId": null
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": []
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "moveTask to a deleted card is dropped",
+      "change": {
+        "type": "moveTask",
+        "cardId": "c1",
+        "taskId": "t1",
+        "newCardId": "gone",
+        "beforeId": null,
+        "afterId": null
+      },
+      "after": "dropped"
+    },
+    {
+      "name": "moveTask of a deleted task is dropped",
+      "change": {
+        "type": "moveTask",
+        "cardId": "c1",
+        "taskId": "gone",
+        "newCardId": "c2",
+        "beforeId": null,
+        "afterId": null
+      },
+      "after": "dropped"
+    },
+    {
+      "name": "cleanUp deletes the tasks done on screen",
+      "change": {
+        "type": "cleanUp",
+        "taskIds": [
+          "t2"
+        ]
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "name": "cleanUp keeps a task a teammate marked done meanwhile",
+      "before": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "done"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ],
+      "change": {
+        "type": "cleanUp",
+        "taskIds": [
+          "t2"
+        ]
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "done"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "name": "cleanUp deletes the tasks it names, whatever their status now",
+      "before": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ],
+      "change": {
+        "type": "cleanUp",
+        "taskIds": [
+          "t2"
+        ]
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "name": "cleanUp finds a task a teammate moved to another card",
+      "change": {
+        "type": "cleanUp",
+        "taskIds": [
+          "t4"
+        ]
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": []
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    },
+    {
+      "name": "cleanUp of deleted tasks changes nothing",
+      "change": {
+        "type": "cleanUp",
+        "taskIds": [
+          "gone"
+        ]
+      },
+      "after": [
+        {
+          "id": "c1",
+          "name": "Launch",
+          "description": "Q4",
+          "tasks": [
+            {
+              "id": "t1",
+              "name": "Write copy",
+              "description": "",
+              "status": "pending"
+            },
+            {
+              "id": "t2",
+              "name": "Fix bug",
+              "description": "",
+              "status": "done"
+            },
+            {
+              "id": "t3",
+              "name": "Ship",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c2",
+          "name": "Later",
+          "description": "",
+          "tasks": [
+            {
+              "id": "t4",
+              "name": "Plan",
+              "description": "",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "id": "c3",
+          "name": "Ideas",
+          "description": "",
+          "tasks": []
+        }
+      ]
+    }
+  ]
+}

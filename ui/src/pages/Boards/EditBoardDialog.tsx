@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { DialogDescription } from "@radix-ui/react-dialog";
+import { changedFields } from "@/offline/changes";
 import { make } from "@/offline/pending";
 
 type EditBoardDialogProps = {
@@ -51,11 +52,12 @@ export default function EditBoardDialog(props: EditBoardDialogProps) {
     }
 
     setOpen(false);
+    const changed = changedFields(props, { name, description });
+    if (Object.keys(changed).length === 0) return;
     const outcome = await make({
       type: "updateBoard",
       boardId: id,
-      name,
-      description,
+      ...changed,
     });
     if (outcome === "dropped") return;
 

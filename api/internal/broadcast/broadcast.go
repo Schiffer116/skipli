@@ -37,10 +37,10 @@ type Person struct {
 	Email string `json:"email"`
 }
 
-// Detail is what a board's header shows.
+// Detail is what a board's header shows: the fields that changed.
 type Detail struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	Name        *string `json:"name,omitempty"`
+	Description *string `json:"description,omitempty"`
 }
 
 // Broadcaster pushes a message to the open connections of one board. It is

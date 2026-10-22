@@ -40,7 +40,8 @@ func apply(t *testing.T, change string, write func() (int, any)) (*awsfake.Serve
 			return write()
 		case "GetItem":
 			return 200, map[string]any{"Item": map[string]any{
-				"ID": map[string]any{"S": "t1"}, "Name": map[string]any{"S": "Ship"},
+				"SK": map[string]any{"S": "TASK#c1#t1"}, "ID": map[string]any{"S": "t1"},
+				"CardID": map[string]any{"S": "c1"}, "Name": map[string]any{"S": "Ship"},
 			}}
 		}
 		return 200, map[string]any{"Items": []any{}}
@@ -81,33 +82,6 @@ func TestCreateCardRefusesATakenID(t *testing.T) {
 	wantStatus(t, err, http.StatusConflict, "exists")
 }
 
-func TestCreateTaskKeepsTheClientsIDAndChecksTheCard(t *testing.T) {
-	fake, err := apply(t, `{"type":"createTask","boardId":"b1","cardId":"c1","taskId":"`+clientID+`","name":"Buy milk"}`, ok)
-	wantStatus(t, err, http.StatusOK, "")
-
-	items := fake.Calls("TransactWriteItems")[0].Body["TransactItems"].([]any)
-	check := items[0].(map[string]any)["ConditionCheck"].(map[string]any)
-	if sk := check["Key"].(map[string]any)["SK"].(map[string]any)["S"]; sk != "CARD#c1" {
-		t.Errorf("checked %v, want the card CARD#c1", sk)
-	}
-	put := items[1].(map[string]any)["Put"].(map[string]any)
-	if sk := put["Item"].(map[string]any)["SK"].(map[string]any)["S"]; sk != "TASK#c1#"+clientID {
-		t.Errorf("stored SK %v", sk)
-	}
-}
-
-func TestCreateTaskOnADeletedCardIsNotFound(t *testing.T) {
-	_, err := apply(t, `{"type":"createTask","boardId":"b1","cardId":"c1","taskId":"`+clientID+`","name":"Buy milk"}`,
-		canceled("ConditionalCheckFailed", "None"))
-	wantStatus(t, err, http.StatusNotFound, "card")
-}
-
-func TestCreateTaskRefusesATakenID(t *testing.T) {
-	_, err := apply(t, `{"type":"createTask","boardId":"b1","cardId":"c1","taskId":"`+clientID+`","name":"Buy milk"}`,
-		canceled("None", "ConditionalCheckFailed"))
-	wantStatus(t, err, http.StatusConflict, "exists")
-}
-
 func TestMalformedChangesAreRefusedWithoutWriting(t *testing.T) {
 	for _, change := range []string{
 		`{"type":"createTask","boardId":"b1","cardId":"c1","taskId":"TASK#x","name":"Buy milk"}`,
@@ -116,6 +90,10 @@ func TestMalformedChangesAreRefusedWithoutWriting(t *testing.T) {
 		`{"type":"moveTask","boardId":"b1","cardId":"c1","taskId":"t1"}`,
 		`{"type":"deleteCard","cardId":"c1"}`,
 		`{"type":"renameBoard","boardId":"b1"}`,
+		`{"type":"updateCard","boardId":"b1","cardId":"c1"}`,
+		`{"type":"updateCard","boardId":"b1","cardId":"c1","status":"done"}`,
+		`{"type":"updateTask","boardId":"b1","cardId":"c1","taskId":"t1"}`,
+		`{"type":"cleanUp","boardId":"b1"}`,
 	} {
 		fake, err := apply(t, change, ok)
 		if Status(err) != http.StatusBadRequest {
@@ -127,6 +105,8 @@ func TestMalformedChangesAreRefusedWithoutWriting(t *testing.T) {
 	}
 }
 
+// A card or task deleted between finding it and writing it isn't brought
+// back by the write.
 func TestUpdatesOfDeletedItemsAreNotFound(t *testing.T) {
 	for change, mentions := range map[string]string{
 		`{"type":"updateCard","boardId":"b1","cardId":"c1","name":"Ideas"}`:               "card",
@@ -160,8 +140,9 @@ func TestChangesAreSentOnInTheShapeTheAppUses(t *testing.T) {
 		`{"type":"createCard","boardId":"b1","cardId":"c1","name":"Ideas","createdAt":"2026-10-21T00:00:00Z"}`,
 		`{"type":"moveCard","boardId":"b1","cardId":"c1","beforeId":null,"afterId":"c2"}`,
 		`{"type":"moveTask","boardId":"b1","cardId":"c1","taskId":"t1","newCardId":"c2","beforeId":"t2","afterId":null}`,
-		`{"type":"updateTask","boardId":"b1","cardId":"c1","taskId":"t1","name":"Ship","description":"","status":"done"}`,
-		`{"type":"cleanUp","boardId":"b1"}`,
+		`{"type":"updateCard","boardId":"b1","cardId":"c1","description":"Later"}`,
+		`{"type":"updateTask","boardId":"b1","cardId":"c1","taskId":"t1","status":"done"}`,
+		`{"type":"cleanUp","boardId":"b1","taskIds":["t1","t2"]}`,
 	} {
 		var c Change
 		if err := json.Unmarshal([]byte(change), &c); err != nil {

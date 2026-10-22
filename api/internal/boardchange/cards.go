@@ -1,6 +1,7 @@
 package boardchange
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net/http"
@@ -30,22 +31,29 @@ func taskPrefix(cardID string) string {
 	return "TASK#" + cardID + "#"
 }
 
-// ordered is the part of a card or task that places it.
-type ordered struct {
-	Order float64
+// sibling is a card, or a task, as far as placing things among its
+// siblings goes.
+type sibling struct {
+	SK          string
+	ID          string
+	CardID      string
+	Order       float64
+	Name        string
+	Description string
+	Status      string
 }
 
-// lastOrder is the order of the last card, or task, whose key starts with
-// prefix: 0 when there is none.
-func (s *Store) lastOrder(ctx context.Context, boardID, prefix string) (float64, error) {
+// siblings are the cards, or tasks, whose keys start with prefix, in the
+// order the board read shows them: by order, ties in key order.
+func (s *Store) siblings(ctx context.Context, boardID, prefix string) ([]sibling, error) {
 	keyEx := expression.Key("PK").Equal(expression.Value(boardID)).
 		And(expression.Key("SK").BeginsWith(prefix))
 	expr, err := expression.NewBuilder().WithKeyCondition(keyEx).Build()
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
-	last := 0.0
+	var items []sibling
 	pages := dynamodb.NewQueryPaginator(s.db, &dynamodb.QueryInput{
 		TableName:                 aws.String(s.table),
 		ExpressionAttributeNames:  expr.Names(),
@@ -55,32 +63,47 @@ func (s *Store) lastOrder(ctx context.Context, boardID, prefix string) (float64,
 	for pages.HasMorePages() {
 		page, err := pages.NextPage(ctx)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
-		var pageItems []ordered
+		var pageItems []sibling
 		if err := attributevalue.UnmarshalListOfMaps(page.Items, &pageItems); err != nil {
-			return 0, err
+			return nil, err
 		}
-		for _, item := range pageItems {
-			last = max(last, item.Order)
-		}
+		items = append(items, pageItems...)
 	}
-	return last, nil
+	slices.SortStableFunc(items, func(a, b sibling) int { return cmp.Compare(a.Order, b.Order) })
+	return items, nil
 }
 
-func (s *Store) getOrder(ctx context.Context, boardID, sk string) (float64, bool, error) {
-	out, err := s.db.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(s.table),
-		Key:       access.Key(boardID, sk),
-	})
-	if err != nil || out.Item == nil {
-		return 0, false, err
+// place is the order for id among its siblings: right after the one before
+// it, else right before the one after it, else at the end. A neighbour that
+// was moved away or deleted is never a reason to refuse a move; apply.ts
+// places things the same way.
+func place(siblings []sibling, id string, beforeID, afterID *string) float64 {
+	others := slices.DeleteFunc(slices.Clone(siblings), func(other sibling) bool { return other.ID == id })
+	at := func(neighbour *string) int {
+		if neighbour == nil {
+			return -1
+		}
+		return slices.IndexFunc(others, func(other sibling) bool { return other.ID == *neighbour })
 	}
-	var item ordered
-	if err := attributevalue.UnmarshalMap(out.Item, &item); err != nil {
-		return 0, false, err
+
+	if i := at(beforeID); i != -1 {
+		if i+1 < len(others) {
+			return others[i].Order + (others[i+1].Order-others[i].Order)/2
+		}
+		return others[i].Order + orderGap
 	}
-	return item.Order, true, nil
+	if i := at(afterID); i != -1 {
+		if i > 0 {
+			return others[i-1].Order + (others[i].Order-others[i-1].Order)/2
+		}
+		return others[i].Order - orderGap
+	}
+	if len(others) == 0 {
+		return orderGap
+	}
+	return others[len(others)-1].Order + orderGap
 }
 
 func formatOrder(order float64) types.AttributeValue {
@@ -88,7 +111,7 @@ func formatOrder(order float64) types.AttributeValue {
 }
 
 func (s *Store) createCard(ctx context.Context, c Change) error {
-	last, err := s.lastOrder(ctx, c.BoardID, "CARD#")
+	cards, err := s.siblings(ctx, c.BoardID, "CARD#")
 	if err != nil {
 		return err
 	}
@@ -99,10 +122,10 @@ func (s *Store) createCard(ctx context.Context, c Change) error {
 			"PK":          &types.AttributeValueMemberS{Value: c.BoardID},
 			"SK":          &types.AttributeValueMemberS{Value: cardSK(c.CardID)},
 			"ID":          &types.AttributeValueMemberS{Value: c.CardID},
-			"Name":        &types.AttributeValueMemberS{Value: c.Name},
+			"Name":        &types.AttributeValueMemberS{Value: value(c.Name)},
 			"Description": &types.AttributeValueMemberS{Value: ""},
 			"CreatedAt":   &types.AttributeValueMemberS{Value: c.CreatedAt},
-			"Order":       formatOrder(last + orderGap),
+			"Order":       formatOrder(place(cards, c.CardID, nil, nil)),
 		},
 		ConditionExpression: aws.String("attribute_not_exists(SK)"),
 	})
@@ -113,9 +136,18 @@ func (s *Store) createCard(ctx context.Context, c Change) error {
 }
 
 func (s *Store) updateCard(ctx context.Context, c Change) error {
-	update := expression.Set(expression.Name("Name"), expression.Value(c.Name)).
-		Set(expression.Name("Description"), expression.Value(c.Description))
-	return s.update(ctx, c.BoardID, cardSK(c.CardID), update, "card not found")
+	return s.update(ctx, c.BoardID, cardSK(c.CardID), fields(c), "card not found")
+}
+
+// fields sets the fields an update changed, and only those.
+func fields(c Change) expression.UpdateBuilder {
+	var update expression.UpdateBuilder
+	for name, value := range map[string]*string{"Name": c.Name, "Description": c.Description, "Status": c.Status} {
+		if value != nil {
+			update = update.Set(expression.Name(name), expression.Value(*value))
+		}
+	}
+	return update
 }
 
 // update sets fields of a card or task that must still exist: without the
@@ -140,51 +172,12 @@ func (s *Store) update(ctx context.Context, boardID, sk string, update expressio
 	return err
 }
 
-// between is the order for an item placed after before and ahead of after,
-// either of which may be absent.
-func (s *Store) between(ctx context.Context, boardID string, before, after *string, sk func(string) string) (float64, error) {
-	neighbour := func(id *string) (*float64, error) {
-		if id == nil || *id == "" {
-			return nil, nil
-		}
-		order, ok, err := s.getOrder(ctx, boardID, sk(*id))
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
-			return nil, refuse(http.StatusNotFound, "neighbour not found")
-		}
-		return &order, nil
-	}
-	b, err := neighbour(before)
-	if err != nil {
-		return 0, err
-	}
-	a, err := neighbour(after)
-	if err != nil {
-		return 0, err
-	}
-
-	switch {
-	case b == nil && a == nil:
-		return 0, nil
-	case b == nil:
-		return *a - orderGap, nil
-	case a == nil:
-		return *b + orderGap, nil
-	default:
-		return *b + (*a-*b)/2, nil
-	}
-}
-
 func (s *Store) moveCard(ctx context.Context, c Change) error {
-	if (c.BeforeID == nil || *c.BeforeID == "") && (c.AfterID == nil || *c.AfterID == "") {
-		return nil
-	}
-	order, err := s.between(ctx, c.BoardID, c.BeforeID, c.AfterID, cardSK)
+	cards, err := s.siblings(ctx, c.BoardID, "CARD#")
 	if err != nil {
 		return err
 	}
+	order := place(cards, c.CardID, c.BeforeID, c.AfterID)
 	return s.update(ctx, c.BoardID, cardSK(c.CardID),
 		expression.Set(expression.Name("Order"), expression.Value(order)), "card not found")
 }

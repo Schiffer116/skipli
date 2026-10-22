@@ -27,6 +27,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { DialogDescription } from "@radix-ui/react-dialog";
 
+import { changedFields } from "@/offline/changes";
+
 import { BoardContext } from "../../BoardContext";
 import type { TaskType } from "./Task";
 
@@ -48,15 +50,16 @@ export default function EditTaskDialog(props: TaskType) {
       return;
     }
 
-    void make({
-      type: "updateTask",
-      boardId,
-      cardId,
-      taskId: id,
-      name,
-      description,
-      status,
-    });
+    const changed = changedFields(props, { name, description, status });
+    if (Object.keys(changed).length > 0) {
+      void make({
+        type: "updateTask",
+        boardId,
+        cardId,
+        taskId: id,
+        ...changed,
+      });
+    }
     setOpen(false);
   };
 
