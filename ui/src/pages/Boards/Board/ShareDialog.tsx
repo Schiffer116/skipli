@@ -79,7 +79,7 @@ export default function ShareDialog({
         ];
     setMembers(invited);
     setEmail("");
-    // The board is Shared now, so it must be read-only when offline.
+    // Shown in the Offline copy too.
     void updateBoard(me.id, boardId, { members: invited });
   };
 

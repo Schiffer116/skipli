@@ -21,7 +21,6 @@ export type TaskType = {
 
 export default function Task(props: TaskType) {
   const { id } = props;
-  const { readOnly } = useContext(BoardContext)!;
 
   const {
     attributes,
@@ -32,7 +31,6 @@ export default function Task(props: TaskType) {
     setNodeRef,
   } = useSortable({
     id,
-    disabled: readOnly,
   });
 
   const style = {
@@ -46,9 +44,8 @@ export default function Task(props: TaskType) {
       ref={setNodeRef}
       style={style}
       {...props}
-      // Read-only: not announced as draggable either.
-      {...(!readOnly && attributes)}
-      listeners={readOnly ? undefined : listeners}
+      {...attributes}
+      listeners={listeners}
     />
   );
 }
@@ -60,13 +57,12 @@ type DummyTaskProps = TaskType & {
 export const DummyTask = forwardRef<HTMLDivElement, DummyTaskProps>(
   (props, ref) => {
     const { id, name, description, status, listeners, cardId, ...rest } = props;
-    const { readOnly } = useContext(BoardContext)!;
 
     return (
       <Card
         ref={ref}
         {...rest}
-        className={`min-h-10 p-0 shadow-none rounded-md ${readOnly ? "" : "cursor-grab hover:border-link hover:bg-accent/40"}`}
+        className="min-h-10 p-0 shadow-none rounded-md cursor-grab hover:border-link hover:bg-accent/40"
       >
         <TaskBody
           id={id}
@@ -86,7 +82,7 @@ const TaskBody = memo(function TaskBody(
 ) {
   const { id, name, description, status, listeners, cardId } = props;
   const { boardId } = useParams();
-  const { readOnly, make } = useContext(BoardContext)!;
+  const { make } = useContext(BoardContext)!;
   const unsent = usePending().waitingIds.has(id);
 
   const toggleStatus = () => {
@@ -95,8 +91,6 @@ const TaskBody = memo(function TaskBody(
       boardId: boardId!,
       cardId,
       taskId: id,
-      name,
-      description,
       status: status === "done" ? "pending" : "done",
     });
   };
@@ -105,10 +99,9 @@ const TaskBody = memo(function TaskBody(
     <CardHeader className="relative group flex items-center p-0 pr-2 h-full">
       <Button
         // Hidden until hovered, but still reachable by keyboard.
-        className={`size-6 ml-2 transition-colors ${status === "done" ? "" : readOnly ? "invisible" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"}`}
+        className={`size-6 ml-2 transition-colors ${status === "done" ? "" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"}`}
         variant="ghost"
         size="icon"
-        disabled={readOnly}
         aria-label={status === "done" ? "Mark not done" : "Mark done"}
         onClick={toggleStatus}
       >
@@ -125,15 +118,13 @@ const TaskBody = memo(function TaskBody(
         <span className="break-words">{name}</span>
       </CardTitle>
       {unsent && <UnsentMark className="mr-1" />}
-      {!readOnly && (
-        <EditTaskDialog
-          id={id}
-          cardId={cardId}
-          name={name}
-          description={description}
-          status={status}
-        />
-      )}
+      <EditTaskDialog
+        id={id}
+        cardId={cardId}
+        name={name}
+        description={description}
+        status={status}
+      />
     </CardHeader>
   );
 });

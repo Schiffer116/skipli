@@ -21,7 +21,6 @@ function open(dialog: React.ReactNode) {
         element: (
           <BoardContext.Provider
             value={{
-              readOnly: false,
               make,
               showCreateCardForm: false,
               setShowCreateCardForm: () => {},
@@ -120,6 +119,17 @@ describe("Edit card", () => {
     expect(make).not.toHaveBeenCalled();
   });
 
+  // A teammate's edits to the fields left alone survive.
+  it("saves nothing when nothing changed", async () => {
+    const user = userEvent.setup();
+    open(card);
+    await user.click(screen.getByRole("button", { name: "Edit card" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(make).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("stays open without saving an empty name", async () => {
     const user = userEvent.setup();
     open(card);
@@ -181,7 +191,7 @@ describe("Edit task", () => {
     );
   });
 
-  it("saves the new name, then closes", async () => {
+  it("saves only the field it changed, then closes", async () => {
     const user = userEvent.setup();
     open(
       <EditTaskDialog
@@ -207,8 +217,6 @@ describe("Edit task", () => {
       cardId: "c1",
       taskId: "t1",
       name: "Milk and eggs",
-      description: "",
-      status: "pending",
     });
     expect(screen.queryByRole("dialog")).toBeNull();
   });

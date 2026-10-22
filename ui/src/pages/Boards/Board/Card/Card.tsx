@@ -34,7 +34,6 @@ export type CardType = {
 
 export default function CardView(props: CardType & { staticTasks?: boolean }) {
   const { id } = props;
-  const { readOnly } = useContext(BoardContext)!;
 
   const {
     attributes,
@@ -45,7 +44,6 @@ export default function CardView(props: CardType & { staticTasks?: boolean }) {
     setNodeRef,
   } = useSortable({
     id,
-    disabled: readOnly,
   });
 
   const style = {
@@ -59,9 +57,8 @@ export default function CardView(props: CardType & { staticTasks?: boolean }) {
       ref={setNodeRef}
       style={style}
       {...props}
-      // Read-only: not announced as draggable either.
-      {...(!readOnly && attributes)}
-      listeners={readOnly ? undefined : listeners}
+      {...attributes}
+      listeners={listeners}
     />
   );
 }
@@ -116,18 +113,14 @@ const CardBody = memo(function CardBody(
   },
 ) {
   const { id, name, description, tasks, listeners, staticTasks } = props;
-  const {
-    readOnly,
-    createTaskFormId,
-    setCreateTaskFormId,
-    setShowCreateCardForm,
-  } = useContext(BoardContext)!;
+  const { createTaskFormId, setCreateTaskFormId, setShowCreateCardForm } =
+    useContext(BoardContext)!;
   const unsent = usePending().waitingIds.has(id);
 
   return (
     <Card className="bg-card gap-0 py-0 overflow-hidden">
       <CardHeader
-        className={`flex items-center justify-between px-4 py-3 [.border-b]:pb-3 bg-muted border-b ${readOnly ? "" : "cursor-grab"}`}
+        className={`flex items-center justify-between px-4 py-3 [.border-b]:pb-3 bg-muted border-b cursor-grab`}
         {...listeners}
       >
         <CardTitle className="text-base font-bold text-heading w-full">
@@ -137,14 +130,12 @@ const CardBody = memo(function CardBody(
           </span>
         </CardTitle>
         {unsent && <UnsentMark className="mr-1" />}
-        {!readOnly && (
-          <EditCardDialog
-            id={id}
-            name={name}
-            description={description}
-            tasks={tasks}
-          />
-        )}
+        <EditCardDialog
+          id={id}
+          name={name}
+          description={description}
+          tasks={tasks}
+        />
       </CardHeader>
       <CardContent className={tasks.length ? "px-3 pt-3" : "px-3"}>
         {staticTasks ? (
@@ -167,8 +158,8 @@ const CardBody = memo(function CardBody(
           </SortableContext>
         )}
       </CardContent>
-      <CardFooter className={readOnly ? "pb-3" : "px-3 py-2"}>
-        {readOnly ? null : createTaskFormId === id ? (
+      <CardFooter className="px-3 py-2">
+        {createTaskFormId === id ? (
           <CreateTaskForm cardId={id} />
         ) : (
           <Button

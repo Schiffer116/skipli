@@ -3,8 +3,6 @@ import { createContext } from "react";
 import type { BoardChange } from "@/offline/changes";
 
 type BoardContextType = {
-  // Offline on a Shared board: nothing can be changed.
-  readOnly: boolean;
   // Makes a Board change: the only way the board's cards change.
   make: (change: BoardChange) => Promise<void>;
   showCreateCardForm: boolean;

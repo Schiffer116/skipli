@@ -64,10 +64,8 @@ export default function Board({
   });
   const offline = useOffline();
   const others = usePresence(boardId!);
-  // Offline, only a Solo board can be changed; a Shared board is read-only.
-  const readOnly = offline && members.length > 1;
   // Like the board list, only the owner can edit or delete the board.
-  const editable = owner === useMe().id && !readOnly;
+  const editable = owner === useMe().id;
   const { revalidate } = useRevalidator();
   const navigate = useNavigate();
   const [layout, setLayout] = useBoardLayout();
@@ -99,7 +97,6 @@ export default function Board({
   );
 
   const boardContextValue = {
-    readOnly,
     make,
     showCreateCardForm,
     setShowCreateCardForm,
@@ -119,9 +116,7 @@ export default function Board({
     }),
   );
 
-  const createCard = readOnly ? (
-    <div key={CREATE_CARD_KEY} />
-  ) : (
+  const createCard = (
     <div key={CREATE_CARD_KEY} className="flex-shrink-0 w-80">
       {showCreateCardForm ? (
         <CreateCardForm />
@@ -185,9 +180,7 @@ export default function Board({
                 >
                   {masonry ? <Columns3 /> : <LayoutDashboard />}
                 </Button>
-                {!readOnly && (
-                  <CleanUpButton boardId={boardId!} cards={cards} />
-                )}
+                <CleanUpButton boardId={boardId!} cards={cards} />
                 <ShareDialog
                   boardId={boardId!}
                   name={name}
@@ -206,16 +199,15 @@ export default function Board({
             </p>
             {/* Loaded online, the board was live until the connection
                 dropped, so there's no "last updated" to show. */}
-            {offline && (readOnly || savedAt !== undefined) && (
+            {offline && savedAt !== undefined && (
               <p className="mt-1 text-xs text-muted-foreground">
-                {readOnly && "Read-only offline. "}
-                {savedAt !== undefined && `Last updated ${ago(savedAt)}.`}
+                Last updated {ago(savedAt)}.
               </p>
             )}
           </header>
 
           <DndContext
-            sensors={readOnly ? [] : sensors}
+            sensors={sensors}
             collisionDetection={collisionDetection}
             measuring={{ droppable: { measure: measureMasonryTarget } }}
             onDragStart={onDragStart}

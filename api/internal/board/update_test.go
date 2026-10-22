@@ -2,6 +2,7 @@ package board
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -47,9 +48,42 @@ func TestRenameIsBroadcastUnderTheSendersChangeID(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.put(rec, req)
 
-	want := broadcast.Message{Type: broadcast.BoardUpdated, ID: "x1", Board: &broadcast.Detail{Name: "Plans", Description: "Q4"}}
-	if rec.Code != http.StatusNoContent || len(sent) != 1 || sent[0].Type != want.Type || sent[0].ID != "x1" || *sent[0].Board != *want.Board {
-		t.Fatalf("got %d, sent %+v, want %+v", rec.Code, sent, want)
+	if rec.Code != http.StatusNoContent || len(sent) != 1 || sent[0].Type != broadcast.BoardUpdated || sent[0].ID != "x1" ||
+		*sent[0].Board.Name != "Plans" || *sent[0].Board.Description != "Q4" {
+		t.Fatalf("got %d, sent %+v", rec.Code, sent)
+	}
+}
+
+func TestRenameLeavesTheDescriptionAlone(t *testing.T) {
+	fake := awsfake.New(t, func(string, map[string]any) (int, any) { return 200, map[string]any{} })
+	var sent sentMessages
+	h := NewHandler(fake.DynamoDB(), "Skipli", nil, nil, nil, nil, &sent)
+	req := httptest.NewRequest("PUT", "/boards/b1", strings.NewReader(`{"name":"Plans"}`))
+	req.SetPathValue("id", "b1")
+	rec := httptest.NewRecorder()
+	h.put(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("got %d %q", rec.Code, rec.Body.String())
+	}
+	update := fake.Calls("UpdateItem")[0].Body
+	if names := update["ExpressionAttributeNames"].(map[string]any); len(names) != 1 || names["#0"] != "Name" {
+		t.Errorf("update sets %v, want only Name", names)
+	}
+	if body, _ := json.Marshal(sent[0].Board); string(body) != `{"name":"Plans"}` {
+		t.Errorf("broadcast %s, want only the name", body)
+	}
+}
+
+func TestUpdateWithNothingToChangeIsRefused(t *testing.T) {
+	h := NewHandler(nil, "Skipli", nil, nil, nil, nil, broadcast.Discard{})
+	req := httptest.NewRequest("PUT", "/boards/b1", strings.NewReader(`{}`))
+	req.SetPathValue("id", "b1")
+	rec := httptest.NewRecorder()
+	h.put(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("got %d, want 400", rec.Code)
 	}
 }
 

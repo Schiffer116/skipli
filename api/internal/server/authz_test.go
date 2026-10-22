@@ -230,7 +230,7 @@ func TestBoardRoutesRequireMembership(t *testing.T) {
 		`{"type":"updateTask","boardId":"{board}","cardId":"c1","taskId":"t1","name":"Task","description":"","status":"done"}`,
 		`{"type":"deleteTask","boardId":"{board}","cardId":"c1","taskId":"t1"}`,
 		`{"type":"moveTask","boardId":"{board}","cardId":"c1","taskId":"t1","newCardId":"c2","beforeId":null,"afterId":null}`,
-		`{"type":"cleanUp","boardId":"{board}"}`,
+		`{"type":"cleanUp","boardId":"{board}","taskIds":[]}`,
 	} {
 		routes = append(routes, struct {
 			method, path, body string
