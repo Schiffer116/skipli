@@ -27,7 +27,8 @@ Board files
   it prints for a server board. "new-board --file <path>" makes one,
   "boards <dir>" lists those in a directory, "export" and "import" move a
   board between a file and the server. Several agents may share one file:
-  each change locks it, so none is lost. A board lives in one place; there
+  each change locks it (through <file>.lock, which stays beside the file;
+  gitignore it), so none is lost. A board lives in one place; there
   is no sync.
 
 Output

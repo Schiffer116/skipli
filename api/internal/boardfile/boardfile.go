@@ -161,6 +161,15 @@ func write(path string, b board.Whole) error {
 		return err
 	}
 	defer os.Remove(tmp.Name())
+	// CreateTemp makes the file 0600; keep the file's own mode, 0644 for a new one.
+	mode := os.FileMode(0o644)
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode().Perm()
+	}
+	if err := tmp.Chmod(mode); err != nil {
+		tmp.Close()
+		return err
+	}
 	if _, err := tmp.Write(data); err != nil {
 		tmp.Close()
 		return err
