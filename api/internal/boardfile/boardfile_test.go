@@ -206,3 +206,34 @@ func TestIsFile(t *testing.T) {
 		}
 	}
 }
+
+func TestFilesKeepTheirMode(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "a.json")
+	mode := func() os.FileMode {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return info.Mode().Perm()
+	}
+	touch := func(b *board.Whole) error { b.Name += "!"; return nil }
+
+	Create(path, sample())
+	if got := mode(); got != 0o644 {
+		t.Errorf("new file mode = %o, want 644", got)
+	}
+	Update(path, touch)
+	if got := mode(); got != 0o644 {
+		t.Errorf("mode after a change = %o, want 644", got)
+	}
+	os.Chmod(path, 0o664)
+	Update(path, touch)
+	if got := mode(); got != 0o664 {
+		t.Errorf("mode after a change = %o, want the file's own 664", got)
+	}
+	os.Chmod(path, 0o600)
+	Update(path, touch)
+	if got := mode(); got != 0o600 {
+		t.Errorf("mode after a change = %o, want the file's own 600", got)
+	}
+}

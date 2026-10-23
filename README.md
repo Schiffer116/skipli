@@ -44,7 +44,8 @@ board argument with a `/` or ending in `.json` is a file, and every board
 command works on it offline, with no sign-in: `skipli-cli new-board --file
 army.skipli.json Army`, then `skipli-cli add-card army.skipli.json Backlog`.
 `export <board> [file]` and `import <file>` move a board between a file and
-your account; `boards <dir>` lists the board files in a directory.
+your account; `boards <dir>` lists the board files in a directory. Changes
+lock `<file>.lock`, which stays beside the file: gitignore it.
 
 ## Running locally
 
