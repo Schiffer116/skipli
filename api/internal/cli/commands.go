@@ -16,6 +16,7 @@ import (
 
 	"github.com/Schiffer116/skipli/api/internal/board"
 	"github.com/Schiffer116/skipli/api/internal/boardchange"
+	"github.com/Schiffer116/skipli/api/internal/boardfile"
 )
 
 func findCommand(name string) *command {
@@ -42,9 +43,11 @@ login --code <code>. The code is mailed at most once a minute per address.`,
 		run:  runLogout,
 	},
 	{
-		name: "boards",
+		name: "boards", args: []string{"dir"},
 		help: `List your boards, one per line: board <id> "name" <done>/<all> done, with
-"shared" after boards you are only a member of.`,
+"shared" after boards you are only a member of.
+With a directory, list the board files in it instead (no sign-in needed):
+board <id> "name" <done>/<all> done file <path>.`,
 		run: runBoards,
 	},
 	{
@@ -57,9 +60,28 @@ Descriptions, when set, follow on a "description" line.`,
 	},
 	{
 		name: "new-board", args: []string{"name"}, min: 1,
-		help:  "Create a board you own.",
-		flags: func(fs *flag.FlagSet) { fs.String("description", "", "the board's description") },
-		run:   runNewBoard,
+		help: `Create a board you own. With --file, create a board file instead (no sign-in
+needed); it refuses to replace a file that exists.`,
+		flags: func(fs *flag.FlagSet) {
+			fs.String("description", "", "the board's description")
+			fs.String("file", "", "create a board file at this path")
+		},
+		run: runNewBoard,
+	},
+	{
+		name: "export", args: []string{"board", "file"}, min: 1,
+		help: `Write a board in the skipli-board/1 format (JSON; cards and tasks in order,
+with descriptions) to <file>, or to stdout without one. <board> may be a
+board file, which makes this a copy. A file is replaced if it exists.`,
+		run: runExport,
+	},
+	{
+		name: "import", args: []string{"file"}, min: 1,
+		help: `Make a new board you own from a skipli-board/1 file and print its id. The
+board keeps the file's id if no board has it (so moving a board from the server
+to a file and back keeps references to it working), else gets a new one. Its
+cards and tasks keep the file's ids and order, and descriptions come along.`,
+		run: runImport,
 	},
 	{
 		name: "add-card", args: []string{"board", "name"}, min: 2,
@@ -221,6 +243,9 @@ func (e *env) raw(data []byte) {
 }
 
 func runBoards(ctx context.Context, e *env, a *args) error {
+	if len(a.pos) > 0 {
+		return listFiles(e, a.pos[0])
+	}
 	var list board.ListResponse
 	data, err := e.get(ctx, "/api/boards", &list)
 	if err != nil {
@@ -236,6 +261,17 @@ func runBoards(ctx context.Context, e *env, a *args) error {
 
 // boardID resolves a board id or unique prefix of one.
 func (e *env) boardID(ctx context.Context, ref string) (string, error) {
+	if boardfile.IsFile(ref) {
+		b, err := boardfile.Read(ref)
+		if err != nil {
+			return "", err
+		}
+		if e.files == nil {
+			e.files = map[string]string{}
+		}
+		e.files[b.ID] = ref
+		return b.ID, nil
+	}
 	if isUUID(ref) {
 		return ref, nil
 	}
@@ -255,6 +291,15 @@ func (e *env) readBoard(ctx context.Context, ref string) (board.Whole, []byte, e
 	id, err := e.boardID(ctx, ref)
 	if err != nil {
 		return board.Whole{}, nil, err
+	}
+	if path, ok := e.files[id]; ok {
+		whole, err := boardfile.Read(path)
+		if err != nil {
+			return board.Whole{}, nil, err
+		}
+		whole.Members = []board.Member{}
+		data, err := json.Marshal(whole)
+		return whole, data, err
 	}
 	var whole board.Whole
 	data, err := e.get(ctx, "/api/boards/"+id, &whole)
@@ -277,6 +322,14 @@ func runBoard(ctx context.Context, e *env, a *args) error {
 // ---- writing ----
 
 func runNewBoard(ctx context.Context, e *env, a *args) error {
+	if path := a.str("file"); path != "" {
+		b := board.Whole{ID: uuid.NewString(), Name: a.pos[0], Description: a.str("description"), Cards: []board.Card{}}
+		if err := boardfile.Create(path, b); err != nil {
+			return err
+		}
+		fmt.Fprintf(e.Stdout, "board %s %s file %s\n", b.ID, strconv.Quote(b.Name), path)
+		return nil
+	}
 	data, err := e.client.call(ctx, "POST", "/api/boards", board.CreateRequest{
 		ID: uuid.NewString(), Name: a.pos[0], Description: a.str("description"),
 	}, nil)
@@ -298,7 +351,12 @@ func runNewBoard(ctx context.Context, e *env, a *args) error {
 // send makes one Board change. With --json it prints the change as sent;
 // otherwise the caller prints what it made.
 func (e *env) send(ctx context.Context, c boardchange.Change) error {
-	if _, err := e.client.call(ctx, "POST", "/api/boards/"+c.BoardID+"/changes", c, changeHeader(uuid.NewString())); err != nil {
+	if path, ok := e.files[c.BoardID]; ok {
+		err := boardfile.Update(path, func(b *board.Whole) error { return boardchange.Reduce(b, c) })
+		if err != nil {
+			return err
+		}
+	} else if _, err := e.client.call(ctx, "POST", "/api/boards/"+c.BoardID+"/changes", c, changeHeader(uuid.NewString())); err != nil {
 		return err
 	}
 	if e.json {
