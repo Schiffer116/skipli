@@ -3,7 +3,9 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -75,8 +77,16 @@ func runImport(ctx context.Context, e *env, a *args) error {
 	if err != nil {
 		return err
 	}
-	id := uuid.NewString()
-	if _, err := e.client.call(ctx, "POST", "/api/boards", board.CreateRequest{ID: id, Name: b.Name, Description: b.Description}, nil); err != nil {
+	// The board keeps the file's id when it is free, so references to it
+	// survive a trip server to file to server; otherwise it gets a new one.
+	id := b.ID
+	_, err = e.client.call(ctx, "POST", "/api/boards", board.CreateRequest{ID: id, Name: b.Name, Description: b.Description}, nil)
+	var api *apiError
+	if errors.As(err, &api) && api.Status == http.StatusConflict {
+		id = uuid.NewString()
+		_, err = e.client.call(ctx, "POST", "/api/boards", board.CreateRequest{ID: id, Name: b.Name, Description: b.Description}, nil)
+	}
+	if err != nil {
 		return err
 	}
 	changes := func() []boardchange.Change {

@@ -78,8 +78,9 @@ board file, which makes this a copy. A file is replaced if it exists.`,
 	{
 		name: "import", args: []string{"file"}, min: 1,
 		help: `Make a new board you own from a skipli-board/1 file and print its id. The
-board gets a new id; its cards and tasks keep the file's ids and order, and
-descriptions come along.`,
+board keeps the file's id if no board has it (so moving a board from the server
+to a file and back keeps references to it working), else gets a new one. Its
+cards and tasks keep the file's ids and order, and descriptions come along.`,
 		run: runImport,
 	},
 	{

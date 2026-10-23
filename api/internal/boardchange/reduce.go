@@ -12,8 +12,8 @@ import (
 // same cards and tasks left. contract_test.go holds the two to that. A
 // refused change leaves b as it was.
 //
-// Only moves that name neighbours that sit next to each other are the same
-// on both: the table places an item by a number between its neighbours'
+// Known difference: only moves that name neighbours that sit next to each
+// other are the same on both: the table places an item by a number between its neighbours'
 // numbers, so far-apart neighbours give it a place the cards' order doesn't
 // show, which a list can't copy. The CLI and the app only send adjacent ones.
 func Reduce(b *board.Whole, c Change) error {
