@@ -99,6 +99,9 @@ func newCLIHarness(t *testing.T) *cliHarness {
 			if it, ok := items[key]; ok {
 				return 200, map[string]any{"Item": it}
 			}
+			if sk := str(body, "Key", "SK", "S"); sk == "MEMBER#u-member" { // of any board, such as one just made
+				return 200, map[string]any{"Item": item(map[string]any{"PK": str(body, "Key", "PK", "S"), "SK": sk, "Member": "u-member"})}
+			}
 			return 200, map[string]any{}
 		case "Query":
 			if body["IndexName"] != nil {
@@ -490,4 +493,103 @@ func jsonEqual(a, b any) bool {
 	x, _ = json.Marshal(xa)
 	y, _ = json.Marshal(ya)
 	return string(x) == string(y)
+}
+
+const exported = `{
+  "format": "skipli-board/1",
+  "id": "` + cliBoard + `",
+  "name": "Roadmap",
+  "description": "plans",
+  "cards": [
+    {
+      "id": "` + cliCard1 + `",
+      "name": "Backlog",
+      "description": "later",
+      "tasks": [
+        {
+          "id": "` + cliTask1 + `",
+          "name": "Write tests",
+          "description": "all of them",
+          "status": "pending"
+        },
+        {
+          "id": "` + cliTask2 + `",
+          "name": "Ship",
+          "description": "",
+          "status": "done"
+        }
+      ]
+    },
+    {
+      "id": "` + cliCard2 + `",
+      "name": "Doing",
+      "description": "",
+      "tasks": [
+        {
+          "id": "` + cliTask3 + `",
+          "name": "Review",
+          "description": "",
+          "status": "pending"
+        }
+      ]
+    }
+  ]
+}
+`
+
+func TestCLIExport(t *testing.T) {
+	h := newCLIHarness(t)
+	h.signIn()
+	if out := h.mustRun("export", "b0000"); out != exported {
+		t.Errorf("export =\n%s", out)
+	}
+	path := filepath.Join(h.dir, "roadmap.skipli.json")
+	h.mustRun("export", cliBoard, path)
+	if data, _ := os.ReadFile(path); string(data) != exported {
+		t.Errorf("exported file =\n%s", data)
+	}
+	// What was exported shows the same as the board on the server.
+	if h.mustRun("board", path) != h.mustRun("board", cliBoard) {
+		t.Error("the file's board differs from the server's")
+	}
+}
+
+func TestCLIImport(t *testing.T) {
+	h := newCLIHarness(t)
+	h.signIn()
+	path := filepath.Join(h.dir, "roadmap.skipli.json")
+	os.WriteFile(path, []byte(exported), 0o644)
+
+	out := h.mustRun("import", path)
+	f := strings.Fields(out)
+	if len(f) != 3 || f[0] != "board" || f[1] == cliBoard || f[2] != `"Roadmap"` {
+		t.Fatalf("import = %q, want a new board id", out)
+	}
+	if n := len(h.fake.Calls("TransactWriteItems")); n != 4 {
+		t.Errorf("TransactWriteItems = %d, want 4 (the board, three task creates)", n)
+	}
+
+	id := f[1]
+	got := h.takeChanges()
+	for _, c := range got {
+		delete(c, "createdAt")
+	}
+	want := []map[string]any{
+		{"type": "createCard", "boardId": id, "cardId": cliCard1, "name": "Backlog"},
+		{"type": "updateCard", "boardId": id, "cardId": cliCard1, "name": "Backlog", "description": "later"},
+		{"type": "createTask", "boardId": id, "cardId": cliCard1, "taskId": cliTask1, "name": "Write tests"},
+		{"type": "updateTask", "boardId": id, "cardId": cliCard1, "taskId": cliTask1, "name": "Write tests", "description": "all of them", "status": "pending"},
+		{"type": "createTask", "boardId": id, "cardId": cliCard1, "taskId": cliTask2, "name": "Ship"},
+		{"type": "updateTask", "boardId": id, "cardId": cliCard1, "taskId": cliTask2, "name": "Ship", "description": "", "status": "done"},
+		{"type": "createCard", "boardId": id, "cardId": cliCard2, "name": "Doing"},
+		{"type": "createTask", "boardId": id, "cardId": cliCard2, "taskId": cliTask3, "name": "Review"},
+	}
+	if !jsonEqual(got, want) {
+		t.Errorf("changes =\n%v\nwant\n%v", got, want)
+	}
+
+	os.WriteFile(path, []byte(`{"format":"skipli-board/2"}`), 0o644)
+	if code, _, errOut := h.run("", "import", path); code != 1 || !strings.Contains(errOut, "format") {
+		t.Errorf("import of another format = %d %q", code, errOut)
+	}
 }
