@@ -78,7 +78,7 @@ func newSendTest(t *testing.T) *sendTest {
 	})
 
 	idp := st.fake.Cognito()
-	st.handler = NewHandler(idp, "client", NewDirectory(idp, "pool"), nil, NewCooldown(st.fake.DynamoDB(), "Skipli"))
+	st.handler = NewHandler(idp, "client", NewDirectory(idp, "pool"), nil, NewCooldown(st.fake.DynamoDB(), "Skipli"), nil)
 	st.handler.canReceiveMail = func(_ context.Context, email string) bool {
 		return strings.HasSuffix(email, "@example.com")
 	}
