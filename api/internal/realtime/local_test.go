@@ -13,7 +13,10 @@ import (
 	"github.com/coder/websocket"
 )
 
-// dial opens a board socket on the local relay as the board's member.
+// dial opens a board socket on the local relay as the board's member, and
+// waits for the Presence the relay sends once it has joined the connection to
+// the board: the handshake finishes before that, and a broadcast in between
+// would miss it.
 func (f *fixture) dial(t *testing.T, url string) *websocket.Conn {
 	t.Helper()
 	header := http.Header{"Cookie": {"id_token=" + f.token(t, "u-member", f.key)}, "Origin": {"http://localhost:5173"}}
@@ -22,6 +25,9 @@ func (f *fixture) dial(t *testing.T, url string) *websocket.Conn {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { conn.CloseNow() })
+	if message, err := readAny(t, conn); err != nil || message["type"] != "presence" {
+		t.Fatalf("got %v %v, want Presence on joining", message, err)
+	}
 	return conn
 }
 
@@ -119,17 +125,11 @@ func TestLocalRelayTellsPresenceOnConnectAndDisconnect(t *testing.T) {
 	}
 
 	first := f.dial(t, srv.URL)
-	if got, err := readAny(t, first); err != nil || got["type"] != "presence" {
-		t.Fatalf("got %v %v, want presence", got, err)
-	}
 	// Two tabs of one person are one avatar.
 	second := f.dial(t, srv.URL)
-	var got map[string]any
-	for _, conn := range []*websocket.Conn{first, second} {
-		var err error
-		if got, err = readAny(t, conn); err != nil || got["type"] != "presence" {
-			t.Fatalf("got %v %v, want presence", got, err)
-		}
+	got, err := readAny(t, first)
+	if err != nil || got["type"] != "presence" {
+		t.Fatalf("got %v %v, want presence", got, err)
 	}
 	if ids := names(got); !slices.Equal(ids, []string{"u-peer", "u-member"}) {
 		t.Errorf("present %v, want the peer and the member (two tabs) once, by name", ids)
