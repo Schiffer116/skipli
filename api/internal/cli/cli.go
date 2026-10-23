@@ -37,6 +37,9 @@ type env struct {
 	json   bool
 	envArg string // --env, for the follow-up commands we print
 	urlArg string // --url
+	// files maps the id of each board file this command named to its path;
+	// changes to those boards go to the file, not the API.
+	files map[string]string
 }
 
 type usageError struct{ msg string }

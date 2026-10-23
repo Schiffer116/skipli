@@ -39,6 +39,13 @@ work on them. Install it with `make -C api install-cli`, sign in with
 `skipli-cli help` for the commands. Boards, cards and tasks are named by id
 (any unique prefix works); `--json` prints JSON.
 
+A board can also live in a file (`skipli-board/1`, JSON, stable for git). A
+board argument with a `/` or ending in `.json` is a file, and every board
+command works on it offline, with no sign-in: `skipli-cli new-board --file
+army.skipli.json Army`, then `skipli-cli add-card army.skipli.json Backlog`.
+`export <board> [file]` and `import <file>` move a board between a file and
+your account; `boards <dir>` lists the board files in a directory.
+
 ## Running locally
 
 1. Clone the repository:
