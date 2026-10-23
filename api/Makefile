@@ -1,4 +1,4 @@
-.PHONY: build run dev test smoke fmt vet clean
+.PHONY: build run dev install-cli test smoke fmt vet clean
 
 run dev: export AWS_PROFILE ?= lambda-role
 run dev: export AWS_REGION ?= $(shell terraform -chdir=../infra output -raw region)
@@ -16,6 +16,9 @@ run:
 
 dev:
 	find . -name '*.go' | entr -rcn go run ./cmd/skipli
+
+install-cli:
+	go install ./cmd/skipli-cli
 
 test:
 	go test ./...

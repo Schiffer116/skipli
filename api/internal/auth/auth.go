@@ -26,14 +26,14 @@ type Handler struct {
 	canReceiveMail func(context.Context, string) bool
 }
 
-func NewHandler(idp *cip.Client, clientID string, users *Directory, tokens *TokenVerifier, cooldown *Cooldown) *Handler {
+func NewHandler(idp *cip.Client, clientID string, users *Directory, tokens *TokenVerifier, cooldown *Cooldown, canReceiveMail func(context.Context, string) bool) *Handler {
 	return &Handler{
 		idp:            idp,
 		clientID:       clientID,
 		users:          users,
 		tokens:         tokens,
 		cooldown:       cooldown,
-		canReceiveMail: CanReceiveMail,
+		canReceiveMail: canReceiveMail,
 	}
 }
 

@@ -36,6 +36,11 @@ chrome-devtools-axi quirks:
 - After `fill`, `press Enter` to submit.
 - Offline: `emulate --network Offline`; back online: `emulate --network "Fast 4G"`.
 
+The CLI can drive a test user's boards too: build it with
+`go build -o /tmp/skipli-cli ./cmd/skipli-cli` in `api`, then
+`skipli-cli --url http://localhost:3417 login <address>`, `scripts/e2e-code`,
+and `login --code <code>`.
+
 # Architecture diagram
 
 When a change alters the architecture (`infra/` resources or how they
