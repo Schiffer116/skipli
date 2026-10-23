@@ -41,6 +41,7 @@ type cliHarness struct {
 	key    *rsa.PrivateKey
 	fake   *awsfake.Server
 	cooled bool // the send cooldown is running
+	taken  bool // a board with the id of the next board create exists
 
 	mu      sync.Mutex
 	changes []map[string]any // bodies of accepted POST .../changes
@@ -120,6 +121,14 @@ func newCLIHarness(t *testing.T) *cliHarness {
 		case "PutItem":
 			if str(body, "Item", "SK", "S") == "SEND_COOLDOWN" && h.cooled {
 				return 400, map[string]any{"__type": "com.amazonaws.dynamodb.v20120810#ConditionalCheckFailedException", "message": "running"}
+			}
+			return 200, map[string]any{}
+		case "TransactWriteItems":
+			first, _ := body["TransactItems"].([]any)[0].(map[string]any)["Put"].(map[string]any)
+			if h.taken && str(first, "Item", "SK", "S") == "META" {
+				h.taken = false
+				return 400, map[string]any{"__type": "TransactionCanceledException", "Message": "canceled",
+					"CancellationReasons": []any{map[string]any{"Code": "ConditionalCheckFailed"}, map[string]any{"Code": "None"}}}
 			}
 			return 200, map[string]any{}
 		case "AdminCreateUser":
@@ -562,8 +571,8 @@ func TestCLIImport(t *testing.T) {
 
 	out := h.mustRun("import", path)
 	f := strings.Fields(out)
-	if len(f) != 3 || f[0] != "board" || f[1] == cliBoard || f[2] != `"Roadmap"` {
-		t.Fatalf("import = %q, want a new board id", out)
+	if len(f) != 3 || f[0] != "board" || f[1] != cliBoard || f[2] != `"Roadmap"` {
+		t.Fatalf("import = %q, want the file's board id", out)
 	}
 	if n := len(h.fake.Calls("TransactWriteItems")); n != 4 {
 		t.Errorf("TransactWriteItems = %d, want 4 (the board, three task creates)", n)
@@ -586,6 +595,19 @@ func TestCLIImport(t *testing.T) {
 	}
 	if !jsonEqual(got, want) {
 		t.Errorf("changes =\n%v\nwant\n%v", got, want)
+	}
+
+	h.takeChanges()
+	h.taken = true
+	out = h.mustRun("import", path)
+	f = strings.Fields(out)
+	if len(f) != 3 || f[1] == cliBoard {
+		t.Fatalf("import of a taken id = %q, want a new board id", out)
+	}
+	for _, c := range h.takeChanges() {
+		if c["boardId"] != f[1] {
+			t.Fatalf("change for board %v, want %s", c["boardId"], f[1])
+		}
 	}
 
 	os.WriteFile(path, []byte(`{"format":"skipli-board/2"}`), 0o644)
