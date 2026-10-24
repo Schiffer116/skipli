@@ -24,6 +24,7 @@ import { BoardContext } from "../BoardContext";
 import Task, { DummyTask, type TaskType } from "./Task/Task";
 import CreateTaskForm from "./Task/CreateTaskForm";
 import EditCardDialog from "./EditCardDialog";
+import SortDialog from "./SortDialog";
 
 export type CardType = {
   id: string;
@@ -137,6 +138,7 @@ const CardBody = memo(function CardBody(
           </span>
         </CardTitle>
         {unsent && <UnsentMark className="mr-1" />}
+        {!readOnly && tasks.length >= 2 && <SortDialog id={id} tasks={tasks} />}
         {!readOnly && (
           <EditCardDialog
             id={id}

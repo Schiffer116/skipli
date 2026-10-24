@@ -25,6 +25,30 @@ variable "auth_send_throttle_burst_limit" {
   default     = 5
 }
 
+variable "sort_throttle_rate_limit" {
+  description = "Steady-state requests per second allowed on POST /api/boards/{boardId}/cards/{cardId}/sort, which asks Jev (a paid API)."
+  type        = number
+  default     = 2
+}
+
+variable "sort_throttle_burst_limit" {
+  description = "Burst of requests allowed on the sort route."
+  type        = number
+  default     = 5
+}
+
+variable "jev_base_url" {
+  description = "Where the API asks Jev: TypeSafe itself, or a gateway taking the same requests such as https://openrouter.ai/api. Empty means TypeSafe."
+  type        = string
+  default     = ""
+}
+
+variable "jev_model" {
+  description = "The Jev model sorting uses, named as jev_base_url names it. Empty means the API's pinned default."
+  type        = string
+  default     = ""
+}
+
 variable "api_reserved_concurrency" {
   description = "Maximum concurrent executions of the API Lambda, which serves both the HTTP and the WebSocket API."
   type        = number
@@ -173,6 +197,28 @@ data "aws_iam_policy_document" "realtime_access" {
   }
 }
 
+# The Jev key is an SSM SecureString (encrypted with the AWS managed aws/ssm
+# key) that Terraform never sees: set it once per environment with
+#   aws ssm put-parameter --type SecureString --name /skipli/typesafe-api-key --value <key>
+# Until it is, sorting answers 503.
+locals {
+  jev_key_parameter = "/skipli/typesafe-api-key"
+}
+
+data "aws_iam_policy_document" "jev_key_access" {
+  statement {
+    effect    = "Allow"
+    actions   = ["ssm:GetParameter"]
+    resources = ["arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter${local.jev_key_parameter}"]
+  }
+}
+
+resource "aws_iam_role_policy" "jev_key_access" {
+  name   = "SkipliJevKeyAccess"
+  role   = aws_iam_role.lambda.id
+  policy = data.aws_iam_policy_document.jev_key_access.json
+}
+
 resource "aws_iam_role_policy" "realtime_access" {
   name   = "SkipliRealtimeAccess"
   role   = aws_iam_role.lambda.id
@@ -204,6 +250,10 @@ resource "aws_lambda_function" "skipli" {
   # Board change waits on it.
   memory_size = 512
 
+  # Sorting a card waits on Jev, which has its own 10 s deadline; the HTTP
+  # API gives up at 30 s anyway.
+  timeout = 15
+
   environment {
     variables = {
       USER_POOL_ID        = aws_cognito_user_pool.skipli.id
@@ -211,6 +261,9 @@ resource "aws_lambda_function" "skipli" {
       TABLE_NAME          = aws_dynamodb_table.skipli.name
       # Where the HTTP handlers push what they save to a board's WebSockets.
       REALTIME_ENDPOINT = replace(aws_apigatewayv2_stage.realtime.invoke_url, "wss://", "https://")
+      JEV_KEY_PARAMETER = local.jev_key_parameter
+      JEV_BASE_URL      = var.jev_base_url
+      JEV_MODEL         = var.jev_model
     }
   }
 }
@@ -251,6 +304,14 @@ resource "aws_apigatewayv2_route" "auth_send" {
   target    = "integrations/${aws_apigatewayv2_integration.skipli.id}"
 }
 
+# Sorting asks Jev, which is billed per request, so it gets a route and a
+# throttle of its own too.
+resource "aws_apigatewayv2_route" "sort" {
+  api_id    = aws_apigatewayv2_api.skipli.id
+  route_key = "POST /api/boards/{boardId}/cards/{cardId}/sort"
+  target    = "integrations/${aws_apigatewayv2_integration.skipli.id}"
+}
+
 resource "aws_apigatewayv2_stage" "skipli" {
   api_id      = aws_apigatewayv2_api.skipli.id
   name        = "$default"
@@ -265,6 +326,12 @@ resource "aws_apigatewayv2_stage" "skipli" {
     route_key              = aws_apigatewayv2_route.auth_send.route_key
     throttling_rate_limit  = var.auth_send_throttle_rate_limit
     throttling_burst_limit = var.auth_send_throttle_burst_limit
+  }
+
+  route_settings {
+    route_key              = aws_apigatewayv2_route.sort.route_key
+    throttling_rate_limit  = var.sort_throttle_rate_limit
+    throttling_burst_limit = var.sort_throttle_burst_limit
   }
 }
 

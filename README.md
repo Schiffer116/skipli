@@ -11,6 +11,9 @@ This project is a **real-time board management tool** that allows teams to colla
 - Drag-and-drop task management
 - Real-time updates via WebSockets
 - Invite members to boards with email notifications
+- Sort a card's tasks by a criterion you type ("most urgent first"), judged by
+  [Jev](https://docs.typesafe.ai/api), TypeSafe's hosted model. Task names and
+  descriptions are sent to TypeSafe to sort.
 
 ## Tech Stack
 
@@ -56,6 +59,11 @@ export TABLE_NAME=Skipli
 cd api && make run
 ```
 
+   Without a Jev key, sorting a card uses a fake judge that puts the tasks
+   mentioning the criterion's words first. Set `TYPESAFE_API_KEY` to sort
+   with Jev itself, and `JEV_BASE_URL`/`JEV_MODEL` to reach it through a
+   gateway such as OpenRouter.
+
 1. Start the frontend (proxies `/api` to the API, override with `API_URL`):
 
 ```bash
@@ -80,6 +88,15 @@ The site is served at `https://skipli.schifferarchitecture.com`: the script
 issues its certificate in `us-east-1` (`infra/certificate.yaml`, as CloudFront
 requires) and creates the DNS records in the domain's Route 53 zone. Set
 `DOMAIN_NAME` to use another domain, or to an empty string for none.
+
+### Jev key
+
+The deployed API reads its Jev key from an SSM SecureString that Terraform
+doesn't manage; until it is set, sorting answers 503. Once per environment:
+
+```bash
+aws ssm put-parameter --type SecureString --name /skipli/typesafe-api-key --value <key>
+```
 
 ## CI/CD
 
