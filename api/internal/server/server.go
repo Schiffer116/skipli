@@ -11,12 +11,14 @@ import (
 	"github.com/Schiffer116/skipli/api/internal/board"
 	"github.com/Schiffer116/skipli/api/internal/boardchange"
 	"github.com/Schiffer116/skipli/api/internal/broadcast"
+	"github.com/Schiffer116/skipli/api/internal/cardsort"
 	"github.com/Schiffer116/skipli/api/internal/config"
+	"github.com/Schiffer116/skipli/api/internal/jev"
 	"github.com/Schiffer116/skipli/api/internal/profile"
 )
 
-// NewRouter serves the HTTP API: page loads, every change, sign-in, invites
-// and profiles. What it saves on a board is passed to broadcaster.
+// NewRouter serves the HTTP API: page loads, every change, sorting a card,
+// sign-in, invites and profiles. What it saves on a board is passed to broadcaster.
 func NewRouter(c config.Config, rt interface {
 	broadcast.Broadcaster
 	broadcast.Roster
@@ -24,13 +26,13 @@ func NewRouter(c config.Config, rt interface {
 	idp := cognitoidentityprovider.NewFromConfig(c.AWS, func(o *cognitoidentityprovider.Options) {
 		o.Region = c.PoolRegion
 	})
-	return newRouter(c.DB, idp, c.Tokens, c.PoolID, c.ClientID, c.Table, auth.CanReceiveMail, rt, rt)
+	return newRouter(c.DB, idp, c.Tokens, c.PoolID, c.ClientID, c.Table, auth.CanReceiveMail, rt, rt, jev.FromEnv(c.AWS))
 }
 
 // newRouter wires the routes onto already-built clients, so tests can run the
 // real router against fakes. canReceiveMail stands in for the invite
-// address's DNS check.
-func newRouter(db *dynamodb.Client, idp *cognitoidentityprovider.Client, tokens *auth.TokenVerifier, poolID, clientID, tableName string, canReceiveMail func(context.Context, string) bool, broadcaster broadcast.Broadcaster, roster broadcast.Roster) http.Handler {
+// address's DNS check, and judge for Jev.
+func newRouter(db *dynamodb.Client, idp *cognitoidentityprovider.Client, tokens *auth.TokenVerifier, poolID, clientID, tableName string, canReceiveMail func(context.Context, string) bool, broadcaster broadcast.Broadcaster, roster broadcast.Roster, judge jev.Judge) http.Handler {
 	router := http.NewServeMux()
 
 	users := auth.NewDirectory(idp, poolID)
@@ -40,6 +42,7 @@ func newRouter(db *dynamodb.Client, idp *cognitoidentityprovider.Client, tokens 
 	board.NewHandler(db, tableName, tokens, users, profiles, canReceiveMail, broadcaster).RegisterRoutes(router)
 	auth.NewHandler(idp, clientID, users, tokens, auth.NewCooldown(db, tableName)).RegisterRoutes(router)
 	boardchange.NewHandler(db, tableName, tokens, broadcaster).RegisterRoutes(router)
+	cardsort.NewHandler(db, tableName, tokens, judge).RegisterRoutes(router)
 	registerPresence(router, db, tableName, tokens, roster)
 
 	api := http.NewServeMux()

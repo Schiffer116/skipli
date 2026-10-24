@@ -22,6 +22,7 @@ import (
 
 	"github.com/Schiffer116/skipli/api/internal/auth"
 	"github.com/Schiffer116/skipli/api/internal/broadcast"
+	"github.com/Schiffer116/skipli/api/internal/jev"
 )
 
 const (
@@ -200,7 +201,7 @@ func TestBoardRoutesRequireMembership(t *testing.T) {
 
 	canReceiveMail := func(context.Context, string) bool { return true }
 	broadcasts := &recordedBroadcasts{}
-	router := newRouter(db, idp, tokens, "us-east-1_test", testClientID, "Skipli", canReceiveMail, broadcasts, broadcasts)
+	router := newRouter(db, idp, tokens, "us-east-1_test", testClientID, "Skipli", canReceiveMail, broadcasts, broadcasts, jev.Fake{})
 
 	// {board} is replaced with the board under test; routes without it
 	// aren't scoped to a board and only need a signed-in caller.
@@ -217,6 +218,7 @@ func TestBoardRoutesRequireMembership(t *testing.T) {
 		{"PUT", "/api/boards/{board}", `{"name":"Renamed","description":""}`, 204, 403},
 		{"PUT", "/api/boards/{board}/favorite", `{"favorite":true}`, 204, 403},
 		{"POST", "/api/boards/{board}/invite", `{"email":"invitee@example.com"}`, 204, 403},
+		{"POST", "/api/boards/{board}/cards/c1/sort", `{"criterion":"most urgent first"}`, 200, 403},
 		{"DELETE", "/api/boards/{board}", "", 204, 403},
 	}
 

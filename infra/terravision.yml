@@ -22,9 +22,13 @@ remove:
   # Drawn as the zone below: TerraVision points record arrows the wrong way
   - aws_route53_record.*
 
-# The DNS records live in the hosted zone of a separate DNS account
+# The DNS records live in the hosted zone of a separate DNS account. Jev is
+# TypeSafe's hosted model, which sorts a card's tasks; its key, an SSM
+# parameter set outside Terraform (api.tf), is named in its label, since
+# TerraVision doesn't draw arrows to SSM parameters.
 add:
   aws_route53_zone.dns: {}
+  tv_aws_internet.jev: {}
 
 # Reversed dependency edges, redrawn in the direction requests flow
 disconnect:
@@ -51,6 +55,7 @@ connect:
     - aws_dynamodb_table.skipli
     - aws_cognito_user_pool.cognito
     - aws_apigatewayv2_api.realtime: Broadcast changes
+    - tv_aws_internet.jev: Sort a card
   aws_cognito_user_pool.cognito:
     - aws_sesv2_email_identity.domain: Sign-in emails
 
@@ -73,3 +78,5 @@ update:
     label: Cognito
   aws_sesv2_email_identity.domain:
     label: SES
+  tv_aws_internet.jev:
+    label: TypeSafe Jev (key in SSM)
