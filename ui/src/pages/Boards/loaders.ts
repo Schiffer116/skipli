@@ -58,9 +58,12 @@ function notAvailableOffline(what: NotOffline): never {
   });
 }
 
-const favoritesOf = ({ boards, teamBoards }: BoardList): Favorite[] =>
+// In the bar's own order; favorites without one keep their board list order
+// (the sort is stable) ahead of those placed since.
+export const favoritesOf = ({ boards, teamBoards }: BoardList): Favorite[] =>
   [...boards, ...teamBoards]
     .filter((board) => board.favorite)
+    .sort((a, b) => (a.favoriteOrder ?? 0) - (b.favoriteOrder ?? 0))
     .map(({ id, name, owner }) => ({ id, name, owner }));
 
 // The board list as the server has it, with any Pending changes laid on
