@@ -38,9 +38,25 @@ function Boards({
     if (outcome === "dropped") setFavorites(old);
   };
 
+  const orderFavorites = async (ordered: Favorite[]) => {
+    const old = favorites;
+    setFavorites(ordered);
+
+    const outcome = await make({
+      type: "orderFavorites",
+      boardIds: ordered.map((f) => f.id),
+    });
+    if (outcome === "dropped") setFavorites(old);
+  };
+
   return (
     <div className="flex flex-col h-dvh bg-background">
-      <Header me={me} setMe={setMe} favorites={favorites} />
+      <Header
+        me={me}
+        setMe={setMe}
+        favorites={favorites}
+        orderFavorites={orderFavorites}
+      />
       <OfflineBanner />
       {/* The page takes whatever height the header and banner leave. */}
       <div className="flex-1 min-h-0 overflow-y-auto">

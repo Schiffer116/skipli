@@ -46,6 +46,7 @@ func (h *Handler) RegisterRoutes(router *http.ServeMux) {
 	router.HandleFunc("GET /boards/{id}", h.member(h.get))
 	router.HandleFunc("POST /boards", h.tokens.RequireAuth(h.create))
 	router.HandleFunc("PUT /boards/order", h.tokens.RequireAuth(h.order))
+	router.HandleFunc("PUT /boards/favorites/order", h.tokens.RequireAuth(h.orderFavorites))
 	router.HandleFunc("PUT /boards/{id}", h.member(h.put))
 	router.HandleFunc("PUT /boards/{id}/favorite", h.member(h.favorite))
 	router.HandleFunc("POST /boards/{id}/invite", h.member(h.invite))
@@ -174,8 +175,11 @@ type Board struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Favorite    bool   `json:"favorite" dynamodbav:"-"`
-	TaskCount   int    `json:"taskCount" dynamodbav:"-"`
-	DoneCount   int    `json:"doneCount" dynamodbav:"-"`
+	// Where the caller's favorites bar puts this board; 0 for a favorite
+	// from before the bar had its own order.
+	FavoriteOrder float64 `json:"favoriteOrder" dynamodbav:"-"`
+	TaskCount     int     `json:"taskCount" dynamodbav:"-"`
+	DoneCount     int     `json:"doneCount" dynamodbav:"-"`
 }
 
 func (h *Handler) countTasks(ctx context.Context, board *Board) error {
@@ -219,7 +223,8 @@ type boardItem struct {
 	PK         string
 	SK         string
 	Order      float64
-	IsFavorite bool `dynamodbav:"Favorite"`
+	IsFavorite bool    `dynamodbav:"Favorite"`
+	FavoriteAt float64 `dynamodbav:"FavoriteOrder"`
 }
 
 type ListResponse struct {
@@ -304,16 +309,19 @@ func (h *Handler) list(w http.ResponseWriter, req *http.Request) {
 	memberBoards := []Board{}
 	orders := map[string]float64{}
 	favorites := map[string]bool{}
+	favoriteOrders := map[string]float64{}
 	for _, item := range items {
 		if item.SK == "META" {
 			memberBoards = append(memberBoards, item.Board)
 		} else {
 			orders[item.PK] = item.Order
 			favorites[item.PK] = item.IsFavorite
+			favoriteOrders[item.PK] = item.FavoriteAt
 		}
 	}
 	for i := range memberBoards {
 		memberBoards[i].Favorite = favorites[memberBoards[i].ID]
+		memberBoards[i].FavoriteOrder = favoriteOrders[memberBoards[i].ID]
 		if err := h.countTasks(ctx, &memberBoards[i]); err != nil {
 			log.Printf("failed to count tasks: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -360,6 +368,18 @@ type OrderRequest struct {
 // than a single before/after midpoint (like cards) keeps it correct for
 // memberships that predate Order, which would all tie at 0.
 func (h *Handler) order(w http.ResponseWriter, req *http.Request) {
+	h.saveOrder(w, req, "Order", 0)
+}
+
+// orderFavorites saves the order of the caller's favorites bar the same way,
+// in its own FavoriteOrder so it doesn't disturb the order of the board
+// list. Positions start at 1: 0 is what a favorite from before this order
+// existed reads as, and those stay ahead of the ones placed since.
+func (h *Handler) orderFavorites(w http.ResponseWriter, req *http.Request) {
+	h.saveOrder(w, req, "FavoriteOrder", 1)
+}
+
+func (h *Handler) saveOrder(w http.ResponseWriter, req *http.Request, attribute string, first int) {
 	ctx := req.Context()
 
 	user, ok := auth.UserFromContext(ctx)
@@ -411,10 +431,10 @@ func (h *Handler) order(w http.ResponseWriter, req *http.Request) {
 				UpdateExpression:    aws.String("SET #order = :order"),
 				ConditionExpression: aws.String("attribute_exists(PK)"),
 				ExpressionAttributeNames: map[string]string{
-					"#order": "Order",
+					"#order": attribute,
 				},
 				ExpressionAttributeValues: map[string]types.AttributeValue{
-					":order": &types.AttributeValueMemberN{Value: strconv.Itoa(i)},
+					":order": &types.AttributeValueMemberN{Value: strconv.Itoa(first + i)},
 				},
 			},
 		})
@@ -461,20 +481,32 @@ func (h *Handler) favorite(w http.ResponseWriter, req *http.Request) {
 	}
 	defer req.Body.Close()
 
+	// A board favorited now goes last in the bar: the millisecond clock is
+	// past every position the bar has handed out.
+	update := "SET #favorite = :favorite"
+	values := map[string]types.AttributeValue{
+		":favorite": &types.AttributeValueMemberBOOL{Value: r.Favorite},
+	}
+	if r.Favorite {
+		update += ", #order = :order"
+		values[":order"] = &types.AttributeValueMemberN{Value: strconv.FormatInt(time.Now().UnixMilli(), 10)}
+	} else {
+		update = "SET #favorite = :favorite REMOVE #order"
+	}
+
 	_, err := h.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName: aws.String(h.table),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: req.PathValue("id")},
 			"SK": &types.AttributeValueMemberS{Value: "MEMBER#" + user.ID},
 		},
-		UpdateExpression:    aws.String("SET #favorite = :favorite"),
+		UpdateExpression:    aws.String(update),
 		ConditionExpression: aws.String("attribute_exists(PK)"),
 		ExpressionAttributeNames: map[string]string{
 			"#favorite": "Favorite",
+			"#order":    "FavoriteOrder",
 		},
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":favorite": &types.AttributeValueMemberBOOL{Value: r.Favorite},
-		},
+		ExpressionAttributeValues: values,
 	})
 	var notMember *types.ConditionalCheckFailedException
 	if errors.As(err, &notMember) {
