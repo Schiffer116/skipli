@@ -1,6 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { submitOnModEnter } from "@/lib/submitOnModEnter";
 
 import type { Board } from "./BoardList";
 import useEscape from "@/hooks/useEscape";
@@ -65,11 +67,11 @@ export default function CreateBoardForm(props: BoardFormProps) {
               placeholder="Name"
               autoFocus
             />
-            <Input
+            <Textarea
               id="edit-description"
               name="description"
-              type="text"
               placeholder="Description"
+              onKeyDown={submitOnModEnter}
             />
             <div className="space-x-2">
               <Button type="submit">Create</Button>
