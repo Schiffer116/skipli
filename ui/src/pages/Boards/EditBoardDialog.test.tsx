@@ -48,6 +48,23 @@ describe("Edit board", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("keeps Enter as a line break and saves the lines on Ctrl+Enter", async () => {
+    const user = await open();
+    const description = screen.getByLabelText("Description");
+    expect(description.tagName).toBe("TEXTAREA");
+    await user.type(description, "Chores{Enter}Weekly");
+    expect(make).not.toHaveBeenCalled();
+    await user.keyboard("{Control>}{Enter}{/Control}");
+
+    expect(make).toHaveBeenCalledExactlyOnceWith({
+      type: "updateBoard",
+      boardId: "b1",
+      name: "Home",
+      description: "Chores\nWeekly",
+    });
+    expect(onSaved).toHaveBeenCalledExactlyOnceWith("Home", "Chores\nWeekly");
+  });
+
   it("changes nothing on Cancel", async () => {
     const user = await open();
     await user.type(screen.getByLabelText("Name"), "!");

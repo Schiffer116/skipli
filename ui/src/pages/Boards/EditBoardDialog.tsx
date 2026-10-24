@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { submitOnModEnter } from "@/lib/submitOnModEnter";
 import { AlertDialog } from "@radix-ui/react-alert-dialog";
 import {
   AlertDialogAction,
@@ -104,10 +106,11 @@ export default function EditBoardDialog(props: EditBoardDialogProps) {
             </div>
             <div className="grid gap-3">
               <Label htmlFor="board-description">Description</Label>
-              <Input
+              <Textarea
                 id="board-description"
                 name="description"
                 defaultValue={description}
+                onKeyDown={submitOnModEnter}
               />
             </div>
           </div>

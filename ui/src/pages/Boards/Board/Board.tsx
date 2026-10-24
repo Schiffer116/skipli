@@ -197,7 +197,7 @@ export default function Board({
               </div>
             </div>
             {description && (
-              <p className="text-sm text-muted-foreground max-w-prose break-words">
+              <p className="text-sm text-muted-foreground max-w-prose break-words whitespace-pre-wrap">
                 {description}
               </p>
             )}

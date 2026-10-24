@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { submitOnModEnter } from "@/lib/submitOnModEnter";
 import { AlertDialog } from "@radix-ui/react-alert-dialog";
 import {
   AlertDialogAction,
@@ -89,15 +91,16 @@ export default function EditCardDialog(props: CardType) {
 
             <div className="grid gap-4 mt-4">
               <div className="grid gap-3">
-                <Label htmlFor="board-name">Name</Label>
-                <Input id="board-name" name="name" defaultValue={name} />
+                <Label htmlFor="card-name">Name</Label>
+                <Input id="card-name" name="name" defaultValue={name} />
               </div>
               <div className="grid gap-3">
-                <Label htmlFor="board-description">Description</Label>
-                <Input
-                  id="board-description"
+                <Label htmlFor="card-description">Description</Label>
+                <Textarea
+                  id="card-description"
                   name="description"
                   defaultValue={description}
+                  onKeyDown={submitOnModEnter}
                 />
               </div>
             </div>
