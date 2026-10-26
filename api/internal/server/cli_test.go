@@ -52,9 +52,9 @@ func item(fields map[string]any) map[string]any {
 	for k, v := range fields {
 		switch v := v.(type) {
 		case string:
-			out[k] = map[string]string{"S": v}
+			out[k] = map[string]any{"S": v}
 		case int:
-			out[k] = map[string]string{"N": itoa(v)}
+			out[k] = map[string]any{"N": itoa(v)}
 		}
 	}
 	return out
@@ -69,8 +69,13 @@ func newCLIHarness(t *testing.T) *cliHarness {
 		t.Fatal(err)
 	}
 
+	// Writes are only recorded, so the board reads the same in every test.
 	items := map[string]map[string]any{}
-	add := func(f map[string]any) { items[f["PK"].(string)+"/"+f["SK"].(string)] = item(f) }
+	table := awsfake.NewTable()
+	add := func(f map[string]any) {
+		items[f["PK"].(string)+"/"+f["SK"].(string)] = item(f)
+		table.Put(item(f))
+	}
 	add(map[string]any{"PK": cliBoard, "SK": "META", "ID": cliBoard, "Owner": "u-member", "Name": "Roadmap", "Description": "plans"})
 	add(map[string]any{"PK": cliBoard, "SK": "MEMBER#u-member", "Member": "u-member", "Email": "u-member@example.com", "Order": 1})
 	add(map[string]any{"PK": cliBoard, "SK": "CARD#" + cliCard1, "ID": cliCard1, "Name": "Backlog", "Description": "later", "Order": 1000})
@@ -99,20 +104,7 @@ func newCLIHarness(t *testing.T) *cliHarness {
 			if body["IndexName"] != nil {
 				return 200, map[string]any{"Items": []any{map[string]any{"PK": map[string]string{"S": cliBoard}}}}
 			}
-			prefix := ""
-			values, _ := body["ExpressionAttributeValues"].(map[string]any)
-			for _, v := range values {
-				if s := str(v, "S"); s != cliBoard {
-					prefix = s
-				}
-			}
-			found := []any{}
-			for key, it := range items {
-				if strings.HasPrefix(key, cliBoard+"/"+prefix) {
-					found = append(found, it)
-				}
-			}
-			return 200, map[string]any{"Items": found}
+			return table.Respond(op, body)
 		case "BatchGetItem":
 			var found []any
 			keys, _ := body["RequestItems"].(map[string]any)["Skipli"].(map[string]any)["Keys"].([]any)
@@ -403,15 +395,15 @@ func TestCLIWrites(t *testing.T) {
 		}
 	})
 
-	t.Run("edits keep what they don't change", func(t *testing.T) {
+	t.Run("edits send only what they change", func(t *testing.T) {
 		h.mustRun("edit-card", cliBoard, "aaaa1", "--name", "Icebox")
 		h.mustRun("edit-task", cliBoard, "dddd1", "--status", "done")
 		h.mustRun("edit-task", cliBoard, cliTask3, "--description", "")
 		got := h.takeChanges()
 		want := []map[string]any{
-			{"type": "updateCard", "boardId": cliBoard, "cardId": cliCard1, "name": "Icebox", "description": "later"},
-			{"type": "updateTask", "boardId": cliBoard, "cardId": cliCard1, "taskId": cliTask1, "name": "Write tests", "description": "all of them", "status": "done"},
-			{"type": "updateTask", "boardId": cliBoard, "cardId": cliCard2, "taskId": cliTask3, "name": "Review", "description": "", "status": "pending"},
+			{"type": "updateCard", "boardId": cliBoard, "cardId": cliCard1, "name": "Icebox"},
+			{"type": "updateTask", "boardId": cliBoard, "cardId": cliCard1, "taskId": cliTask1, "status": "done"},
+			{"type": "updateTask", "boardId": cliBoard, "cardId": cliCard2, "taskId": cliTask3, "description": ""},
 		}
 		if !jsonEqual(got, want) {
 			t.Errorf("changes = %v\nwant %v", got, want)
@@ -459,7 +451,7 @@ func TestCLIWrites(t *testing.T) {
 		want := []map[string]any{
 			{"type": "deleteTask", "boardId": cliBoard, "cardId": cliCard1, "taskId": cliTask2},
 			{"type": "deleteCard", "boardId": cliBoard, "cardId": cliCard2},
-			{"type": "cleanUp", "boardId": cliBoard},
+			{"type": "cleanUp", "boardId": cliBoard, "taskIds": []any{cliTask2}},
 		}
 		if !jsonEqual(got, want) {
 			t.Errorf("changes = %v\nwant %v", got, want)

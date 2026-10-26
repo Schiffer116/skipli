@@ -366,14 +366,14 @@ func runAddCard(ctx context.Context, e *env, a *args) error {
 		return err
 	}
 	c := boardchange.Change{
-		Type: boardchange.CreateCard, BoardID: id, CardID: uuid.NewString(), Name: a.pos[1],
+		Type: boardchange.CreateCard, BoardID: id, CardID: uuid.NewString(), Name: new(a.pos[1]),
 		CreatedAt: time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
 	}
 	if err := e.send(ctx, c); err != nil {
 		return err
 	}
 	if !e.json {
-		fmt.Fprintf(e.Stdout, "card %s %s\n", c.CardID, strconv.Quote(c.Name))
+		fmt.Fprintf(e.Stdout, "card %s %s\n", c.CardID, strconv.Quote(a.pos[1]))
 	}
 	return nil
 }
@@ -390,12 +390,12 @@ func runEditCard(ctx context.Context, e *env, a *args) error {
 	if err != nil {
 		return err
 	}
-	c := boardchange.Change{Type: boardchange.UpdateCard, BoardID: b.ID, CardID: card.ID, Name: card.Name, Description: card.Description}
+	c := boardchange.Change{Type: boardchange.UpdateCard, BoardID: b.ID, CardID: card.ID}
 	if a.set("name") {
-		c.Name = a.str("name")
+		c.Name = new(a.str("name"))
 	}
 	if a.set("description") {
-		c.Description = a.str("description")
+		c.Description = new(a.str("description"))
 	}
 	if err := e.send(ctx, c); err != nil {
 		return err
@@ -455,12 +455,12 @@ func runAddTask(ctx context.Context, e *env, a *args) error {
 	if err != nil {
 		return err
 	}
-	c := boardchange.Change{Type: boardchange.CreateTask, BoardID: b.ID, CardID: card.ID, TaskID: uuid.NewString(), Name: a.pos[2]}
+	c := boardchange.Change{Type: boardchange.CreateTask, BoardID: b.ID, CardID: card.ID, TaskID: uuid.NewString(), Name: new(a.pos[2])}
 	if err := e.send(ctx, c); err != nil {
 		return err
 	}
 	if !e.json {
-		writeTask(e.Stdout, "", c.TaskID, "pending", c.Name)
+		writeTask(e.Stdout, "", c.TaskID, "pending", a.pos[2])
 	}
 	return nil
 }
@@ -482,16 +482,15 @@ func runEditTask(ctx context.Context, e *env, a *args) error {
 	}
 	c := boardchange.Change{
 		Type: boardchange.UpdateTask, BoardID: b.ID, CardID: task.CardID, TaskID: task.ID,
-		Name: task.Name, Description: task.Description, Status: task.Status,
 	}
 	if a.set("name") {
-		c.Name = a.str("name")
+		c.Name = new(a.str("name"))
 	}
 	if a.set("description") {
-		c.Description = a.str("description")
+		c.Description = new(a.str("description"))
 	}
 	if a.set("status") {
-		c.Status = a.str("status")
+		c.Status = new(a.str("status"))
 	}
 	if err := e.send(ctx, c); err != nil {
 		return err
@@ -563,19 +562,19 @@ func runCleanUp(ctx context.Context, e *env, a *args) error {
 	if err != nil {
 		return err
 	}
-	done := 0
+	done := []string{}
 	for _, card := range b.Cards {
 		for _, t := range card.Tasks {
 			if t.Status == "done" {
-				done++
+				done = append(done, t.ID)
 			}
 		}
 	}
-	if err := e.send(ctx, boardchange.Change{Type: boardchange.CleanUp, BoardID: b.ID}); err != nil {
+	if err := e.send(ctx, boardchange.Change{Type: boardchange.CleanUp, BoardID: b.ID, TaskIDs: done}); err != nil {
 		return err
 	}
 	if !e.json {
-		fmt.Fprintf(e.Stdout, "removed %d done tasks\n", done)
+		fmt.Fprintf(e.Stdout, "removed %d done tasks\n", len(done))
 	}
 	return nil
 }
