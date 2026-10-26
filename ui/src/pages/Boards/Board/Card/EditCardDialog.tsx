@@ -27,6 +27,8 @@ import { Button } from "@/components/ui/button";
 import { DialogDescription } from "@radix-ui/react-dialog";
 
 import type { CardType } from "./Card";
+import { changedFields } from "@/offline/changes";
+
 import { BoardContext } from "../BoardContext";
 import { useParams } from "react-router";
 
@@ -47,7 +49,10 @@ export default function EditCardDialog(props: CardType) {
       return;
     }
 
-    void make({ type: "updateCard", boardId, cardId: id, name, description });
+    const changed = changedFields(props, { name, description });
+    if (Object.keys(changed).length > 0) {
+      void make({ type: "updateCard", boardId, cardId: id, ...changed });
+    }
     setOpen(false);
   };
 

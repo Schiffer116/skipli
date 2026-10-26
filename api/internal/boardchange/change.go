@@ -31,51 +31,76 @@ const (
 	CleanUp    = "cleanUp"
 )
 
-// Change is one Board change. Which fields it uses depends on its Type.
+// Change is one Board change. Which fields it uses depends on its Type. An
+// update carries only the fields it changed, so edits to different fields
+// of one card or task both survive; the last to arrive wins per field.
 type Change struct {
 	Type        string  `json:"type"`
 	BoardID     string  `json:"boardId"`
 	CardID      string  `json:"cardId"`
 	TaskID      string  `json:"taskId"`
-	Name        string  `json:"name"`
-	Description string  `json:"description"`
-	Status      string  `json:"status"`
+	Name        *string `json:"name"`
+	Description *string `json:"description"`
+	Status      *string `json:"status"`
 	CreatedAt   string  `json:"createdAt"`
 	NewCardID   string  `json:"newCardId"`
 	BeforeID    *string `json:"beforeId"`
 	AfterID     *string `json:"afterId"`
+	// TaskIDs are the tasks a clean up deletes: the ones done on screen
+	// when it was made.
+	TaskIDs []string `json:"taskIds"`
 }
 
 // MarshalJSON writes only the fields the change's Type uses, so teammates
 // receive it in the same shape the app sent it.
 func (c Change) MarshalJSON() ([]byte, error) {
 	out := map[string]any{"type": c.Type, "boardId": c.BoardID}
+	// Only the fields an update changed.
+	fields := func() {
+		for name, value := range map[string]*string{"name": c.Name, "description": c.Description, "status": c.Status} {
+			if value != nil {
+				out[name] = *value
+			}
+		}
+	}
 	switch c.Type {
 	case CreateCard:
-		out["cardId"], out["name"], out["createdAt"] = c.CardID, c.Name, c.CreatedAt
+		out["cardId"], out["name"], out["createdAt"] = c.CardID, value(c.Name), c.CreatedAt
 	case UpdateCard:
-		out["cardId"], out["name"], out["description"] = c.CardID, c.Name, c.Description
+		out["cardId"] = c.CardID
+		fields()
 	case DeleteCard:
 		out["cardId"] = c.CardID
 	case MoveCard:
 		out["cardId"], out["beforeId"], out["afterId"] = c.CardID, c.BeforeID, c.AfterID
 	case CreateTask:
-		out["cardId"], out["taskId"], out["name"] = c.CardID, c.TaskID, c.Name
+		out["cardId"], out["taskId"], out["name"] = c.CardID, c.TaskID, value(c.Name)
 	case UpdateTask:
 		out["cardId"], out["taskId"] = c.CardID, c.TaskID
-		out["name"], out["description"], out["status"] = c.Name, c.Description, c.Status
+		fields()
 	case DeleteTask:
 		out["cardId"], out["taskId"] = c.CardID, c.TaskID
 	case MoveTask:
 		out["cardId"], out["taskId"], out["newCardId"] = c.CardID, c.TaskID, c.NewCardID
 		out["beforeId"], out["afterId"] = c.BeforeID, c.AfterID
+	case CleanUp:
+		out["taskIds"] = c.TaskIDs
 	}
 	return json.Marshal(out)
 }
 
+// value is s, or "" when it is absent.
+func value(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
 // Refusal is a change the board can't take, with the HTTP status that says
-// why: 400 for a malformed change, 404 when what it changes is gone, 409 when
-// a create's ID is already taken (the app treats that as already saved).
+// why: 400 for a malformed change, 404 when what it changes is gone (the app
+// drops it), 409 when a create's ID is already taken (the app treats that as
+// already saved). testdata/board-changes.json lists which changes are which.
 type Refusal struct {
 	Status  int
 	Message string
@@ -143,6 +168,15 @@ func (c Change) validate() error {
 	needTask := c.Type == CreateTask || c.Type == UpdateTask || c.Type == DeleteTask || c.Type == MoveTask
 	if needCard && c.CardID == "" || needTask && c.TaskID == "" || c.Type == MoveTask && c.NewCardID == "" {
 		return refuse(http.StatusBadRequest, "missing id")
+	}
+	if (c.Type == UpdateCard || c.Type == UpdateTask) && c.Name == nil && c.Description == nil && c.Status == nil {
+		return refuse(http.StatusBadRequest, "nothing to update")
+	}
+	if c.Type == UpdateCard && c.Status != nil {
+		return refuse(http.StatusBadRequest, "a card has no status")
+	}
+	if c.Type == CleanUp && c.TaskIDs == nil {
+		return refuse(http.StatusBadRequest, "missing taskIds")
 	}
 	// The app names what it creates, so a retried create can't make a
 	// duplicate; only canonical UUIDs can become keys.

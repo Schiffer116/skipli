@@ -24,12 +24,15 @@ type CleanUpButtonProps = {
 
 export default function CleanUpButton({ boardId, cards }: CleanUpButtonProps) {
   const { make } = useContext(BoardContext)!;
-  const doneCount = cards
+  const done = cards
     .flatMap((card) => card.tasks)
-    .filter((task) => task.status === "done").length;
+    .filter((task) => task.status === "done");
+  const doneCount = done.length;
 
+  // Exactly the tasks done on screen: not one a teammate marks done before
+  // this reaches the server.
   const cleanUp = () => {
-    void make({ type: "cleanUp", boardId });
+    void make({ type: "cleanUp", boardId, taskIds: done.map((t) => t.id) });
   };
 
   return (

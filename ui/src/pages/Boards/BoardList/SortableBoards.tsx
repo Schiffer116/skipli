@@ -88,9 +88,7 @@ export default function SortableBoards({
               key={board.id}
               board={board}
               setBoards={setBoards}
-              // Offline, only a Solo board can still be changed. A board
-              // made offline isn't in the snapshot yet, but it's Solo.
-              editable={editable && offline?.solo[board.id] !== false}
+              editable={editable}
               savedAt={offline?.savedAt[board.id]}
             />
           ))}

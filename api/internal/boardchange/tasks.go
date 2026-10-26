@@ -3,6 +3,7 @@ package boardchange
 import (
 	"context"
 	"net/http"
+	"slices"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -13,8 +14,61 @@ import (
 	"github.com/Schiffer116/skipli/api/internal/access"
 )
 
+// findTask finds a task by its id, wherever it is now: a task's key names its
+// card, and a teammate may have moved it to another since the change was
+// made. cardID is where the change saw it, tried first. ok is false when the
+// task is gone.
+func (s *Store) findTask(ctx context.Context, boardID, cardID, taskID string) (t sibling, ok bool, err error) {
+	out, err := s.db.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String(s.table),
+		Key:       access.Key(boardID, taskSK(cardID, taskID)),
+	})
+	if err != nil {
+		return sibling{}, false, err
+	}
+	if out.Item != nil {
+		err = attributevalue.UnmarshalMap(out.Item, &t)
+		return t, err == nil, err
+	}
+
+	expr, err := expression.NewBuilder().
+		WithKeyCondition(expression.Key("PK").Equal(expression.Value(boardID)).
+			And(expression.Key("SK").BeginsWith("TASK#"))).
+		WithFilter(expression.Name("ID").Equal(expression.Value(taskID))).
+		Build()
+	if err != nil {
+		return sibling{}, false, err
+	}
+	pages := dynamodb.NewQueryPaginator(s.db, &dynamodb.QueryInput{
+		TableName:                 aws.String(s.table),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		KeyConditionExpression:    expr.KeyCondition(),
+		FilterExpression:          expr.Filter(),
+	})
+	for pages.HasMorePages() {
+		page, err := pages.NextPage(ctx)
+		if err != nil {
+			return sibling{}, false, err
+		}
+		if len(page.Items) > 0 {
+			err = attributevalue.UnmarshalMap(page.Items[0], &t)
+			return t, err == nil, err
+		}
+	}
+	return sibling{}, false, nil
+}
+
 func (s *Store) createTask(ctx context.Context, c Change) error {
-	last, err := s.lastOrder(ctx, c.BoardID, taskPrefix(c.CardID))
+	// A retried create whose task a teammate has since moved to another
+	// card is already saved, not a second task.
+	if _, ok, err := s.findTask(ctx, c.BoardID, c.CardID, c.TaskID); err != nil || ok {
+		if ok {
+			return refuse(http.StatusConflict, "a task with this id already exists")
+		}
+		return err
+	}
+	tasks, err := s.siblings(ctx, c.BoardID, taskPrefix(c.CardID))
 	if err != nil {
 		return err
 	}
@@ -39,10 +93,10 @@ func (s *Store) createTask(ctx context.Context, c Change) error {
 						"SK":          &types.AttributeValueMemberS{Value: taskSK(c.CardID, c.TaskID)},
 						"ID":          &types.AttributeValueMemberS{Value: c.TaskID},
 						"CardID":      &types.AttributeValueMemberS{Value: c.CardID},
-						"Name":        &types.AttributeValueMemberS{Value: c.Name},
+						"Name":        &types.AttributeValueMemberS{Value: value(c.Name)},
 						"Description": &types.AttributeValueMemberS{Value: ""},
 						"Status":      &types.AttributeValueMemberS{Value: "pending"},
-						"Order":       formatOrder(last + orderGap),
+						"Order":       formatOrder(place(tasks, c.TaskID, nil, nil)),
 					},
 					ConditionExpression: aws.String("attribute_not_exists(SK)"),
 				},
@@ -59,49 +113,37 @@ func (s *Store) createTask(ctx context.Context, c Change) error {
 }
 
 func (s *Store) updateTask(ctx context.Context, c Change) error {
-	update := expression.Set(expression.Name("Name"), expression.Value(c.Name)).
-		Set(expression.Name("Description"), expression.Value(c.Description)).
-		Set(expression.Name("Status"), expression.Value(c.Status))
-	return s.update(ctx, c.BoardID, taskSK(c.CardID, c.TaskID), update, "task not found")
-}
-
-// task is what a move carries over to the task's new key.
-type task struct {
-	Name        string
-	Description string
-	Status      string
-}
-
-// moveTask places a task among the tasks of a card, its own or another. With
-// neither neighbour given it lands at order 0.
-func (s *Store) moveTask(ctx context.Context, c Change) error {
-	out, err := s.db.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(s.table),
-		Key:       access.Key(c.BoardID, taskSK(c.CardID, c.TaskID)),
-	})
+	t, ok, err := s.findTask(ctx, c.BoardID, c.CardID, c.TaskID)
 	if err != nil {
 		return err
 	}
-	if out.Item == nil {
+	if !ok {
 		return refuse(http.StatusNotFound, "task not found")
 	}
-	var t task
-	if err := attributevalue.UnmarshalMap(out.Item, &t); err != nil {
-		return err
-	}
+	return s.update(ctx, c.BoardID, t.SK, fields(c), "task not found")
+}
 
-	order, err := s.between(ctx, c.BoardID, c.BeforeID, c.AfterID, func(id string) string {
-		return taskSK(c.NewCardID, id)
-	})
+// moveTask places a task among the tasks of a card, its own or another,
+// from whichever card it is in now.
+func (s *Store) moveTask(ctx context.Context, c Change) error {
+	t, ok, err := s.findTask(ctx, c.BoardID, c.CardID, c.TaskID)
 	if err != nil {
 		return err
 	}
+	if !ok {
+		return refuse(http.StatusNotFound, "task not found")
+	}
+	tasks, err := s.siblings(ctx, c.BoardID, taskPrefix(c.NewCardID))
+	if err != nil {
+		return err
+	}
+	order := place(tasks, c.TaskID, c.BeforeID, c.AfterID)
 
-	if c.NewCardID == c.CardID {
+	if c.NewCardID == t.CardID {
 		// Same card: TransactWriteItems refuses two operations on one key,
 		// so the delete and put below can't be used when the key (which
 		// embeds the card) isn't changing.
-		return s.update(ctx, c.BoardID, taskSK(c.CardID, c.TaskID),
+		return s.update(ctx, c.BoardID, t.SK,
 			expression.Set(expression.Name("Order"), expression.Value(order)), "task not found")
 	}
 
@@ -114,7 +156,7 @@ func (s *Store) moveTask(ctx context.Context, c Change) error {
 			{
 				Delete: &types.Delete{
 					TableName:           aws.String(s.table),
-					Key:                 access.Key(c.BoardID, taskSK(c.CardID, c.TaskID)),
+					Key:                 access.Key(c.BoardID, t.SK),
 					ConditionExpression: aws.String("attribute_exists(SK)"),
 				},
 			},
@@ -151,43 +193,34 @@ func (s *Store) moveTask(ctx context.Context, c Change) error {
 	return err
 }
 
+// deleteTask deletes a task from whichever card it is in now. One already
+// gone counts as deleted.
 func (s *Store) deleteTask(ctx context.Context, c Change) error {
-	_, err := s.db.DeleteItem(ctx, &dynamodb.DeleteItemInput{
+	t, ok, err := s.findTask(ctx, c.BoardID, c.CardID, c.TaskID)
+	if err != nil || !ok {
+		return err
+	}
+	_, err = s.db.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: aws.String(s.table),
-		Key:       access.Key(c.BoardID, taskSK(c.CardID, c.TaskID)),
+		Key:       access.Key(c.BoardID, t.SK),
 	})
 	return err
 }
 
-// cleanUp deletes every done task on the board.
+// cleanUp deletes the tasks that were done on screen when it was made,
+// wherever they are now, and no others: not one a teammate marked done
+// meanwhile.
 func (s *Store) cleanUp(ctx context.Context, c Change) error {
-	expr, err := expression.NewBuilder().
-		WithKeyCondition(expression.Key("PK").Equal(expression.Value(c.BoardID)).
-			And(expression.Key("SK").BeginsWith("TASK#"))).
-		WithFilter(expression.Name("Status").Equal(expression.Value("done"))).
-		WithProjection(expression.NamesList(expression.Name("PK"), expression.Name("SK"))).
-		Build()
+	tasks, err := s.siblings(ctx, c.BoardID, "TASK#")
 	if err != nil {
 		return err
 	}
-	pages := dynamodb.NewQueryPaginator(s.db, &dynamodb.QueryInput{
-		TableName:                 aws.String(s.table),
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
-		KeyConditionExpression:    expr.KeyCondition(),
-		FilterExpression:          expr.Filter(),
-		ProjectionExpression:      expr.Projection(),
-	})
 
 	var deletes []types.WriteRequest
-	for pages.HasMorePages() {
-		page, err := pages.NextPage(ctx)
-		if err != nil {
-			return err
-		}
-		for _, item := range page.Items {
+	for _, t := range tasks {
+		if slices.Contains(c.TaskIDs, t.ID) {
 			deletes = append(deletes, types.WriteRequest{
-				DeleteRequest: &types.DeleteRequest{Key: map[string]types.AttributeValue{"PK": item["PK"], "SK": item["SK"]}},
+				DeleteRequest: &types.DeleteRequest{Key: access.Key(c.BoardID, t.SK)},
 			})
 		}
 	}

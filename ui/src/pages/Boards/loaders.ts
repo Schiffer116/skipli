@@ -177,12 +177,10 @@ export async function boardsLoader() {
 export type BoardListData = {
   boards: Board[];
   teamBoards: Board[];
-  // Offline only: when each board was last saved on this device, which ones
-  // can still be changed (Solo boards), and whether some boards in the list
-  // aren't on this device at all.
+  // Offline only: when each board was last saved on this device, and
+  // whether some boards in the list aren't on this device at all.
   offline?: {
     savedAt: Record<string, number>;
-    solo: Record<string, boolean>;
     missing: boolean;
   };
 };
@@ -250,7 +248,6 @@ async function offlineBoardList(userId: string): Promise<BoardListData> {
     teamBoards,
     offline: {
       savedAt: Object.fromEntries(saved.map((b) => [b.id, b.savedAt])),
-      solo: Object.fromEntries(saved.map((b) => [b.id, b.members.length <= 1])),
       missing: listed > boards.length + teamBoards.length,
     },
   };

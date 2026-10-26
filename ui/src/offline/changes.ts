@@ -1,11 +1,18 @@
 import type { Board } from "@/pages/Boards/BoardList/BoardList";
 
 // Every change the app can make, in the shape the API takes. Online, a
-// change is sent right away; offline (on a Solo board, or to the board
-// list) it waits as a Pending change and is sent in order on reconnect.
+// change is sent right away; offline it waits as a Pending change and is
+// sent in order on reconnect. An update carries only the fields it changed,
+// so teammates' edits to the others survive; the last to arrive wins per
+// field.
 export type Change =
   | { type: "createBoard"; boardId: string; name: string; description: string }
-  | { type: "updateBoard"; boardId: string; name: string; description: string }
+  | {
+      type: "updateBoard";
+      boardId: string;
+      name?: string;
+      description?: string;
+    }
   | { type: "deleteBoard"; boardId: string }
   | { type: "favoriteBoard"; boardId: string; favorite: boolean }
   | { type: "orderBoards"; boardIds: string[] }
@@ -20,8 +27,8 @@ export type Change =
       type: "updateCard";
       boardId: string;
       cardId: string;
-      name: string;
-      description: string;
+      name?: string;
+      description?: string;
     }
   | { type: "deleteCard"; boardId: string; cardId: string }
   | {
@@ -41,24 +48,27 @@ export type Change =
   | {
       type: "updateTask";
       boardId: string;
+      // The card the task was in when this change was made. A teammate may
+      // have moved it since; the task is found by its id wherever it is.
       cardId: string;
       taskId: string;
-      name: string;
-      description: string;
-      status: string;
+      name?: string;
+      description?: string;
+      status?: string;
     }
   | { type: "deleteTask"; boardId: string; cardId: string; taskId: string }
   | {
       type: "moveTask";
       boardId: string;
-      // The card the task is in on the server when this change is sent.
+      // As in updateTask.
       cardId: string;
       taskId: string;
       newCardId: string;
       beforeId: string | null;
       afterId: string | null;
     }
-  | { type: "cleanUp"; boardId: string };
+  // Deletes the tasks done on screen when it was made, and only those.
+  | { type: "cleanUp"; boardId: string; taskIds: string[] };
 
 // A Board change: one edit to the cards or tasks of a board.
 export type BoardChange = Extract<
@@ -119,10 +129,7 @@ export function toRequest(change: Change): { url: string; init: RequestInit } {
     case "updateBoard":
       return {
         url: board,
-        init: json("PUT", {
-          name: change.name,
-          description: change.description,
-        }),
+        init: json("PUT", fields(change)),
       };
     case "deleteBoard":
       return { url: board, init: { method: "DELETE" } };
@@ -166,6 +173,31 @@ export function alreadySaved(change: Change, status: number) {
   return status === 409 && change.type.startsWith("create");
 }
 
+// The fields an update changed: its name, description or status, if
+// given.
+export function fields(change: {
+  name?: string;
+  description?: string;
+  status?: string;
+}) {
+  const { name, description, status } = change;
+  return Object.fromEntries(
+    Object.entries({ name, description, status }).filter(
+      ([, value]) => value !== undefined,
+    ),
+  ) as { name?: string; description?: string; status?: string };
+}
+
+// The fields of now that differ from was: what an update carries.
+export function changedFields<T extends Record<string, string>>(
+  was: Record<keyof T, unknown>,
+  now: T,
+): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(now).filter(([key, value]) => value !== was[key]),
+  ) as Partial<T>;
+}
+
 export type BoardList = { boards: Board[]; teamBoards: Board[] };
 
 // Applies a board-list change to the offline copy's list. Changes inside a
@@ -200,9 +232,7 @@ export function applyToList(
     case "updateBoard":
       return each((boards) =>
         boards.map((board) =>
-          board.id === change.boardId
-            ? { ...board, name: change.name, description: change.description }
-            : board,
+          board.id === change.boardId ? { ...board, ...fields(change) } : board,
         ),
       );
     case "deleteBoard":
