@@ -187,7 +187,7 @@ export default function AuthShell({ children }: { children: ReactNode }) {
       {/* Always dark, whatever the theme: `dark` swaps in the dark tokens. */}
       <section
         aria-label="Sign in"
-        className="dark flex min-w-0 flex-col gap-14 border-l-4 border-primary bg-nav px-5 pt-20 pb-8 text-nav-foreground min-[861px]:px-14"
+        className="dark flex min-w-0 flex-col gap-14 border-t-4 border-primary min-[861px]:border-t-0 min-[861px]:border-l-4 bg-nav px-5 pt-20 pb-8 text-nav-foreground min-[861px]:px-14"
       >
         <div className="mx-auto my-auto flex w-full max-w-[400px] flex-col gap-8">
           <img
