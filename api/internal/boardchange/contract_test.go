@@ -110,18 +110,27 @@ func (m *memTable) respond(op string, body map[string]any) (int, any) {
 		return 200, map[string]any{}
 	case "Query":
 		values := body["ExpressionAttributeValues"].(map[string]any)
-		var pk, prefix string
+		// The values are the board, a key prefix and, with a filter, the id
+		// the item must have.
+		var pk, prefix, id string
 		for _, v := range values {
-			switch val := str(v); {
+			val := str(v)
+			isBoard := false
+			for key := range m.items {
+				isBoard = isBoard || strings.HasPrefix(key, val+"/")
+			}
+			switch {
 			case strings.HasPrefix(val, "CARD#"), strings.HasPrefix(val, "TASK#"):
 				prefix = val
-			case val != "done":
+			case isBoard:
 				pk = val
+			default:
+				id = val
 			}
 		}
 		var keys []string
 		for key, item := range m.items {
-			if strings.HasPrefix(key, pk+"/"+prefix) && (body["FilterExpression"] == nil || str(item["Status"]) == "done") {
+			if strings.HasPrefix(key, pk+"/"+prefix) && (body["FilterExpression"] == nil || str(item["ID"]) == id) {
 				keys = append(keys, key)
 			}
 		}
@@ -230,7 +239,7 @@ var (
 )
 
 // seed is the board every case starts from: three cards, three tasks.
-func seed() board.Whole {
+func seedBoard() board.Whole {
 	task := func(id, card, name, desc, status string) board.Task {
 		return board.Task{ID: id, CardID: card, Name: name, Description: desc, Status: status}
 	}
@@ -258,32 +267,43 @@ var cases = []struct {
 	name   string
 	change Change
 }{
-	{"create card", Change{Type: CreateCard, BoardID: b1, CardID: newCard, Name: "Ideas"}},
-	{"create card with a taken id", Change{Type: CreateCard, BoardID: b1, CardID: c1, Name: "Ideas"}},
-	{"create card with a bad id", Change{Type: CreateCard, BoardID: b1, CardID: "x", Name: "Ideas"}},
-	{"create card without a board", Change{Type: CreateCard, CardID: newCard, Name: "Ideas"}},
-	{"update card", Change{Type: UpdateCard, BoardID: b1, CardID: c1, Name: "Later", Description: "notes\nmore"}},
-	{"update missing card", Change{Type: UpdateCard, BoardID: b1, CardID: missing, Name: "x"}},
+	{"create card", Change{Type: CreateCard, BoardID: b1, CardID: newCard, Name: ptr("Ideas")}},
+	{"create card with a taken id", Change{Type: CreateCard, BoardID: b1, CardID: c1, Name: ptr("Ideas")}},
+	{"create card with a bad id", Change{Type: CreateCard, BoardID: b1, CardID: "x", Name: ptr("Ideas")}},
+	{"create card without a board", Change{Type: CreateCard, CardID: newCard, Name: ptr("Ideas")}},
+	{"update card", Change{Type: UpdateCard, BoardID: b1, CardID: c1, Name: ptr("Later"), Description: ptr("notes\nmore")}},
+	{"update a card's name only", Change{Type: UpdateCard, BoardID: b1, CardID: c1, Name: ptr("Later")}},
+	{"update a card's description only", Change{Type: UpdateCard, BoardID: b1, CardID: c1, Description: ptr("")}},
+	{"update a card with nothing", Change{Type: UpdateCard, BoardID: b1, CardID: c1}},
+	{"update a card's status", Change{Type: UpdateCard, BoardID: b1, CardID: c1, Status: ptr("done")}},
+	{"update missing card", Change{Type: UpdateCard, BoardID: b1, CardID: missing, Name: ptr("x")}},
 	{"delete card with tasks", Change{Type: DeleteCard, BoardID: b1, CardID: c1}},
 	{"delete missing card", Change{Type: DeleteCard, BoardID: b1, CardID: missing}},
 	{"delete card without an id", Change{Type: DeleteCard, BoardID: b1}},
 	{"move card to the end", Change{Type: MoveCard, BoardID: b1, CardID: c1, BeforeID: ptr(c3)}},
 	{"move card to the front", Change{Type: MoveCard, BoardID: b1, CardID: c3, AfterID: ptr(c1)}},
 	{"move card between", Change{Type: MoveCard, BoardID: b1, CardID: c3, BeforeID: ptr(c1), AfterID: ptr(c2)}},
+	{"move card after a missing card, before another", Change{Type: MoveCard, BoardID: b1, CardID: c1, BeforeID: ptr(missingID), AfterID: ptr(c3)}},
+	{"move card before a missing card, after another", Change{Type: MoveCard, BoardID: b1, CardID: c3, BeforeID: ptr(c1), AfterID: ptr(missingID)}},
+	{"move card beside itself", Change{Type: MoveCard, BoardID: b1, CardID: c1, BeforeID: ptr(c1)}},
 	{"move card nowhere", Change{Type: MoveCard, BoardID: b1, CardID: c3}},
 	{"move card with empty neighbours", Change{Type: MoveCard, BoardID: b1, CardID: c3, BeforeID: ptr(""), AfterID: ptr("")}},
 	{"move missing card", Change{Type: MoveCard, BoardID: b1, CardID: missing, BeforeID: ptr(c1)}},
 	{"move missing card nowhere", Change{Type: MoveCard, BoardID: b1, CardID: missing}},
 	{"move card beside a missing card", Change{Type: MoveCard, BoardID: b1, CardID: c1, BeforeID: ptr(missingID)}},
 	{"move missing card beside a missing card", Change{Type: MoveCard, BoardID: b1, CardID: missing, AfterID: ptr(missingID)}},
-	{"create task", Change{Type: CreateTask, BoardID: b1, CardID: c1, TaskID: newTask, Name: "Buy milk"}},
-	{"create task in an empty card", Change{Type: CreateTask, BoardID: b1, CardID: c3, TaskID: newTask, Name: "Buy milk"}},
-	{"create task in a missing card", Change{Type: CreateTask, BoardID: b1, CardID: missing, TaskID: newTask, Name: "Buy milk"}},
-	{"create task with a taken id", Change{Type: CreateTask, BoardID: b1, CardID: c1, TaskID: t1, Name: "Buy milk"}},
-	{"create task with a bad id", Change{Type: CreateTask, BoardID: b1, CardID: c1, TaskID: "TASK#x", Name: "Buy milk"}},
-	{"update task", Change{Type: UpdateTask, BoardID: b1, CardID: c1, TaskID: t1, Name: "Write more", Description: "d", Status: "done"}},
-	{"update missing task", Change{Type: UpdateTask, BoardID: b1, CardID: c1, TaskID: missing, Name: "x", Status: "done"}},
-	{"update task without a task id", Change{Type: UpdateTask, BoardID: b1, CardID: c1, Name: "x"}},
+	{"create task", Change{Type: CreateTask, BoardID: b1, CardID: c1, TaskID: newTask, Name: ptr("Buy milk")}},
+	{"create task in an empty card", Change{Type: CreateTask, BoardID: b1, CardID: c3, TaskID: newTask, Name: ptr("Buy milk")}},
+	{"create task in a missing card", Change{Type: CreateTask, BoardID: b1, CardID: missing, TaskID: newTask, Name: ptr("Buy milk")}},
+	{"create task with a taken id", Change{Type: CreateTask, BoardID: b1, CardID: c1, TaskID: t1, Name: ptr("Buy milk")}},
+	{"create task with the id of a task in another card", Change{Type: CreateTask, BoardID: b1, CardID: c2, TaskID: t1, Name: ptr("Buy milk")}},
+	{"create task with a bad id", Change{Type: CreateTask, BoardID: b1, CardID: c1, TaskID: "TASK#x", Name: ptr("Buy milk")}},
+	{"update task", Change{Type: UpdateTask, BoardID: b1, CardID: c1, TaskID: t1, Name: ptr("Write more"), Description: ptr("d"), Status: ptr("done")}},
+	{"update a task's status only", Change{Type: UpdateTask, BoardID: b1, CardID: c1, TaskID: t1, Status: ptr("done")}},
+	{"update a task with nothing", Change{Type: UpdateTask, BoardID: b1, CardID: c1, TaskID: t1}},
+	{"update a task in the card it was moved from", Change{Type: UpdateTask, BoardID: b1, CardID: c2, TaskID: t1, Name: ptr("Moved")}},
+	{"update missing task", Change{Type: UpdateTask, BoardID: b1, CardID: c1, TaskID: missing, Name: ptr("x"), Status: ptr("done")}},
+	{"update task without a task id", Change{Type: UpdateTask, BoardID: b1, CardID: c1, Name: ptr("x")}},
 	{"move task to the end", Change{Type: MoveTask, BoardID: b1, CardID: c1, TaskID: t1, NewCardID: c1, BeforeID: ptr(t2)}},
 	{"move task to the front", Change{Type: MoveTask, BoardID: b1, CardID: c1, TaskID: t2, NewCardID: c1, AfterID: ptr(t1)}},
 	{"move task within its card, nowhere", Change{Type: MoveTask, BoardID: b1, CardID: c1, TaskID: t2, NewCardID: c1}},
@@ -292,6 +312,9 @@ var cases = []struct {
 	{"move task to another card, nowhere", Change{Type: MoveTask, BoardID: b1, CardID: c1, TaskID: t1, NewCardID: c2}},
 	{"move task to an empty card", Change{Type: MoveTask, BoardID: b1, CardID: c1, TaskID: t1, NewCardID: c3}},
 	{"move task between", Change{Type: MoveTask, BoardID: b1, CardID: c2, TaskID: t3, NewCardID: c1, BeforeID: ptr(t1), AfterID: ptr(t2)}},
+	{"move task from the card it was moved from", Change{Type: MoveTask, BoardID: b1, CardID: c2, TaskID: t1, NewCardID: c3}},
+	{"move task before a missing task, after another", Change{Type: MoveTask, BoardID: b1, CardID: c1, TaskID: t1, NewCardID: c2, BeforeID: ptr(missingID), AfterID: ptr(t3)}},
+	{"delete a task from the card it was moved from", Change{Type: DeleteTask, BoardID: b1, CardID: c2, TaskID: t1}},
 	{"move missing task", Change{Type: MoveTask, BoardID: b1, CardID: c1, TaskID: missing, NewCardID: c2}},
 	{"move task to a missing card", Change{Type: MoveTask, BoardID: b1, CardID: c1, TaskID: t1, NewCardID: missing}},
 	{"move task beside a missing task", Change{Type: MoveTask, BoardID: b1, CardID: c1, TaskID: t1, NewCardID: c2, BeforeID: ptr(missingID)}},
@@ -299,7 +322,10 @@ var cases = []struct {
 	{"move task without a new card", Change{Type: MoveTask, BoardID: b1, CardID: c1, TaskID: t1}},
 	{"delete task", Change{Type: DeleteTask, BoardID: b1, CardID: c1, TaskID: t1}},
 	{"delete missing task", Change{Type: DeleteTask, BoardID: b1, CardID: c1, TaskID: missing}},
-	{"clean up", Change{Type: CleanUp, BoardID: b1}},
+	{"clean up", Change{Type: CleanUp, BoardID: b1, TaskIDs: []string{t2}}},
+	{"clean up deletes only the tasks it names", Change{Type: CleanUp, BoardID: b1, TaskIDs: []string{t1, missingID}}},
+	{"clean up with nothing done", Change{Type: CleanUp, BoardID: b1, TaskIDs: []string{}}},
+	{"clean up without task ids", Change{Type: CleanUp, BoardID: b1}},
 	{"clean up without a board", Change{Type: CleanUp}},
 	{"unknown type", Change{Type: "renameBoard", BoardID: b1}},
 }
@@ -315,11 +341,11 @@ func TestReduceAnswersLikeTheStore(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			table := &memTable{}
-			table.load(seed())
+			table.load(seedBoard())
 			fake := awsfake.New(t, table.respond)
 			storeErr := NewStore(fake.DynamoDB(), "Skipli").Apply(context.Background(), tc.change)
 
-			file := seed()
+			file := seedBoard()
 			fileErr := Reduce(&file, tc.change)
 
 			if got, want := outcome(fileErr), outcome(storeErr); got != want {
@@ -335,8 +361,8 @@ func TestReduceAnswersLikeTheStore(t *testing.T) {
 // A refused change leaves the board file as it was.
 func TestReduceLeavesTheBoardAloneWhenRefusing(t *testing.T) {
 	for _, tc := range cases {
-		file := seed()
-		if err := Reduce(&file, tc.change); err != nil && !reflect.DeepEqual(file, seed()) {
+		file := seedBoard()
+		if err := Reduce(&file, tc.change); err != nil && !reflect.DeepEqual(file, seedBoard()) {
 			t.Errorf("%s: refused with %v but changed the board to %s", tc.name, err, dump(file))
 		}
 	}
@@ -345,10 +371,10 @@ func TestReduceLeavesTheBoardAloneWhenRefusing(t *testing.T) {
 // Applying all the valid cases in a row keeps the two in step too.
 func TestReduceFollowsTheStoreThroughASequence(t *testing.T) {
 	table := &memTable{}
-	table.load(seed())
+	table.load(seedBoard())
 	fake := awsfake.New(t, table.respond)
 	store := NewStore(fake.DynamoDB(), "Skipli")
-	file := seed()
+	file := seedBoard()
 	for _, tc := range cases {
 		storeErr := store.Apply(context.Background(), tc.change)
 		fileErr := Reduce(&file, tc.change)

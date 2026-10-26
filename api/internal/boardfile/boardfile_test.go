@@ -141,7 +141,7 @@ func TestUpdateKeepsEveryChangeFromParallelWriters(t *testing.T) {
 			defer wg.Done()
 			err := Update(path, func(b *board.Whole) error {
 				return boardchange.Reduce(b, boardchange.Change{
-					Type: boardchange.CreateCard, BoardID: bid, CardID: uuidN(i), Name: "n",
+					Type: boardchange.CreateCard, BoardID: bid, CardID: uuidN(i), Name: new("n"),
 				})
 			})
 			if err != nil {

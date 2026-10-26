@@ -42,6 +42,7 @@ type cliHarness struct {
 	fake   *awsfake.Server
 	cooled bool // the send cooldown is running
 	taken  bool // a board with the id of the next board create exists
+	made   bool // a board was created, such as by an import
 
 	mu      sync.Mutex
 	changes []map[string]any // bodies of accepted POST .../changes
@@ -129,6 +130,28 @@ func newCLIHarness(t *testing.T) *cliHarness {
 				h.taken = false
 				return 400, map[string]any{"__type": "TransactionCanceledException", "Message": "canceled",
 					"CancellationReasons": []any{map[string]any{"Code": "ConditionalCheckFailed"}, map[string]any{"Code": "None"}}}
+			}
+			// An import that keeps the fixture's board id makes the board anew,
+			// without the fixture's tasks; its own are there once created.
+			if str(first, "Item", "SK", "S") == "META" && str(first, "Item", "PK", "S") == cliBoard {
+				h.made = true
+				table = awsfake.NewTable()
+				for k, it := range items {
+					if strings.HasPrefix(str(it, "SK", "S"), "TASK#") {
+						delete(items, k)
+					} else {
+						table.Put(it)
+					}
+				}
+			}
+			if h.made {
+				for _, w := range body["TransactItems"].([]any) {
+					if put, ok := w.(map[string]any)["Put"].(map[string]any); ok && strings.HasPrefix(str(put, "Item", "SK", "S"), "TASK#") {
+						it := put["Item"].(map[string]any)
+						items[str(it, "PK", "S")+"/"+str(it, "SK", "S")] = it
+						table.Put(it)
+					}
+				}
 			}
 			return 200, map[string]any{}
 		case "AdminCreateUser":
@@ -585,11 +608,11 @@ func TestCLIImport(t *testing.T) {
 	}
 	want := []map[string]any{
 		{"type": "createCard", "boardId": id, "cardId": cliCard1, "name": "Backlog"},
-		{"type": "updateCard", "boardId": id, "cardId": cliCard1, "name": "Backlog", "description": "later"},
+		{"type": "updateCard", "boardId": id, "cardId": cliCard1, "description": "later"},
 		{"type": "createTask", "boardId": id, "cardId": cliCard1, "taskId": cliTask1, "name": "Write tests"},
-		{"type": "updateTask", "boardId": id, "cardId": cliCard1, "taskId": cliTask1, "name": "Write tests", "description": "all of them", "status": "pending"},
+		{"type": "updateTask", "boardId": id, "cardId": cliCard1, "taskId": cliTask1, "description": "all of them", "status": "pending"},
 		{"type": "createTask", "boardId": id, "cardId": cliCard1, "taskId": cliTask2, "name": "Ship"},
-		{"type": "updateTask", "boardId": id, "cardId": cliCard1, "taskId": cliTask2, "name": "Ship", "description": "", "status": "done"},
+		{"type": "updateTask", "boardId": id, "cardId": cliCard1, "taskId": cliTask2, "description": "", "status": "done"},
 		{"type": "createCard", "boardId": id, "cardId": cliCard2, "name": "Doing"},
 		{"type": "createTask", "boardId": id, "cardId": cliCard2, "taskId": cliTask3, "name": "Review"},
 	}

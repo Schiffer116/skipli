@@ -93,14 +93,14 @@ func runImport(ctx context.Context, e *env, a *args) error {
 		var all []boardchange.Change
 		now := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
 		for _, c := range b.Cards {
-			all = append(all, boardchange.Change{Type: boardchange.CreateCard, BoardID: id, CardID: c.ID, Name: c.Name, CreatedAt: now})
+			all = append(all, boardchange.Change{Type: boardchange.CreateCard, BoardID: id, CardID: c.ID, Name: new(c.Name), CreatedAt: now})
 			if c.Description != "" {
-				all = append(all, boardchange.Change{Type: boardchange.UpdateCard, BoardID: id, CardID: c.ID, Name: c.Name, Description: c.Description})
+				all = append(all, boardchange.Change{Type: boardchange.UpdateCard, BoardID: id, CardID: c.ID, Description: new(c.Description)})
 			}
 			for _, t := range c.Tasks {
-				all = append(all, boardchange.Change{Type: boardchange.CreateTask, BoardID: id, CardID: c.ID, TaskID: t.ID, Name: t.Name})
+				all = append(all, boardchange.Change{Type: boardchange.CreateTask, BoardID: id, CardID: c.ID, TaskID: t.ID, Name: new(t.Name)})
 				if t.Description != "" || t.Status != "pending" {
-					all = append(all, boardchange.Change{Type: boardchange.UpdateTask, BoardID: id, CardID: c.ID, TaskID: t.ID, Name: t.Name, Description: t.Description, Status: t.Status})
+					all = append(all, boardchange.Change{Type: boardchange.UpdateTask, BoardID: id, CardID: c.ID, TaskID: t.ID, Description: new(t.Description), Status: new(t.Status)})
 				}
 			}
 		}

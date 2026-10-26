@@ -12,10 +12,10 @@ import (
 // same cards and tasks left. contract_test.go holds the two to that. A
 // refused change leaves b as it was.
 //
-// Known difference: only moves that name neighbours that sit next to each
-// other are the same on both: the table places an item by a number between its neighbours'
-// numbers, so far-apart neighbours give it a place the cards' order doesn't
-// show, which a list can't copy. The CLI and the app only send adjacent ones.
+// Known difference: the table places an item by a number between its
+// neighbours' numbers, so neighbours that don't sit next to each other give
+// it a place the cards' order doesn't show, which a list can't copy. The
+// moves of the CLI and the app name adjacent neighbours, which both agree on.
 func Reduce(b *board.Whole, c Change) error {
 	if err := c.validate(); err != nil {
 		return err
@@ -46,66 +46,55 @@ func reduce(cards *[]board.Card, c Change) error {
 		if ci >= 0 {
 			return refuse(http.StatusConflict, "an item with this id already exists")
 		}
-		*cards = append(*cards, board.Card{ID: c.CardID, Name: c.Name, Tasks: []board.Task{}})
+		*cards = append(*cards, board.Card{ID: c.CardID, Name: value(c.Name), Tasks: []board.Task{}})
 	case UpdateCard:
 		if ci < 0 {
 			return refuse(http.StatusNotFound, "card not found")
 		}
-		(*cards)[ci].Name, (*cards)[ci].Description = c.Name, c.Description
+		card := &(*cards)[ci]
+		setField(&card.Name, c.Name)
+		setField(&card.Description, c.Description)
 	case DeleteCard:
 		if ci >= 0 {
 			*cards = slices.Delete(*cards, ci, ci+1)
 		}
 	case MoveCard:
-		before, after := neighbour(c.BeforeID), neighbour(c.AfterID)
-		if before == "" && after == "" {
-			return nil
-		}
-		ids := make([]string, 0, len(*cards))
-		for _, card := range *cards {
-			if card.ID != c.CardID {
-				ids = append(ids, card.ID)
-			}
-		}
-		at, err := place(ids, before, after)
-		if err != nil {
-			return err
-		}
 		if ci < 0 {
 			return refuse(http.StatusNotFound, "card not found")
 		}
 		card := (*cards)[ci]
 		rest := slices.Delete(slices.Clone(*cards), ci, ci+1)
-		*cards = slices.Insert(rest, at, card)
+		ids := make([]string, len(rest))
+		for i, other := range rest {
+			ids[i] = other.ID
+		}
+		*cards = slices.Insert(rest, slot(ids, c.BeforeID, c.AfterID), card)
 	case CreateTask:
+		if _, _, ok := findTask(*cards, c.TaskID); ok {
+			return refuse(http.StatusConflict, "a task with this id already exists")
+		}
 		if ci < 0 {
 			return refuse(http.StatusNotFound, "card not found")
 		}
-		if taskIndex((*cards)[ci].Tasks, c.TaskID) >= 0 {
-			return refuse(http.StatusConflict, "a task with this id already exists")
-		}
-		(*cards)[ci].Tasks = append((*cards)[ci].Tasks, board.Task{ID: c.TaskID, CardID: c.CardID, Name: c.Name, Status: "pending"})
+		(*cards)[ci].Tasks = append((*cards)[ci].Tasks, board.Task{ID: c.TaskID, CardID: c.CardID, Name: value(c.Name), Status: "pending"})
 	case UpdateTask:
-		ti := -1
-		if ci >= 0 {
-			ti = taskIndex((*cards)[ci].Tasks, c.TaskID)
-		}
-		if ti < 0 {
+		fc, ti, ok := findTask(*cards, c.TaskID)
+		if !ok {
 			return refuse(http.StatusNotFound, "task not found")
 		}
-		t := &(*cards)[ci].Tasks[ti]
-		t.Name, t.Description, t.Status = c.Name, c.Description, c.Status
+		t := &(*cards)[fc].Tasks[ti]
+		setField(&t.Name, c.Name)
+		setField(&t.Description, c.Description)
+		setField(&t.Status, c.Status)
 	case DeleteTask:
-		if ci >= 0 {
-			if ti := taskIndex((*cards)[ci].Tasks, c.TaskID); ti >= 0 {
-				(*cards)[ci].Tasks = slices.Delete((*cards)[ci].Tasks, ti, ti+1)
-			}
+		if fc, ti, ok := findTask(*cards, c.TaskID); ok {
+			(*cards)[fc].Tasks = slices.Delete((*cards)[fc].Tasks, ti, ti+1)
 		}
 	case MoveTask:
 		return moveTask(*cards, c)
 	case CleanUp:
 		for i := range *cards {
-			(*cards)[i].Tasks = slices.DeleteFunc((*cards)[i].Tasks, func(t board.Task) bool { return t.Status == "done" })
+			(*cards)[i].Tasks = slices.DeleteFunc((*cards)[i].Tasks, func(t board.Task) bool { return slices.Contains(c.TaskIDs, t.ID) })
 		}
 	default:
 		return refuse(http.StatusBadRequest, "unknown change type")
@@ -113,80 +102,59 @@ func reduce(cards *[]board.Card, c Change) error {
 	return nil
 }
 
-func moveTask(cards []board.Card, c Change) error {
-	ci := cardIndex(cards, c.CardID)
-	ti := -1
-	if ci >= 0 {
-		ti = taskIndex(cards[ci].Tasks, c.TaskID)
+// setField sets *field to the value of an update's field, if it has one.
+func setField(field *string, v *string) {
+	if v != nil {
+		*field = *v
 	}
-	if ti < 0 {
-		return refuse(http.StatusNotFound, "task not found")
-	}
-	task := cards[ci].Tasks[ti]
+}
 
-	ni := cardIndex(cards, c.NewCardID)
-	// The table looks the neighbours up in the new card, whether it exists or
-	// not, and the task itself is one of them only if it stays in its card.
-	var ids []string
-	if ni >= 0 {
-		for _, t := range cards[ni].Tasks {
-			if t.ID != c.TaskID || c.NewCardID != c.CardID {
-				ids = append(ids, t.ID)
-			}
+// findTask finds a task by its id, in whichever card it is in now, as the
+// table does.
+func findTask(cards []board.Card, id string) (card, task int, ok bool) {
+	for ci, c := range cards {
+		if ti := taskIndex(c.Tasks, id); ti >= 0 {
+			return ci, ti, true
 		}
 	}
-	before, after := neighbour(c.BeforeID), neighbour(c.AfterID)
-	at, err := place(ids, before, after)
-	if err != nil {
-		return err
+	return 0, 0, false
+}
+
+func moveTask(cards []board.Card, c Change) error {
+	ci, ti, ok := findTask(cards, c.TaskID)
+	if !ok {
+		return refuse(http.StatusNotFound, "task not found")
 	}
+	ni := cardIndex(cards, c.NewCardID)
 	if ni < 0 {
 		return refuse(http.StatusNotFound, "card not found")
 	}
-
+	task := cards[ci].Tasks[ti]
 	cards[ci].Tasks = slices.Delete(cards[ci].Tasks, ti, ti+1)
+
+	rest := cards[ni].Tasks
+	ids := make([]string, len(rest))
+	for i, t := range rest {
+		ids[i] = t.ID
+	}
 	task.CardID = c.NewCardID
-	rest := slices.DeleteFunc(slices.Clone(cards[ni].Tasks), func(t board.Task) bool { return t.ID == c.TaskID })
-	cards[ni].Tasks = slices.Insert(rest, at, task)
+	cards[ni].Tasks = slices.Insert(slices.Clone(rest), slot(ids, c.BeforeID, c.AfterID), task)
 	return nil
 }
 
-func neighbour(id *string) string {
-	if id == nil {
-		return ""
-	}
-	return *id
-}
-
-// place is where among ids an item goes that is to follow before and to
-// precede after: right after before, else right before after, else (the table
-// gives it the number 0, below any other) the front. A neighbour that isn't in
-// ids is refused.
-func place(ids []string, before, after string) (int, error) {
-	at := func(id string) (int, error) {
-		i := slices.Index(ids, id)
-		if i < 0 {
-			return 0, refuse(http.StatusNotFound, "neighbour not found")
-		}
-		return i, nil
-	}
-	var bi, ai int
-	var err error
-	if before != "" {
-		if bi, err = at(before); err != nil {
-			return 0, err
+// slot is where among ids an item goes that is to follow beforeID or, if that
+// isn't there, to precede afterID, else at the end. A neighbour that is gone
+// is never a reason to refuse, as in cards.go's place.
+func slot(ids []string, beforeID, afterID *string) int {
+	if beforeID != nil {
+		if i := slices.Index(ids, *beforeID); i >= 0 {
+			return i + 1
 		}
 	}
-	if after != "" {
-		if ai, err = at(after); err != nil {
-			return 0, err
+	if afterID != nil {
+		if i := slices.Index(ids, *afterID); i >= 0 {
+			return i
 		}
 	}
-	switch {
-	case before != "":
-		return bi + 1, nil
-	case after != "":
-		return ai, nil
-	}
-	return 0, nil
+	return len(ids)
 }
