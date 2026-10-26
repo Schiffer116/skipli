@@ -173,3 +173,13 @@
     @apply text-heading;
   }
 }
+
+@keyframes sk-float {
+  0%,
+  100% {
+    transform: rotate(-3deg) translate(0, 0);
+  }
+  50% {
+    transform: rotate(-3deg) translate(-4px, -3px);
+  }
+}
