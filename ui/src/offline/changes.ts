@@ -16,6 +16,7 @@ export type Change =
   | { type: "deleteBoard"; boardId: string }
   | { type: "favoriteBoard"; boardId: string; favorite: boolean }
   | { type: "orderBoards"; boardIds: string[] }
+  | { type: "orderFavorites"; boardIds: string[] }
   | {
       type: "createCard";
       boardId: string;
@@ -143,6 +144,11 @@ export function toRequest(change: Change): { url: string; init: RequestInit } {
         url: "/api/boards/order",
         init: json("PUT", { boardIds: change.boardIds }),
       };
+    case "orderFavorites":
+      return {
+        url: "/api/boards/favorites/order",
+        init: json("PUT", { boardIds: change.boardIds }),
+      };
   }
 }
 
@@ -151,6 +157,7 @@ export function toRequest(change: Change): { url: string; init: RequestInit } {
 export function touchedIds(change: Change): string[] {
   switch (change.type) {
     case "orderBoards":
+    case "orderFavorites":
       return [];
     case "createTask":
     case "updateTask":
@@ -239,14 +246,36 @@ export function applyToList(
       return each((boards) =>
         boards.filter((board) => board.id !== change.boardId),
       );
-    case "favoriteBoard":
+    case "favoriteBoard": {
+      // A new favorite goes last in the bar, as the server puts it.
+      const last = Math.max(
+        0,
+        ...[...list.boards, ...list.teamBoards].map(
+          (board) => board.favoriteOrder ?? 0,
+        ),
+      );
       return each((boards) =>
         boards.map((board) =>
           board.id === change.boardId
-            ? { ...board, favorite: change.favorite }
+            ? {
+                ...board,
+                favorite: change.favorite,
+                favoriteOrder: change.favorite ? last + 1 : 0,
+              }
             : board,
         ),
       );
+    }
+    case "orderFavorites": {
+      const position = new Map(change.boardIds.map((id, i) => [id, i + 1]));
+      return each((boards) =>
+        boards.map((board) =>
+          position.has(board.id)
+            ? { ...board, favoriteOrder: position.get(board.id) }
+            : board,
+        ),
+      );
+    }
     case "orderBoards": {
       // The order covers one section of the list; boards it doesn't name
       // (say, made since) keep their place after the ones it does.

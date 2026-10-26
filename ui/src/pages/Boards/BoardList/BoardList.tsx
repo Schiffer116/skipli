@@ -17,6 +17,9 @@ export type Board = {
   owner: string;
   description: string;
   favorite: boolean;
+  // Where the favorites bar puts it; none (or 0) for a favorite from before
+  // the bar had its own order.
+  favoriteOrder?: number;
   taskCount: number;
   doneCount: number;
 };

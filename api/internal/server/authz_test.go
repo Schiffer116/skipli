@@ -212,6 +212,7 @@ func TestBoardRoutesRequireMembership(t *testing.T) {
 		{"GET", "/api/boards", "", 200, 200},
 		{"POST", "/api/boards", `{"name":"New"}`, 201, 201},
 		{"PUT", "/api/boards/order", `{"boardIds":["b1"]}`, 204, 403},
+		{"PUT", "/api/boards/favorites/order", `{"boardIds":["b1"]}`, 204, 403},
 		{"GET", "/api/boards/{board}", "", 200, 403},
 		{"GET", "/api/boards/{board}/presence", "", 200, 403},
 		{"PUT", "/api/boards/{board}", `{"name":"Renamed","description":""}`, 204, 403},

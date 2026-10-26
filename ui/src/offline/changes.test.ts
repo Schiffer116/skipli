@@ -122,4 +122,46 @@ describe("applyToList", () => {
     expect(next.boards.map((b) => b.id)).toEqual(["c", "a", "b"]);
     expect(next.teamBoards).toEqual(list.teamBoards);
   });
+
+  it("sends the favorites order to its own endpoint", () => {
+    const { url, init } = toRequest({
+      type: "orderFavorites",
+      boardIds: ["b", "a"],
+    });
+    expect(url).toBe("/api/boards/favorites/order");
+    expect(init.method).toBe("PUT");
+    expect(JSON.parse(init.body as string)).toEqual({ boardIds: ["b", "a"] });
+  });
+
+  it("orders favorites without touching the board list order", () => {
+    const next = applyToList(
+      list,
+      { type: "orderFavorites", boardIds: ["c", "t", "a"] },
+      "me",
+    );
+    expect(next.boards.map((b) => [b.id, b.favoriteOrder])).toEqual([
+      ["a", 3],
+      ["b", undefined],
+      ["c", 1],
+    ]);
+    expect(next.teamBoards[0].favoriteOrder).toBe(2);
+  });
+
+  it("puts a new favorite after the others and clears it when unfavorited", () => {
+    let next = applyToList(
+      {
+        boards: [board("a", { favorite: true, favoriteOrder: 4 }), board("b")],
+        teamBoards: [],
+      },
+      { type: "favoriteBoard", boardId: "b", favorite: true },
+      "me",
+    );
+    expect(next.boards[1]).toMatchObject({ favorite: true, favoriteOrder: 5 });
+    next = applyToList(
+      next,
+      { type: "favoriteBoard", boardId: "b", favorite: false },
+      "me",
+    );
+    expect(next.boards[1]).toMatchObject({ favorite: false, favoriteOrder: 0 });
+  });
 });

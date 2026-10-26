@@ -1,5 +1,22 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
+import {
+  closestCenter,
+  DndContext,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  horizontalListSortingStrategy,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { LogOut, Monitor, Moon, Star, Sun, UsersRound } from "lucide-react";
 
 import UserAvatar from "@/components/UserAvatar";
@@ -30,6 +47,7 @@ import { signOut } from "@/offline/signOut";
 import { useOffline } from "@/offline/network";
 import { usePending } from "@/offline/pending";
 import { apiFetch } from "@/utils/apiFetch";
+import { SpaceKeyboardSensor } from "@/utils/keyboardSensor";
 import { readTheme, setTheme, type Theme } from "@/utils/theme";
 
 import { forgetMe, type Favorite, type Me } from "./loaders";
@@ -38,9 +56,15 @@ type HeaderProps = {
   me: Me;
   setMe: (me: Me) => void;
   favorites: Favorite[];
+  orderFavorites: (favorites: Favorite[]) => void;
 };
 
-export default function Header({ me, setMe, favorites }: HeaderProps) {
+export default function Header({
+  me,
+  setMe,
+  favorites,
+  orderFavorites,
+}: HeaderProps) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
   const [confirmSignOut, setConfirmSignOut] = useState(false);
@@ -185,33 +209,108 @@ export default function Header({ me, setMe, favorites }: HeaderProps) {
       </AlertDialog>
 
       {favorites.length > 0 && (
+        <FavoriteBar
+          me={me}
+          favorites={favorites}
+          orderFavorites={orderFavorites}
+        />
+      )}
+    </header>
+  );
+}
+
+type FavoriteBarProps = {
+  me: Me;
+  favorites: Favorite[];
+  orderFavorites: (favorites: Favorite[]) => void;
+};
+
+// The links are the drag handles: a press that moves 5px starts a drag, so a
+// plain click still navigates, and Space (not Enter) picks one up by keyboard.
+function FavoriteBar({ me, favorites, orderFavorites }: FavoriteBarProps) {
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 250, tolerance: 5 },
+    }),
+    useSensor(SpaceKeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  const onDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return;
+    orderFavorites(
+      arrayMove(
+        favorites,
+        favorites.findIndex((board) => board.id === active.id),
+        favorites.findIndex((board) => board.id === over.id),
+      ),
+    );
+  };
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={onDragEnd}
+    >
+      <SortableContext
+        items={favorites}
+        strategy={horizontalListSortingStrategy}
+      >
         <nav
           aria-label="Favorite boards"
           className="bg-nav text-nav-muted border-t border-nav-muted/20 h-9 px-4 flex items-center gap-1 overflow-x-auto text-sm"
         >
           {favorites.map((board) => (
-            <Link
-              key={board.id}
-              to={`/boards/${board.id}`}
-              className="flex shrink-0 items-center gap-1.5 rounded px-2 py-1 hover:bg-nav-muted/15 hover:text-nav-foreground"
-            >
-              {board.owner === me.id ? (
-                <Star
-                  className="size-3.5 fill-current text-amber-400"
-                  aria-label="Your board"
-                />
-              ) : (
-                <UsersRound
-                  className="size-3.5 text-sky-400"
-                  aria-label="Shared with you"
-                />
-              )}
-              {board.name}
-            </Link>
+            <FavoriteLink key={board.id} board={board} me={me} />
           ))}
         </nav>
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+function FavoriteLink({ board, me }: { board: Favorite; me: Me }) {
+  const {
+    attributes,
+    listeners,
+    transform,
+    transition,
+    isDragging,
+    setNodeRef,
+  } = useSortable({ id: board.id });
+
+  return (
+    <Link
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+      role="link"
+      to={`/boards/${board.id}`}
+      draggable={false}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+        zIndex: isDragging ? 10 : undefined,
+      }}
+      className="flex shrink-0 items-center gap-1.5 rounded px-2 py-1 hover:bg-nav-muted/15 hover:text-nav-foreground"
+    >
+      {board.owner === me.id ? (
+        <Star
+          className="size-3.5 fill-current text-amber-400"
+          aria-label="Your board"
+        />
+      ) : (
+        <UsersRound
+          className="size-3.5 text-sky-400"
+          aria-label="Shared with you"
+        />
       )}
-    </header>
+      {board.name}
+    </Link>
   );
 }
 

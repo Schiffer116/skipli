@@ -11,3 +11,13 @@ export class OwnKeyboardSensor extends KeyboardSensor {
       args[0].target === args[0].currentTarget && activator.handler(...args),
   }));
 }
+
+// For draggables that are links: Enter has to keep following the link, so
+// only Space picks one up.
+export class SpaceKeyboardSensor extends OwnKeyboardSensor {
+  static activators = OwnKeyboardSensor.activators.map((activator) => ({
+    ...activator,
+    handler: (...args: Parameters<typeof activator.handler>) =>
+      args[0].code === "Space" && activator.handler(...args),
+  }));
+}

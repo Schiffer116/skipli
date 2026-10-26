@@ -182,3 +182,38 @@ describe("online with no answer from the server", () => {
     await expect(boardListLoader()).rejects.toBeDefined();
   });
 });
+
+describe("favoritesOf", () => {
+  const board = (id: string, rest = {}) => ({
+    id,
+    name: id,
+    description: "",
+    owner: me.id,
+    favorite: true,
+    taskCount: 0,
+    doneCount: 0,
+    ...rest,
+  });
+
+  it("sorts by favorite order, across owned and team boards", async () => {
+    const { favoritesOf } = await import("./loaders");
+    const favorites = favoritesOf({
+      boards: [
+        board("a", { favoriteOrder: 3 }),
+        board("b", { favoriteOrder: 1 }),
+        board("x", { favorite: false }),
+      ],
+      teamBoards: [board("t", { favoriteOrder: 2 })],
+    });
+    expect(favorites.map((f) => f.id)).toEqual(["b", "t", "a"]);
+  });
+
+  it("keeps board list order for favorites with no order, ahead of ordered ones", async () => {
+    const { favoritesOf } = await import("./loaders");
+    const favorites = favoritesOf({
+      boards: [board("a", { favoriteOrder: 5 }), board("b"), board("c")],
+      teamBoards: [board("t")],
+    });
+    expect(favorites.map((f) => f.id)).toEqual(["b", "c", "t", "a"]);
+  });
+});
