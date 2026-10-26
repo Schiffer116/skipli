@@ -20,6 +20,17 @@ Ids
   prefix of an id works (it is checked against the board; an unknown or
   ambiguous prefix is an error). Run "boards", then "board <id>", to see ids.
 
+Board files
+  A board argument that contains a "/" or ends in ".json" is a board file
+  (skipli-board/1, see "help export"), not a server board: every command that
+  takes a board works on it, offline and without signing in, and prints what
+  it prints for a server board. "new-board --file <path>" makes one,
+  "boards <dir>" lists those in a directory, "export" and "import" move a
+  board between a file and the server. Several agents may share one file:
+  each change locks it (through <file>.lock, which stays beside the file;
+  gitignore it), so none is lost. A board lives in one place; there
+  is no sync.
+
 Output
   Compact text, one item per line, with full ids. Add --json to any command
   for JSON: the API's own for reads, the Board change sent for writes.

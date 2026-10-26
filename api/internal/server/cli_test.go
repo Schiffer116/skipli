@@ -41,6 +41,8 @@ type cliHarness struct {
 	key    *rsa.PrivateKey
 	fake   *awsfake.Server
 	cooled bool // the send cooldown is running
+	taken  bool // a board with the id of the next board create exists
+	made   bool // a board was created, such as by an import
 
 	mu      sync.Mutex
 	changes []map[string]any // bodies of accepted POST .../changes
@@ -99,6 +101,9 @@ func newCLIHarness(t *testing.T) *cliHarness {
 			if it, ok := items[key]; ok {
 				return 200, map[string]any{"Item": it}
 			}
+			if sk := str(body, "Key", "SK", "S"); sk == "MEMBER#u-member" { // of any board, such as one just made
+				return 200, map[string]any{"Item": item(map[string]any{"PK": str(body, "Key", "PK", "S"), "SK": sk, "Member": "u-member"})}
+			}
 			return 200, map[string]any{}
 		case "Query":
 			if body["IndexName"] != nil {
@@ -117,6 +122,36 @@ func newCLIHarness(t *testing.T) *cliHarness {
 		case "PutItem":
 			if str(body, "Item", "SK", "S") == "SEND_COOLDOWN" && h.cooled {
 				return 400, map[string]any{"__type": "com.amazonaws.dynamodb.v20120810#ConditionalCheckFailedException", "message": "running"}
+			}
+			return 200, map[string]any{}
+		case "TransactWriteItems":
+			first, _ := body["TransactItems"].([]any)[0].(map[string]any)["Put"].(map[string]any)
+			if h.taken && str(first, "Item", "SK", "S") == "META" {
+				h.taken = false
+				return 400, map[string]any{"__type": "TransactionCanceledException", "Message": "canceled",
+					"CancellationReasons": []any{map[string]any{"Code": "ConditionalCheckFailed"}, map[string]any{"Code": "None"}}}
+			}
+			// An import that keeps the fixture's board id makes the board anew,
+			// without the fixture's tasks; its own are there once created.
+			if str(first, "Item", "SK", "S") == "META" && str(first, "Item", "PK", "S") == cliBoard {
+				h.made = true
+				table = awsfake.NewTable()
+				for k, it := range items {
+					if strings.HasPrefix(str(it, "SK", "S"), "TASK#") {
+						delete(items, k)
+					} else {
+						table.Put(it)
+					}
+				}
+			}
+			if h.made {
+				for _, w := range body["TransactItems"].([]any) {
+					if put, ok := w.(map[string]any)["Put"].(map[string]any); ok && strings.HasPrefix(str(put, "Item", "SK", "S"), "TASK#") {
+						it := put["Item"].(map[string]any)
+						items[str(it, "PK", "S")+"/"+str(it, "SK", "S")] = it
+						table.Put(it)
+					}
+				}
 			}
 			return 200, map[string]any{}
 		case "AdminCreateUser":
@@ -490,4 +525,116 @@ func jsonEqual(a, b any) bool {
 	x, _ = json.Marshal(xa)
 	y, _ = json.Marshal(ya)
 	return string(x) == string(y)
+}
+
+const exported = `{
+  "format": "skipli-board/1",
+  "id": "` + cliBoard + `",
+  "name": "Roadmap",
+  "description": "plans",
+  "cards": [
+    {
+      "id": "` + cliCard1 + `",
+      "name": "Backlog",
+      "description": "later",
+      "tasks": [
+        {
+          "id": "` + cliTask1 + `",
+          "name": "Write tests",
+          "description": "all of them",
+          "status": "pending"
+        },
+        {
+          "id": "` + cliTask2 + `",
+          "name": "Ship",
+          "description": "",
+          "status": "done"
+        }
+      ]
+    },
+    {
+      "id": "` + cliCard2 + `",
+      "name": "Doing",
+      "description": "",
+      "tasks": [
+        {
+          "id": "` + cliTask3 + `",
+          "name": "Review",
+          "description": "",
+          "status": "pending"
+        }
+      ]
+    }
+  ]
+}
+`
+
+func TestCLIExport(t *testing.T) {
+	h := newCLIHarness(t)
+	h.signIn()
+	if out := h.mustRun("export", "b0000"); out != exported {
+		t.Errorf("export =\n%s", out)
+	}
+	path := filepath.Join(h.dir, "roadmap.skipli.json")
+	h.mustRun("export", cliBoard, path)
+	if data, _ := os.ReadFile(path); string(data) != exported {
+		t.Errorf("exported file =\n%s", data)
+	}
+	// What was exported shows the same as the board on the server.
+	if h.mustRun("board", path) != h.mustRun("board", cliBoard) {
+		t.Error("the file's board differs from the server's")
+	}
+}
+
+func TestCLIImport(t *testing.T) {
+	h := newCLIHarness(t)
+	h.signIn()
+	path := filepath.Join(h.dir, "roadmap.skipli.json")
+	os.WriteFile(path, []byte(exported), 0o644)
+
+	out := h.mustRun("import", path)
+	f := strings.Fields(out)
+	if len(f) != 3 || f[0] != "board" || f[1] != cliBoard || f[2] != `"Roadmap"` {
+		t.Fatalf("import = %q, want the file's board id", out)
+	}
+	if n := len(h.fake.Calls("TransactWriteItems")); n != 4 {
+		t.Errorf("TransactWriteItems = %d, want 4 (the board, three task creates)", n)
+	}
+
+	id := f[1]
+	got := h.takeChanges()
+	for _, c := range got {
+		delete(c, "createdAt")
+	}
+	want := []map[string]any{
+		{"type": "createCard", "boardId": id, "cardId": cliCard1, "name": "Backlog"},
+		{"type": "updateCard", "boardId": id, "cardId": cliCard1, "description": "later"},
+		{"type": "createTask", "boardId": id, "cardId": cliCard1, "taskId": cliTask1, "name": "Write tests"},
+		{"type": "updateTask", "boardId": id, "cardId": cliCard1, "taskId": cliTask1, "description": "all of them", "status": "pending"},
+		{"type": "createTask", "boardId": id, "cardId": cliCard1, "taskId": cliTask2, "name": "Ship"},
+		{"type": "updateTask", "boardId": id, "cardId": cliCard1, "taskId": cliTask2, "description": "", "status": "done"},
+		{"type": "createCard", "boardId": id, "cardId": cliCard2, "name": "Doing"},
+		{"type": "createTask", "boardId": id, "cardId": cliCard2, "taskId": cliTask3, "name": "Review"},
+	}
+	if !jsonEqual(got, want) {
+		t.Errorf("changes =\n%v\nwant\n%v", got, want)
+	}
+
+	h.takeChanges()
+	h.taken = true
+	out = h.mustRun("import", path)
+	f = strings.Fields(out)
+	if len(f) != 3 || f[1] == cliBoard {
+		t.Fatalf("import of a taken id = %q, want a new board id", out)
+	}
+	for _, c := range h.takeChanges() {
+		if c["boardId"] != f[1] {
+			t.Fatalf("change for board %v, want %s", c["boardId"], f[1])
+		}
+	}
+
+	os.WriteFile(path, []byte(`{"format":"skipli-board/2"}`), 0o644)
+	if code, _, errOut := h.run("", "import", path); code != 1 || !strings.Contains(errOut, "format") {
+		t.Errorf("import of another format = %d %q", code, errOut)
+	}
 }
