@@ -59,7 +59,6 @@ describe("Edit board", () => {
     expect(make).toHaveBeenCalledExactlyOnceWith({
       type: "updateBoard",
       boardId: "b1",
-      name: "Home",
       description: "Chores\nWeekly",
     });
     expect(onSaved).toHaveBeenCalledExactlyOnceWith("Home", "Chores\nWeekly");

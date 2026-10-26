@@ -117,7 +117,6 @@ describe("Edit card", () => {
       type: "updateCard",
       boardId: "b1",
       cardId: "c1",
-      name: "Todo",
       description: "Shipped\nFriday",
     });
     expect(screen.queryByRole("dialog")).toBeNull();
