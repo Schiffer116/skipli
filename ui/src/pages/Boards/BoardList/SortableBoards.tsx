@@ -163,7 +163,7 @@ function BoardTile({ board, setBoards, editable, savedAt }: BoardTileProps) {
         </div>
       </CardHeader>
       {board.description && (
-        <p className="text-sm text-muted-foreground line-clamp-2 break-words">
+        <p className="text-sm text-muted-foreground line-clamp-2 break-words whitespace-pre-wrap">
           {board.description}
         </p>
       )}

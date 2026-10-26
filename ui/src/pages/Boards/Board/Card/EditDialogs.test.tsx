@@ -103,6 +103,26 @@ describe("Edit card", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("keeps Enter as a line break and saves the lines on Ctrl+Enter", async () => {
+    const user = userEvent.setup();
+    open(card);
+    await user.click(screen.getByRole("button", { name: "Edit card" }));
+    const description = screen.getByLabelText("Description");
+    expect(description.tagName).toBe("TEXTAREA");
+    await user.type(description, "Shipped{Enter}Friday");
+    expect(make).not.toHaveBeenCalled();
+    await user.keyboard("{Control>}{Enter}{/Control}");
+
+    expect(make).toHaveBeenCalledExactlyOnceWith({
+      type: "updateCard",
+      boardId: "b1",
+      cardId: "c1",
+      name: "Todo",
+      description: "Shipped\nFriday",
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("changes nothing on Cancel or Escape", async () => {
     const user = userEvent.setup();
     open(card);
@@ -165,6 +185,32 @@ describe("Edit card and Edit task", () => {
 });
 
 describe("Edit task", () => {
+  it("keeps Enter as a line break and saves the lines on Ctrl+Enter", async () => {
+    const user = userEvent.setup();
+    open(
+      <EditTaskDialog
+        id="t1"
+        cardId="c1"
+        name="Milk"
+        description=""
+        status="pending"
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Edit task" }));
+    const description = screen.getByLabelText("Description");
+    expect(description.tagName).toBe("TEXTAREA");
+    await user.type(description, "2%{Enter}Organic");
+    await user.keyboard("{Control>}{Enter}{/Control}");
+
+    expect(make).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        type: "updateTask",
+        description: "2%\nOrganic",
+      }),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("only offers Pending or Done as the status", async () => {
     const user = userEvent.setup();
     open(

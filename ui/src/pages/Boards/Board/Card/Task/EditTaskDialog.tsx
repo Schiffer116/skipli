@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { submitOnModEnter } from "@/lib/submitOnModEnter";
 import { AlertDialog } from "@radix-ui/react-alert-dialog";
 import {
   AlertDialogAction,
@@ -104,10 +106,11 @@ export default function EditTaskDialog(props: TaskType) {
               </div>
               <div className="grid gap-3">
                 <Label htmlFor="task-description">Description</Label>
-                <Input
+                <Textarea
                   id="task-description"
                   name="description"
                   defaultValue={description}
+                  onKeyDown={submitOnModEnter}
                 />
               </div>
               <div className="grid gap-3">
