@@ -38,7 +38,7 @@ func newRouter(db *dynamodb.Client, idp *cognitoidentityprovider.Client, tokens 
 	profiles := profile.NewStore(db, tableName)
 	profile.NewHandler(profiles, tokens).RegisterRoutes(router)
 	board.NewHandler(db, tableName, tokens, users, profiles, canReceiveMail, broadcaster).RegisterRoutes(router)
-	auth.NewHandler(idp, clientID, users, tokens, auth.NewCooldown(db, tableName)).RegisterRoutes(router)
+	auth.NewHandler(idp, clientID, users, tokens, auth.NewCooldown(db, tableName), canReceiveMail).RegisterRoutes(router)
 	boardchange.NewHandler(db, tableName, tokens, broadcaster).RegisterRoutes(router)
 	registerPresence(router, db, tableName, tokens, roster)
 

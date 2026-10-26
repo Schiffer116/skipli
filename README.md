@@ -31,6 +31,14 @@ it out left to right, one column per tier. To regenerate:
 cd infra && make diagram
 ```
 
+## CLI
+
+`skipli-cli` reads and changes boards from a terminal, mostly so agents can
+work on them. Install it with `make -C api install-cli`, sign in with
+`skipli-cli login <email>` (Production; `--env dev` for Development), and run
+`skipli-cli help` for the commands. Boards, cards and tasks are named by id
+(any unique prefix works); `--json` prints JSON.
+
 ## Running locally
 
 1. Clone the repository:

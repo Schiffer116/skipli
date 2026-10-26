@@ -10,7 +10,7 @@ import (
 
 func signOut(t *testing.T, cookies []*http.Cookie, revoke func() (int, any)) (*awsfake.Server, *httptest.ResponseRecorder) {
 	fake := awsfake.New(t, func(op string, _ map[string]any) (int, any) { return revoke() })
-	h := NewHandler(fake.Cognito(), "client", nil, nil, nil)
+	h := NewHandler(fake.Cognito(), "client", nil, nil, nil, nil)
 	req := httptest.NewRequest("POST", "/auth/signout", nil)
 	for _, c := range cookies {
 		req.AddCookie(c)
@@ -70,7 +70,7 @@ func TestRefreshDuringACognitoOutageIsAnErrorNotAPanic(t *testing.T) {
 	fake := awsfake.New(t, func(string, map[string]any) (int, any) {
 		return 500, map[string]any{"__type": "InternalErrorException", "message": "down"}
 	})
-	h := NewHandler(fake.Cognito(), "client", nil, nil, nil)
+	h := NewHandler(fake.Cognito(), "client", nil, nil, nil, nil)
 	req := httptest.NewRequest("POST", "/auth/refresh", nil)
 	req.AddCookie(&http.Cookie{Name: "refresh_token", Value: "r1"})
 	rec := httptest.NewRecorder()
