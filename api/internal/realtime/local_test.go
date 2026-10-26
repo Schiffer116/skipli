@@ -80,8 +80,9 @@ func TestLocalRelayClosesConnectionsAtAPIGatewaysLimits(t *testing.T) {
 	idle, pinging := f.dial(t, srv.URL), f.dial(t, srv.URL)
 	opened := time.Now()
 	pingUntil(pinging, opened.Add(600*time.Millisecond))
-	if _, err := read(t, idle); err == nil {
-		t.Fatal("idle connection still open")
+	// API Gateway says so with 1001 Going Away, not by dropping the line.
+	if _, err := read(t, idle); websocket.CloseStatus(err) != websocket.StatusGoingAway {
+		t.Fatalf("idle connection: got %v, want closed with 1001", err)
 	}
 	// Pings keep this one open past the idle limit, but not past its
 	// lifetime.
@@ -91,8 +92,8 @@ func TestLocalRelayClosesConnectionsAtAPIGatewaysLimits(t *testing.T) {
 		t.Fatalf("pinged connection closed early: %v %v", got, err)
 	}
 	pingUntil(pinging, opened.Add(limits.Lifetime+200*time.Millisecond))
-	if _, err := read(t, pinging); err == nil {
-		t.Fatal("connection open past its lifetime")
+	if _, err := read(t, pinging); websocket.CloseStatus(err) != websocket.StatusGoingAway {
+		t.Fatalf("connection past its lifetime: got %v, want closed with 1001", err)
 	}
 }
 
