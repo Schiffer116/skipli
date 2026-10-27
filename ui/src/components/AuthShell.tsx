@@ -127,7 +127,7 @@ function BoardIllustration() {
 export default function AuthShell({ children }: { children: ReactNode }) {
   return (
     <div className="grid min-h-screen grid-cols-1 min-[861px]:grid-cols-[minmax(0,1.618fr)_minmax(0,1fr)]">
-      <main className="light flex min-w-0 flex-col bg-background text-foreground gap-8 px-5 pt-8 pb-14 min-[861px]:px-8">
+      <main className="light hidden min-w-0 flex-col min-[861px]:flex bg-background text-foreground gap-8 px-5 pt-8 pb-14 min-[861px]:px-8">
         <div className="flex items-center gap-3">
           <img src="/skipli.png" alt="" className="size-10" />
           <span className="text-2xl font-extrabold tracking-tight text-heading">
@@ -187,7 +187,7 @@ export default function AuthShell({ children }: { children: ReactNode }) {
       {/* Always dark, whatever the theme: `dark` swaps in the dark tokens. */}
       <section
         aria-label="Sign in"
-        className="dark flex min-w-0 flex-col gap-14 border-t-4 border-primary min-[861px]:border-t-0 min-[861px]:border-l-4 bg-nav px-5 pt-20 pb-8 text-nav-foreground min-[861px]:px-14"
+        className="dark flex min-w-0 flex-col gap-14 min-[861px]:border-l-4 min-[861px]:border-primary bg-nav px-5 pt-20 pb-8 text-nav-foreground min-[861px]:px-14"
       >
         <div className="mx-auto my-auto flex w-full max-w-[400px] flex-col gap-8">
           <img
