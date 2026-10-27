@@ -123,11 +123,11 @@ function BoardIllustration() {
   );
 }
 
-/** Marketing panel on the left, dark sign-in panel on the right. */
+/** Marketing panel on the left (always light), dark sign-in panel on the right. */
 export default function AuthShell({ children }: { children: ReactNode }) {
   return (
-    <div className="grid min-h-screen grid-cols-1 bg-background text-foreground min-[861px]:grid-cols-[minmax(0,1.618fr)_minmax(0,1fr)]">
-      <main className="flex min-w-0 flex-col gap-8 px-5 pt-8 pb-14 min-[861px]:px-8">
+    <div className="grid min-h-screen grid-cols-1 min-[861px]:grid-cols-[minmax(0,1.618fr)_minmax(0,1fr)]">
+      <main className="light flex min-w-0 flex-col bg-background text-foreground gap-8 px-5 pt-8 pb-14 min-[861px]:px-8">
         <div className="flex items-center gap-3">
           <img src="/skipli.png" alt="" className="size-10" />
           <span className="text-2xl font-extrabold tracking-tight text-heading">
