@@ -1,16 +1,13 @@
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 
+import AuthShell from "@/components/AuthShell";
 import { finishSignOut } from "@/offline/signOut";
+import { sendCode } from "./sendCode";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -25,78 +22,61 @@ export default function Login() {
     setSubmitting(true);
     // End a session signed out while offline before starting a new one.
     await finishSignOut();
-    const res = await fetch("/api/auth/send", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ email }),
-    })
-      .catch(() => null)
-      .finally(() => setSubmitting(false));
-    if (!res) {
-      setError(
-        navigator.onLine
-          ? "Couldn't reach Skipli. Please try again."
-          : "You're offline. Connect to the internet to sign in.",
-      );
-      return;
-    }
-    if (res.status === 400) {
-      setError("That email address can't receive mail. Check it for typos.");
-      return;
-    }
-    if (res.status === 429) {
-      setError(
-        "A code was just sent. Wait a minute before requesting another.",
-      );
-      return;
-    }
-    if (!res.ok) {
-      setError("Couldn't send the code. Please try again.");
+    const result = await sendCode(email).finally(() => setSubmitting(false));
+    if (!result.ok) {
+      setError(result.message);
       return;
     }
 
-    const { session } = await res.json();
     sessionStorage.setItem("email", email);
-    sessionStorage.setItem("session", session);
+    sessionStorage.setItem("session", result.session);
     navigate("/verify");
   };
 
   return (
-    <div className="w-full min-h-screen bg-background border-t-[3rem] border-nav flex justify-center items-center text-center">
-      <Card className="w-full max-w-md border-t-4 border-t-primary">
-        <CardHeader>
-          <img src="skipli.png" alt="Logo" className="h-20 w-auto mx-auto" />
-          <CardDescription>Enter your email to continue</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <Input
-              type="email"
-              required
-              autoComplete="email"
-              placeholder="Enter your email"
-              className="w-full"
-              aria-invalid={error !== ""}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                setError("");
-              }}
-              value={email}
-            />
-            {error && (
-              <p role="alert" className="text-sm text-destructive">
-                {error}
-              </p>
-            )}
-            <Button className="w-full" type="submit" disabled={submitting}>
-              {submitting && <Loader2 className="animate-spin" />}
-              {submitting ? "Sending code…" : "Continue"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+    <AuthShell>
+      <div className="flex flex-col gap-3">
+        <h2 className="text-[34px] leading-tight font-bold tracking-tight text-nav-foreground">
+          Sign in to Skipli
+        </h2>
+        <p className="text-nav-muted">
+          Enter your email and we'll send you an 8-digit code.
+        </p>
+      </div>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+        <Label htmlFor="email">Email</Label>
+        <Input
+          id="email"
+          type="email"
+          required
+          autoComplete="email"
+          placeholder="you@company.com"
+          className="h-12 text-base"
+          aria-invalid={error !== ""}
+          aria-describedby={error ? "email-error" : undefined}
+          onChange={(e) => {
+            setEmail(e.target.value);
+            setError("");
+          }}
+          value={email}
+        />
+        {error && (
+          <p id="email-error" role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
+        <Button
+          className="mt-2 h-12 text-base font-bold"
+          type="submit"
+          disabled={submitting}
+        >
+          {submitting && <Loader2 className="animate-spin" />}
+          {submitting ? "Sending code…" : "Continue"}
+        </Button>
+        <p className="text-center text-sm text-nav-muted">
+          New here? Your account is created when you sign in.
+        </p>
+      </form>
+    </AuthShell>
   );
 }
