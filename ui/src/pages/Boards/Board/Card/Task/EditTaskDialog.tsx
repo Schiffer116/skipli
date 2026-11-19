@@ -1,5 +1,5 @@
 import { useContext, useState } from "react";
-import { Edit, Trash } from "lucide-react";
+import { Edit } from "lucide-react";
 import { useParams } from "react-router";
 
 import {
@@ -120,9 +120,8 @@ export default function EditTaskDialog(props: TaskType) {
                     type="button"
                     variant="destructive"
                     className="mr-auto"
-                    aria-label="Delete task"
                   >
-                    <Trash className="h-5 w-5" />
+                    Delete
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>

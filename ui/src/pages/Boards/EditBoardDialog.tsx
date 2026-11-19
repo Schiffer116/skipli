@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Edit, Trash } from "lucide-react";
+import { Edit } from "lucide-react";
 
 import {
   Dialog,
@@ -119,13 +119,8 @@ export default function EditBoardDialog(props: EditBoardDialogProps) {
           <DialogFooter className="mt-4 flex-row justify-end">
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button
-                  type="button"
-                  variant="destructive"
-                  className="mr-auto"
-                  aria-label="Delete board"
-                >
-                  <Trash className="h-5 w-5" />
+                <Button type="button" variant="destructive" className="mr-auto">
+                  Delete
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>

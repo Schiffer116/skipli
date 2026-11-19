@@ -75,7 +75,7 @@ describe("Edit board", () => {
 
   it("deletes once confirmed", async () => {
     const user = await open();
-    await user.click(screen.getByRole("button", { name: "Delete board" }));
+    await user.click(screen.getByRole("button", { name: "Delete" }));
     await user.click(screen.getByRole("button", { name: "Delete" }));
 
     expect(make).toHaveBeenCalledExactlyOnceWith({
@@ -93,6 +93,6 @@ describe("Edit board", () => {
     const names = within(footer)
       .getAllByRole("button")
       .map((b) => b.getAttribute("aria-label") ?? b.textContent);
-    expect(names).toEqual(["Delete board", "Cancel", "Save"]);
+    expect(names).toEqual(["Delete", "Cancel", "Save"]);
   });
 });
