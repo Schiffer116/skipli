@@ -3,10 +3,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 
 import AuthShell from "@/components/AuthShell";
+import { setGuestState } from "@/offline/session";
 import { finishSignOut } from "@/offline/signOut";
+import { forgetMe } from "./Boards/loaders";
 import { sendCode } from "./sendCode";
 
 export default function Login() {
@@ -77,6 +79,21 @@ export default function Login() {
           New here? Your account is created when you sign in.
         </p>
       </form>
+      <div className="flex flex-col items-center gap-1 border-t pt-5 text-center">
+        <Link
+          to="/boards"
+          onClick={() => {
+            setGuestState("active");
+            forgetMe();
+          }}
+          className="rounded-sm px-0.5 py-1 font-bold text-link outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        >
+          Continue without an account
+        </Link>
+        <p className="text-sm text-nav-muted">
+          Your boards stay in this browser until you sign in.
+        </p>
+      </div>
     </AuthShell>
   );
 }

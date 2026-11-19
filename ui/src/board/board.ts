@@ -1,5 +1,6 @@
 import type { BoardChange } from "@/offline/changes";
 import { loadPending, updateBoard } from "@/offline/copy";
+import { GUEST } from "@/offline/guest";
 import { onDropped, pending } from "@/offline/pending";
 import type { CardType } from "@/pages/Boards/Board/Card";
 import { socket } from "@/utils/socket";
@@ -125,6 +126,14 @@ export function openBoard(
 
     start() {
       live = true;
+      // A guest's board is only ever on this device: there's no socket to
+      // open and nothing to catch up on.
+      if (userId === GUEST.id) {
+        return () => {
+          live = false;
+          save();
+        };
+      }
       const leave = socket.join(boardId);
       const stopReceiving = socket.onChange(receive);
       const stopCatchingUp = socket.onOpen((opened) => {

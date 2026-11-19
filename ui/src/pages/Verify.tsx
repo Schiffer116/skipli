@@ -6,7 +6,12 @@ import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 
 import AuthShell from "@/components/AuthShell";
-import { setSignOutPending } from "@/offline/session";
+import { stopPending } from "@/offline/pending";
+import {
+  guestState,
+  setGuestState,
+  setSignOutPending,
+} from "@/offline/session";
 import { forgetMe } from "./Boards/loaders";
 import { sendCode } from "./sendCode";
 
@@ -98,6 +103,11 @@ export default function Verify() {
 
       // A new session replaces any left over from signing out offline.
       setSignOutPending(false);
+      // A guest's boards move into the account once it's loaded.
+      if (guestState() === "active") {
+        setGuestState("moving");
+        stopPending();
+      }
       forgetMe();
       navigate("/boards");
     } catch {

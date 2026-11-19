@@ -1,4 +1,10 @@
-import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from "idb";
+import {
+  deleteDB,
+  openDB,
+  type DBSchema,
+  type IDBPDatabase,
+  type IDBPTransaction,
+} from "idb";
 
 import { apply } from "@/board/apply";
 import type { CardType } from "@/pages/Boards/Board/Card";
@@ -90,6 +96,12 @@ function open(userId: string) {
             cursor = await cursor.continue();
           }
         }
+      },
+      // Another tab is deleting this copy (signing out, or a guest's boards
+      // moving into an account): let it.
+      blocking() {
+        databases.delete(userId);
+        void db?.then((db) => db.close());
       },
     });
     databases.set(userId, db);
@@ -185,44 +197,77 @@ export async function loadPending(userId: string) {
   return (await open(userId)).getAll("pending");
 }
 
+type QueueTransaction = IDBPTransaction<
+  Schema,
+  ("pending" | "meta" | "boards")[],
+  "readwrite"
+>;
+
+// Keeps a change and shows it in the Offline copy, within tx.
+async function queueIn(
+  tx: QueueTransaction,
+  me: Me,
+  change: Change,
+  id: string,
+) {
+  const meta = tx.objectStore("meta");
+  const boards = tx.objectStore("boards");
+  await tx.objectStore("pending").add({
+    id,
+    change,
+    at: Date.now(),
+  } as PendingChange);
+
+  const list = (await meta.get("list")) as SavedList | undefined;
+  if (list) {
+    await meta.put({ ...list, ...applyToList(list, change, me.id) }, "list");
+  }
+  if (change.type === "createBoard") {
+    await boards.put({
+      id: change.boardId,
+      name: change.name,
+      description: change.description,
+      owner: me.id,
+      members: [me],
+      cards: [],
+      savedAt: Date.now(),
+    });
+  } else if (change.type === "deleteBoard") {
+    await boards.delete(change.boardId);
+  } else if ("boardId" in change) {
+    const board = await boards.get(change.boardId);
+    if (board) await boards.put(withChange(board, change));
+  }
+}
+
+const queueTransaction = async (userId: string) =>
+  (await open(userId)).transaction(["pending", "meta", "boards"], "readwrite");
+
+// Queues changes made elsewhere (a guest's, moving into this person's
+// account) as this person's Pending changes, all or none, in order. One
+// already queued under the same id is skipped, so doing it twice queues
+// each once.
+export async function queueAll(
+  me: Me,
+  changes: { id: string; change: Change }[],
+) {
+  const tx = await queueTransaction(me.id);
+  const queued = new Set(
+    (await tx.objectStore("pending").getAll()).map(({ id }) => id),
+  );
+  for (const { id, change } of changes) {
+    if (!queued.has(id)) await queueIn(tx, me, change, id);
+  }
+  await tx.done;
+}
+
 // Where one person's Pending changes are kept.
 export function pendingStore(me: Me): PendingStore {
   return {
     // Keeps a change and shows it in the Offline copy, both or neither.
     async queue(change, id) {
-      const db = await open(me.id);
-      const tx = db.transaction(["pending", "meta", "boards"], "readwrite");
-      const meta = tx.objectStore("meta");
-      const boards = tx.objectStore("boards");
-      await tx.objectStore("pending").add({
-        id,
-        change,
-        at: Date.now(),
-      } as PendingChange);
-
-      const list = (await meta.get("list")) as SavedList | undefined;
-      if (list) {
-        await meta.put(
-          { ...list, ...applyToList(list, change, me.id) },
-          "list",
-        );
-      }
-      if (change.type === "createBoard") {
-        await boards.put({
-          id: change.boardId,
-          name: change.name,
-          description: change.description,
-          owner: me.id,
-          members: [me],
-          cards: [],
-          savedAt: Date.now(),
-        });
-      } else if (change.type === "deleteBoard") {
-        await boards.delete(change.boardId);
-      } else if ("boardId" in change) {
-        const board = await boards.get(change.boardId);
-        if (board) await boards.put(withChange(board, change));
-      }
+      const tx = await queueTransaction(me.id);
+      await queueIn(tx, me, change, id);
       await tx.done;
     },
 

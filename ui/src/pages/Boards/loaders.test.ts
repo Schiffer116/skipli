@@ -30,13 +30,20 @@ const onServer = {
 };
 
 const fetched: string[] = [];
+// Every request, with its method and body.
+const requests: { method: string; url: string; body?: unknown }[] = [];
 // False: no request gets an answer, as with no connection.
 let reachable = true;
 let answer: (url: string) => Response = () => Response.json(onServer);
 
 vi.mock("@/utils/apiFetch", () => ({
-  apiFetch: async (url: string) => {
+  apiFetch: async (url: string, init?: RequestInit) => {
     fetched.push(url);
+    requests.push({
+      method: init?.method ?? "GET",
+      url,
+      body: init?.body ? JSON.parse(init.body as string) : undefined,
+    });
     if (!reachable) throw new TypeError("Failed to fetch");
     if (url === "/api/me") return Response.json(me);
     return answer(url);
@@ -63,7 +70,10 @@ const { deleteCopy, loadBoard, pendingStore, saveBoard, saveMe } =
 const { stopPending } = await import("@/offline/pending");
 const addPending = (change: Change) =>
   pendingStore(me).queue(change, `change-${change.type}`);
-const { setActiveUser } = await import("@/offline/session");
+const { setActiveUser, setGuestState, guestState } =
+  await import("@/offline/session");
+const { GUEST } = await import("@/offline/guest");
+const { make, pending } = await import("@/offline/pending");
 const { boardListLoader, boardsLoader, boardViewLoader, forgetMe } =
   await import("./loaders");
 const { fetchBoard } = await import("@/board/fetch");
@@ -79,6 +89,7 @@ const boardReads = () => fetched.filter((url) => url.startsWith("/api/boards"));
 
 beforeEach(() => {
   fetched.length = 0;
+  requests.length = 0;
   network.onLine = true;
   reachable = true;
   answer = () => Response.json(onServer);
@@ -88,7 +99,9 @@ afterEach(async () => {
   stopPending();
   forgetMe();
   setActiveUser(null);
+  setGuestState(null);
   await deleteCopy(me.id);
+  await deleteCopy(GUEST.id);
 });
 
 describe("opening a board", () => {
@@ -215,5 +228,111 @@ describe("favoritesOf", () => {
       teamBoards: [board("t")],
     });
     expect(favorites.map((f) => f.id)).toEqual(["b", "c", "t", "a"]);
+  });
+});
+
+describe("a guest", () => {
+  const createBoard = {
+    type: "createBoard",
+    boardId: "g1",
+    name: "Guest board",
+    description: "",
+  } as const;
+  const createCard = {
+    type: "createCard",
+    boardId: "g1",
+    cardId: "gc1",
+    name: "To do",
+    createdAt: "",
+  } as const;
+
+  // Uses the app as a guest: makes a board with a card in it.
+  async function makeGuestBoard() {
+    setGuestState("active");
+    await boardsLoader();
+    expect(await make(createBoard)).toBe("waiting");
+    expect(await make(createCard)).toBe("waiting");
+    await pending().settled();
+  }
+
+  it("works from the Offline copy and never asks the server", async () => {
+    await makeGuestBoard();
+
+    const list = await boardListLoader();
+    expect(list.boards).toMatchObject([{ id: "g1", owner: GUEST.id }]);
+    expect(list.offline).toBeUndefined();
+    const board = await boardViewLoader({
+      params: { boardId: "g1" },
+    } as unknown as LoaderFunctionArgs);
+    expect(board.cardsWithTasks.map((card) => card.id)).toEqual(["gc1"]);
+
+    expect(requests).toEqual([]);
+  });
+
+  it("is told a board that isn't theirs isn't found", async () => {
+    await makeGuestBoard();
+    await expect(load()).rejects.toMatchObject({ init: { status: 404 } });
+    expect(requests).toEqual([]);
+  });
+
+  it("signing in, sends their changes to the account, then forgets them", async () => {
+    await makeGuestBoard();
+    stopPending();
+    forgetMe();
+    // Verify, on signing in.
+    setGuestState("moving");
+    answer = (url) =>
+      url === "/api/boards"
+        ? Response.json({
+            boards: [{ ...createBoard, id: "g1", owner: me.id }],
+            teamBoards: [],
+          })
+        : new Response(null, { status: 201 });
+
+    const list = await boardListLoader();
+
+    const sent = requests.filter(({ method }) => method === "POST");
+    expect(sent).toEqual([
+      {
+        method: "POST",
+        url: "/api/boards",
+        body: { id: "g1", name: "Guest board", description: "" },
+      },
+      { method: "POST", url: "/api/boards/g1/changes", body: createCard },
+    ]);
+    expect(list.boards).toMatchObject([{ id: "g1", owner: me.id }]);
+    expect(await loadBoard(me.id, "g1")).toMatchObject({ owner: me.id });
+    expect(guestState()).toBeNull();
+    expect(await loadBoard(GUEST.id, "g1")).toBeUndefined();
+  });
+
+  it("signing in, loads the account only once their changes are in it", async () => {
+    await makeGuestBoard();
+    await make({ type: "favoriteBoard", boardId: "g1", favorite: true });
+    await pending().settled();
+    stopPending();
+    forgetMe();
+    setGuestState("moving");
+    // The server lists the board as a favorite once it has been told so.
+    answer = (url) =>
+      url === "/api/boards"
+        ? Response.json({
+            boards: [
+              {
+                id: "g1",
+                name: "Guest board",
+                description: "",
+                owner: me.id,
+                favorite: requests.some(({ url }) => url.endsWith("/favorite")),
+              },
+            ],
+            teamBoards: [],
+          })
+        : new Response(null, { status: 201 });
+
+    const { favorites } = await boardsLoader();
+    expect(favorites).toEqual([
+      { id: "g1", name: "Guest board", owner: me.id },
+    ]);
   });
 });

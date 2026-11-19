@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 
+import { GUEST } from "@/offline/guest";
 import { useOffline } from "@/offline/network";
 import { useMe } from "@/pages/Boards/favorites";
 import { socket, type Person } from "@/utils/socket";
 
 // The other people who have the board open right now: not yourself, and
-// nobody while the board's socket is down (offline included).
+// nobody while the board's socket is down (offline included), nor for a
+// guest, whose boards have no socket.
 export default function usePresence(boardId: string): Person[] {
   const myId = useMe().id;
   // A socket can linger a while after the connection is lost.
@@ -18,6 +20,6 @@ export default function usePresence(boardId: string): Person[] {
       if (id === boardId) setPeople(people);
     });
   }, [boardId]);
-  if (offline) return [];
+  if (offline || myId === GUEST.id) return [];
   return people.filter((person) => person.id !== myId);
 }

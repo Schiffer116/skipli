@@ -10,6 +10,7 @@ import { revisionOf } from "@/utils/revision";
 import CreateBoardForm from "./CreateBoardForm";
 import SortableBoards from "./SortableBoards";
 import type { BoardListData } from "../loaders";
+import { useGuest } from "../favorites";
 
 export type Board = {
   id: string;
@@ -33,9 +34,11 @@ export default function BoardListRoute() {
 
 // Which boards are listed and which can be changed differ offline, so the
 // list loads again when the connection comes or goes. Changes made from the
-// list are already in the Offline copy, so nothing on screen is lost.
+// list are already in the Offline copy, so nothing on screen is lost. A
+// guest's list is the same either way.
 function useReloadOnConnectionChange(loaderData: BoardListData) {
-  const offline = useOffline();
+  const guest = useGuest();
+  const offline = useOffline() && !guest;
   const { revalidate, state } = useRevalidator();
   const loadedOffline = loaderData.offline !== undefined;
 
