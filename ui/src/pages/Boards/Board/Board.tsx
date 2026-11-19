@@ -34,7 +34,7 @@ import type { BoardViewData } from "../loaders";
 import { BoardContext } from "./BoardContext";
 import EditBoardDialog from "../EditBoardDialog";
 import FavoriteButton from "../FavoriteButton";
-import { useMe } from "../favorites";
+import { useGuest, useMe } from "../favorites";
 import CleanUpButton from "./CleanUpButton";
 import PresenceAvatars from "./PresenceAvatars";
 import ShareDialog from "./ShareDialog";
@@ -66,6 +66,8 @@ export default function Board({
   const others = usePresence(boardId!);
   // Like the board list, only the owner can edit or delete the board.
   const editable = owner === useMe().id;
+  // A guest's boards can't be shared, and are never anywhere but here.
+  const guest = useGuest();
   const { revalidate } = useRevalidator();
   const navigate = useNavigate();
   const [layout, setLayout] = useBoardLayout();
@@ -170,7 +172,7 @@ export default function Board({
                 />
               )}
               <div className="ml-auto flex shrink-0 items-center gap-2">
-                <PresenceAvatars people={others} />
+                {!guest && <PresenceAvatars people={others} />}
                 <Button
                   variant="outline"
                   size="icon"
@@ -181,12 +183,14 @@ export default function Board({
                   {masonry ? <Columns3 /> : <LayoutDashboard />}
                 </Button>
                 <CleanUpButton boardId={boardId!} cards={cards} />
-                <ShareDialog
-                  boardId={boardId!}
-                  name={name}
-                  owner={owner}
-                  members={members}
-                />
+                {!guest && (
+                  <ShareDialog
+                    boardId={boardId!}
+                    name={name}
+                    owner={owner}
+                    members={members}
+                  />
+                )}
               </div>
             </div>
             {description && (
@@ -199,7 +203,7 @@ export default function Board({
             </p>
             {/* Loaded online, the board was live until the connection
                 dropped, so there's no "last updated" to show. */}
-            {offline && savedAt !== undefined && (
+            {offline && !guest && savedAt !== undefined && (
               <p className="mt-1 text-xs text-muted-foreground">
                 Last updated {ago(savedAt)}.
               </p>

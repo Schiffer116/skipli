@@ -18,8 +18,9 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { LogOut, Monitor, Moon, Star, Sun, UsersRound } from "lucide-react";
+import { LogIn, LogOut, Star, UsersRound } from "lucide-react";
 
+import ThemeMenu from "@/components/ThemeMenu";
 import UserAvatar from "@/components/UserAvatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,12 +45,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { GUEST } from "@/offline/guest";
 import { signOut } from "@/offline/signOut";
 import { useOffline } from "@/offline/network";
 import { usePending } from "@/offline/pending";
 import { apiFetch } from "@/utils/apiFetch";
 import { SpaceKeyboardSensor } from "@/utils/keyboardSensor";
-import { readTheme, setTheme, type Theme } from "@/utils/theme";
 
 import { clampToBar } from "./clampToBar";
 import { forgetMe, type Favorite, type Me } from "./loaders";
@@ -106,88 +107,100 @@ export default function Header({
           <p className="font-bold text-base">Skipli</p>
         </Link>
 
-        <Dialog
-          open={open}
-          onOpenChange={(open) => {
-            setOpen(open);
-            setError("");
-          }}
-        >
-          <DialogTrigger asChild>
-            <button
-              type="button"
-              title={me.email}
-              className="flex items-center gap-3 text-sm text-nav-muted rounded px-2 py-1 hover:bg-nav-muted/15 hover:text-nav-foreground"
+        <div className="flex items-center gap-1">
+          <ThemeMenu />
+          {me.id === GUEST.id ? (
+            <Link
+              to="/login"
+              className="flex items-center gap-2 rounded px-2 py-1 text-sm font-bold text-nav-foreground hover:bg-nav-muted/15"
             >
-              {me.name}
-              <UserAvatar
-                email={me.email}
-                name={me.name}
-                className="size-7 ring-1 ring-nav-muted/40"
-              />
-            </button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px]">
-            <form onSubmit={saveName} autoComplete="off">
-              <DialogHeader className="mb-4">
-                <DialogTitle>Account</DialogTitle>
-                <DialogDescription>
-                  Your name is shown to the members of your boards instead of
-                  your email, {me.email}.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-2">
-                <Label htmlFor="display-name">Name</Label>
-                <Input
-                  id="display-name"
-                  name="name"
-                  defaultValue={me.name}
-                  maxLength={50}
-                  required
-                  aria-invalid={error !== ""}
-                />
-                {error && (
-                  <p role="alert" className="text-sm text-destructive">
-                    {error}
-                  </p>
-                )}
-                {offline && (
-                  <p className="text-sm text-muted-foreground">
-                    Changing your name needs a connection.
-                  </p>
-                )}
-              </div>
-              <ThemePicker />
-              <DialogFooter className="mt-4">
-                <Button
-                  variant="ghost"
+              <LogIn className="size-4" aria-hidden />
+              Sign in to save and share
+            </Link>
+          ) : (
+            <Dialog
+              open={open}
+              onOpenChange={(open) => {
+                setOpen(open);
+                setError("");
+              }}
+            >
+              <DialogTrigger asChild>
+                <button
                   type="button"
-                  className="sm:mr-auto"
-                  onClick={() => {
-                    if (unsaved === 0) {
-                      void finishSignOut();
-                      return;
-                    }
-                    // One dialog at a time: the confirmation replaces this one.
-                    setOpen(false);
-                    setConfirmSignOut(true);
-                  }}
+                  title={me.email}
+                  className="flex items-center gap-3 text-sm text-nav-muted rounded px-2 py-1 hover:bg-nav-muted/15 hover:text-nav-foreground"
                 >
-                  <LogOut />
-                  Sign out
-                </Button>
-                <DialogClose asChild>
-                  <Button variant="outline" type="button">
-                    Cancel
-                  </Button>
-                </DialogClose>
-                <Button type="submit" disabled={offline}>
-                  Save
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+                  {me.name}
+                  <UserAvatar
+                    email={me.email}
+                    name={me.name}
+                    className="size-7 ring-1 ring-nav-muted/40"
+                  />
+                </button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[425px]">
+                <form onSubmit={saveName} autoComplete="off">
+                  <DialogHeader className="mb-4">
+                    <DialogTitle>Account</DialogTitle>
+                    <DialogDescription>
+                      Your name is shown to the members of your boards instead
+                      of your email, {me.email}.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-2">
+                    <Label htmlFor="display-name">Name</Label>
+                    <Input
+                      id="display-name"
+                      name="name"
+                      defaultValue={me.name}
+                      maxLength={50}
+                      required
+                      aria-invalid={error !== ""}
+                    />
+                    {error && (
+                      <p role="alert" className="text-sm text-destructive">
+                        {error}
+                      </p>
+                    )}
+                    {offline && (
+                      <p className="text-sm text-muted-foreground">
+                        Changing your name needs a connection.
+                      </p>
+                    )}
+                  </div>
+                  <DialogFooter className="mt-4">
+                    <Button
+                      variant="ghost"
+                      type="button"
+                      className="sm:mr-auto"
+                      onClick={() => {
+                        if (unsaved === 0) {
+                          void finishSignOut();
+                          return;
+                        }
+                        // One dialog at a time: the confirmation replaces this one.
+                        setOpen(false);
+                        setConfirmSignOut(true);
+                      }}
+                    >
+                      <LogOut />
+                      Sign out
+                    </Button>
+                    <DialogClose asChild>
+                      <Button variant="outline" type="button">
+                        Cancel
+                      </Button>
+                    </DialogClose>
+                    <Button type="submit" disabled={offline}>
+                      Save
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
       </div>
 
       <AlertDialog open={confirmSignOut} onOpenChange={setConfirmSignOut}>
@@ -356,51 +369,6 @@ function FavoriteLink({ board, me }: { board: Favorite; me: Me }) {
       )}
       {board.name}
     </Link>
-  );
-}
-
-const themes = [
-  { value: "system", label: "System", Icon: Monitor },
-  { value: "light", label: "Light", Icon: Sun },
-  { value: "dark", label: "Dark", Icon: Moon },
-] satisfies { value: Theme; label: string; Icon: typeof Sun }[];
-
-// Applies at once rather than on Save: it's remembered on this device,
-// not on the account.
-function ThemePicker() {
-  const [theme, setChoice] = useState(readTheme);
-
-  return (
-    <div className="grid gap-2 mt-6">
-      <p id="theme-label" className="text-sm leading-none font-medium">
-        Appearance
-      </p>
-      <div
-        role="radiogroup"
-        aria-labelledby="theme-label"
-        className="grid grid-cols-3 gap-1 rounded-lg border bg-background p-1"
-      >
-        {themes.map(({ value, label, Icon }) => (
-          <button
-            key={value}
-            type="button"
-            role="radio"
-            aria-checked={theme === value}
-            onClick={() => {
-              setTheme(value);
-              setChoice(value);
-            }}
-            className="flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-checked:bg-card aria-checked:font-bold aria-checked:text-foreground aria-checked:shadow-sm dark:aria-checked:bg-accent dark:aria-checked:text-accent-foreground"
-          >
-            <Icon className="size-4" aria-hidden />
-            {label}
-          </button>
-        ))}
-      </div>
-      <p className="text-xs text-muted-foreground">
-        Remembered on this device. System follows your device's setting.
-      </p>
-    </div>
   );
 }
 

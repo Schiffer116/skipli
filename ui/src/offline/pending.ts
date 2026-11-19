@@ -95,10 +95,14 @@ export function createPending({
   userId,
   transport,
   store,
+  sends = true,
 }: {
   userId: string;
   transport: Transport;
   store: PendingStore;
+  // False for a guest: changes are kept, never sent, and not reported as
+  // waiting, as there's nowhere for them to go until the guest signs in.
+  sends?: boolean;
 }): Pending {
   let state: PendingState = {
     queued: 0,
@@ -127,7 +131,7 @@ export function createPending({
     const all = await store.all();
     queuedIds.clear();
     all.forEach(({ id }) => queuedIds.add(id));
-    const held = all.filter(({ id }) => waiting.has(id));
+    const held = sends ? all.filter(({ id }) => waiting.has(id)) : [];
     setState({
       queued: all.length,
       waiting: held.length,
@@ -184,7 +188,7 @@ export function createPending({
   async function run() {
     clearTimeout(retry);
     retry = undefined;
-    if (closed || state.paused || isOffline()) return hold();
+    if (closed || !sends || state.paused || isOffline()) return hold();
     setState({ sending: true });
     try {
       // Takes the oldest change each time round, so ones made while this
@@ -240,7 +244,7 @@ export function createPending({
   let queueing: Promise<unknown> = Promise.resolve();
 
   const online = () => void send();
-  window.addEventListener("online", online);
+  if (sends) window.addEventListener("online", online);
 
   // Changes left from before (an earlier visit, or another tab) wait
   // already.
@@ -337,8 +341,9 @@ const swapListeners = new Set<() => void>();
 // Starts sending this person's Pending changes, once who is signed in is
 // known. The same person again keeps theirs going, and sends again after
 // a pause; someone else leaves the last person's changes waiting on the
-// device, untouched, until they sign in here again.
-export function startPending(me: Me) {
+// device, untouched, until they sign in here again. A guest's are kept and
+// never sent (sends: false).
+export function startPending(me: Me, { sends = true } = {}) {
   if (current?.userId === me.id) {
     current.resume();
     return current;
@@ -349,6 +354,7 @@ export function startPending(me: Me) {
     userId: me.id,
     transport: httpTransport,
     store: pendingStore(me),
+    sends,
   });
   stopForwarding = current.onDropped((change) =>
     droppedListeners.forEach((listener) => listener(change)),

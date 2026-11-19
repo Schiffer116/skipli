@@ -3,7 +3,8 @@
 //
 // Online they load from the server and keep what they load in the Offline
 // copy; offline (the browser says so), or when the server doesn't answer at
-// all, they read the Offline copy instead.
+// all, they read the Offline copy instead. A guest is always offline: they
+// only ever read their Offline copy, and never ask the server anything.
 import {
   data,
   redirect,
@@ -29,7 +30,13 @@ import {
   saveList,
   saveMe,
 } from "@/offline/copy";
-import { activeUser, setActiveUser } from "@/offline/session";
+import {
+  activeUser,
+  guestState,
+  isGuest,
+  setActiveUser,
+} from "@/offline/session";
+import { GUEST, moveGuestInto, startGuestCopy } from "@/offline/guest";
 import { socket } from "@/utils/socket";
 import { finishSignOut } from "@/offline/signOut";
 import { isOffline } from "@/offline/network";
@@ -84,7 +91,7 @@ async function serverOrCopy<T>(
   server: () => Promise<T>,
   copy: () => Promise<T>,
 ): Promise<T> {
-  if (isOffline()) return copy();
+  if (isOffline() || isGuest()) return copy();
   try {
     return await server();
   } catch (error) {
@@ -113,7 +120,14 @@ export function forgetMe() {
   signedIn = null;
 }
 
-const findMe = () => serverOrCopy(meFromServer, meFromCopy);
+const findMe = () =>
+  isGuest() ? guest() : serverOrCopy(meFromServer, meFromCopy);
+
+async function guest(): Promise<Me> {
+  await startGuestCopy();
+  startPending(GUEST, { sends: false });
+  return GUEST;
+}
 
 async function meFromCopy(): Promise<Me> {
   const userId = activeUser();
@@ -133,7 +147,13 @@ async function meFromServer(): Promise<Me> {
   const me: Me = await res.json();
   setActiveUser(me.id);
   await saveMe(me);
-  startPending(me);
+  // Signed in from guest mode: the guest's boards move into this account
+  // before any of its Pending changes are sent, and every loader waits for
+  // them to be sent (or held), so none reads the account without them.
+  const moving = guestState() === "moving";
+  if (moving) await moveGuestInto(me);
+  const pending = startPending(me);
+  if (moving) await pending.send();
   return me;
 }
 
@@ -190,6 +210,7 @@ export type BoardListData = {
 
 export const boardListLoader = async (): Promise<BoardListData> => {
   const me = await getMe();
+  if (me.id === GUEST.id) return guestBoardList();
   return serverOrCopy(
     () => serverBoardList(me.id),
     () => offlineBoardList(me.id),
@@ -256,6 +277,13 @@ async function offlineBoardList(userId: string): Promise<BoardListData> {
   };
 }
 
+// A guest's boards are all on this device, so the list says nothing of
+// when they were saved or what's missing.
+async function guestBoardList(): Promise<BoardListData> {
+  const { boards, teamBoards } = await offlineBoardList(GUEST.id);
+  return { boards, teamBoards };
+}
+
 export type BoardViewData = {
   cardsWithTasks: CardType[];
   name: string;
@@ -276,7 +304,9 @@ export async function boardViewLoader({
   // here, so it likely will), so it may already be carrying changes when
   // the board is read, and nothing saved meanwhile can be missed.
   const leaveEarly =
-    !isOffline() && activeUser() ? socket.joinEarly(boardId) : () => {};
+    !isOffline() && !isGuest() && activeUser()
+      ? socket.joinEarly(boardId)
+      : () => {};
   try {
     const userId = (await getMe()).id;
     const saved = await loadBoard(userId, boardId);
@@ -286,6 +316,9 @@ export async function boardViewLoader({
     // (useOpenBoard). One a dropped change left out of date waits for the
     // server, unless offline.
     if (saved && (!saved.outOfDate || isOffline())) return fromCopy(saved);
+    if (userId === GUEST.id) {
+      throw data(null, { status: 404, statusText: "Not Found" });
+    }
 
     return await serverOrCopy(
       async () => {

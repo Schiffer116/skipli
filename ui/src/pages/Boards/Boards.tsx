@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Outlet, useLoaderData } from "react-router";
 
+import { GUEST } from "@/offline/guest";
 import { make } from "@/offline/pending";
 import { revisionOf } from "@/utils/revision";
 
@@ -57,7 +58,8 @@ function Boards({
         favorites={favorites}
         orderFavorites={orderFavorites}
       />
-      <OfflineBanner />
+      {/* A guest has nothing to sync, online or not. */}
+      {me.id !== GUEST.id && <OfflineBanner />}
       {/* The page takes whatever height the header and banner leave. */}
       <div className="flex-1 min-h-0 overflow-y-auto">
         <Outlet

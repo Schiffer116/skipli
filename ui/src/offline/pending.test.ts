@@ -304,3 +304,29 @@ describe("the server's broadcast", () => {
     expect(pending.isOwn("a teammate's")).toBe(false);
   });
 });
+
+describe("a guest's changes", () => {
+  it("are kept and never sent, nor reported as waiting", async () => {
+    pending.close();
+    pending = createPending({
+      userId: me.id,
+      transport,
+      store: pendingStore(me),
+      sends: false,
+    });
+
+    expect(await pending.make(createTask("t1"))).toBe("waiting");
+    await pending.send();
+    goOnline();
+    await pending.settled();
+
+    expect(sent).toEqual([]);
+    expect(await loadPending(me.id)).toHaveLength(1);
+    expect(pending.state()).toMatchObject({
+      queued: 1,
+      waiting: 0,
+      sending: false,
+    });
+    expect(pending.state().waitingIds.size).toBe(0);
+  });
+});

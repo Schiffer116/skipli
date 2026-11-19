@@ -1,4 +1,4 @@
-// Light or dark, chosen per device in the account dialog, following the
+// Light or dark, chosen per device in the header's theme menu, following the
 // OS by default. index.html applies it before the first paint with the
 // same key and rules, so keep the two in step.
 export type Theme = "system" | "light" | "dark";
