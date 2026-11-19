@@ -1,4 +1,4 @@
-import { useContext } from "react";
+import { useContext, useRef } from "react";
 import { useParams } from "react-router";
 
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 
 import { BoardContext } from "../BoardContext";
 import useEscape from "@/hooks/useEscape";
+import useOutsidePointerDown from "@/hooks/useOutsidePointerDown";
 import { newId } from "@/offline/ids";
 
 export default function CreateCard() {
@@ -14,6 +15,8 @@ export default function CreateCard() {
 
   const { make, setShowCreateCardForm } = useContext(BoardContext)!;
   useEscape(() => setShowCreateCardForm(false));
+  const formRef = useRef<HTMLFormElement>(null);
+  useOutsidePointerDown(formRef, () => setShowCreateCardForm(false));
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -35,7 +38,7 @@ export default function CreateCard() {
   };
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form ref={formRef} onSubmit={handleSubmit}>
       <Card className="w-full bg-card border-border">
         <CardHeader>
           <CardTitle className="text-heading">Create a card</CardTitle>

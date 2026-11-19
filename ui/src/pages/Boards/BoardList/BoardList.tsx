@@ -53,7 +53,7 @@ function BoardList({ loaderData }: { loaderData: BoardListData }) {
   return (
     <div className="flex flex-col gap-10 px-10 py-8">
       <div className="flex flex-col gap-4">
-        <h1 className="text-2xl font-bold">Your workspace</h1>
+        <h1 className="text-2xl font-bold">Your boards</h1>
         <SortableBoards
           boards={boards}
           setBoards={setBoards}

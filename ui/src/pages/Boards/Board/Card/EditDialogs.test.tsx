@@ -166,7 +166,7 @@ describe("Edit card and Edit task", () => {
     const user = userEvent.setup();
     open(card);
     await user.click(screen.getByRole("button", { name: "Edit card" }));
-    expect(footerButtons()).toEqual(["Delete card", "Cancel", "Save"]);
+    expect(footerButtons()).toEqual(["Delete", "Cancel", "Save"]);
     cleanup();
 
     open(
@@ -179,7 +179,7 @@ describe("Edit card and Edit task", () => {
       />,
     );
     await user.click(screen.getByRole("button", { name: "Edit task" }));
-    expect(footerButtons()).toEqual(["Delete task", "Cancel", "Save"]);
+    expect(footerButtons()).toEqual(["Delete", "Cancel", "Save"]);
   });
 });
 
