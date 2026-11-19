@@ -1,4 +1,4 @@
-import { useContext } from "react";
+import { useContext, useRef } from "react";
 import { useParams } from "react-router";
 
 import { Input } from "@/components/ui/input";
@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 
 import { BoardContext } from "../../BoardContext";
 import useEscape from "@/hooks/useEscape";
+import useOutsidePointerDown from "@/hooks/useOutsidePointerDown";
 import { newId } from "@/offline/ids";
 
 type TaskFormProps = {
@@ -16,6 +17,8 @@ export default function CreateTaskForm(props: TaskFormProps) {
   const { cardId } = props;
   const { make, setCreateTaskFormId } = useContext(BoardContext)!;
   useEscape(() => setCreateTaskFormId(null));
+  const formRef = useRef<HTMLFormElement>(null);
+  useOutsidePointerDown(formRef, () => setCreateTaskFormId(null));
 
   const boardId = useParams().boardId!;
 
@@ -34,7 +37,12 @@ export default function CreateTaskForm(props: TaskFormProps) {
   };
 
   return (
-    <form className="w-full" onSubmit={handleSubmit} autoComplete="off">
+    <form
+      ref={formRef}
+      className="w-full"
+      onSubmit={handleSubmit}
+      autoComplete="off"
+    >
       <div className="space-y-3 rounded-md w-full">
         <Input
           name="name"
