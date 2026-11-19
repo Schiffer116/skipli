@@ -56,9 +56,7 @@ function renderBar(orderFavorites = vi.fn()) {
     </MemoryRouter>,
   );
   const bar = screen.getByRole("navigation", { name: "Favorite boards" });
-  // The accessible name also carries the star's label, so match the end.
-  const link = (name: string) =>
-    within(bar).getByRole("link", { name: new RegExp(`${name}$`) });
+  const link = (name: string) => within(bar).getByRole("link", { name });
   const where = () => screen.getByTestId("where").textContent;
   return { link, where, orderFavorites };
 }
