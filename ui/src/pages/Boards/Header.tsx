@@ -18,7 +18,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { LogOut, Monitor, Moon, Star, Sun, UsersRound } from "lucide-react";
+import { LogOut, Monitor, Moon, Sun } from "lucide-react";
 
 import UserAvatar from "@/components/UserAvatar";
 import { Button } from "@/components/ui/button";
@@ -211,25 +211,20 @@ export default function Header({
       </AlertDialog>
 
       {favorites.length > 0 && (
-        <FavoriteBar
-          me={me}
-          favorites={favorites}
-          orderFavorites={orderFavorites}
-        />
+        <FavoriteBar favorites={favorites} orderFavorites={orderFavorites} />
       )}
     </header>
   );
 }
 
 type FavoriteBarProps = {
-  me: Me;
   favorites: Favorite[];
   orderFavorites: (favorites: Favorite[]) => void;
 };
 
 // The links are the drag handles: a press that moves 5px starts a drag, so a
 // plain click still navigates, and Space (not Enter) picks one up by keyboard.
-function FavoriteBar({ me, favorites, orderFavorites }: FavoriteBarProps) {
+function FavoriteBar({ favorites, orderFavorites }: FavoriteBarProps) {
   const barRef = useRef<HTMLElement>(null);
   // Set while a drag is on, and for the click that ends it. dnd-kit stops that
   // click's propagation, but the browser still follows the link, so the click
@@ -309,7 +304,7 @@ function FavoriteBar({ me, favorites, orderFavorites }: FavoriteBarProps) {
           className="bg-nav text-nav-muted border-t border-nav-muted/20 h-9 px-4 flex items-center gap-1 overflow-x-auto text-sm"
         >
           {favorites.map((board) => (
-            <FavoriteLink key={board.id} board={board} me={me} />
+            <FavoriteLink key={board.id} board={board} />
           ))}
         </nav>
       </SortableContext>
@@ -317,7 +312,7 @@ function FavoriteBar({ me, favorites, orderFavorites }: FavoriteBarProps) {
   );
 }
 
-function FavoriteLink({ board, me }: { board: Favorite; me: Me }) {
+function FavoriteLink({ board }: { board: Favorite }) {
   const {
     attributes,
     listeners,
@@ -336,24 +331,14 @@ function FavoriteLink({ board, me }: { board: Favorite; me: Me }) {
       to={`/boards/${board.id}`}
       draggable={false}
       style={{
-        transform: CSS.Transform.toString(transform),
+        // Translate only: a favorite of another width must not stretch.
+        transform: CSS.Translate.toString(transform),
         transition,
         opacity: isDragging ? 0.5 : 1,
         zIndex: isDragging ? 10 : undefined,
       }}
-      className="flex shrink-0 items-center gap-1.5 rounded px-2 py-1 hover:bg-nav-muted/15 hover:text-nav-foreground"
+      className="relative flex shrink-0 items-center rounded px-2 py-1 hover:bg-nav-muted/15 hover:text-nav-foreground before:absolute before:-left-[3px] before:top-1.5 before:bottom-1.5 before:w-px before:bg-nav-muted/30 first:before:hidden"
     >
-      {board.owner === me.id ? (
-        <Star
-          className="size-3.5 fill-current text-amber-400"
-          aria-label="Your board"
-        />
-      ) : (
-        <UsersRound
-          className="size-3.5 text-sky-400"
-          aria-label="Shared with you"
-        />
-      )}
       {board.name}
     </Link>
   );
