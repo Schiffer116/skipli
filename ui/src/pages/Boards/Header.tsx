@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import {
   closestCenter,
@@ -8,6 +8,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type Modifier,
 } from "@dnd-kit/core";
 import {
   arrayMove,
@@ -50,6 +51,7 @@ import { apiFetch } from "@/utils/apiFetch";
 import { SpaceKeyboardSensor } from "@/utils/keyboardSensor";
 import { readTheme, setTheme, type Theme } from "@/utils/theme";
 
+import { clampToBar } from "./clampToBar";
 import { forgetMe, type Favorite, type Me } from "./loaders";
 
 type HeaderProps = {
@@ -228,6 +230,44 @@ type FavoriteBarProps = {
 // The links are the drag handles: a press that moves 5px starts a drag, so a
 // plain click still navigates, and Space (not Enter) picks one up by keyboard.
 function FavoriteBar({ me, favorites, orderFavorites }: FavoriteBarProps) {
+  const barRef = useRef<HTMLElement>(null);
+  // Set while a drag is on, and for the click that ends it. dnd-kit stops that
+  // click's propagation, but the browser still follows the link, so the click
+  // is cancelled at the window, where it arrives before dnd-kit sees it. A drag
+  // that ends without a click (a keyboard drop, say) leaves the flag set, so
+  // the next press or key clears it; Enter on a link is a click, so keys count.
+  const dragging = useRef(false);
+
+  useEffect(() => {
+    const cancelClick = (event: MouseEvent) => {
+      if (!dragging.current) return;
+      event.preventDefault();
+      dragging.current = false;
+    };
+    const clear = () => {
+      dragging.current = false;
+    };
+    window.addEventListener("click", cancelClick, true);
+    window.addEventListener("pointerdown", clear, true);
+    window.addEventListener("keydown", clear, true);
+    return () => {
+      window.removeEventListener("click", cancelClick, true);
+      window.removeEventListener("pointerdown", clear, true);
+      window.removeEventListener("keydown", clear, true);
+    };
+  }, []);
+
+  // A drag moves sideways along the bar only, and stays within its edges.
+  const restrictToBarAxis: Modifier = ({ transform, draggingNodeRect }) => {
+    const bar = barRef.current?.getBoundingClientRect();
+    if (!bar || !draggingNodeRect) return { ...transform, y: 0 };
+    return {
+      ...transform,
+      x: clampToBar(transform.x, bar, draggingNodeRect),
+      y: 0,
+    };
+  };
+
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, {
@@ -252,7 +292,11 @@ function FavoriteBar({ me, favorites, orderFavorites }: FavoriteBarProps) {
   return (
     <DndContext
       sensors={sensors}
+      modifiers={[restrictToBarAxis]}
       collisionDetection={closestCenter}
+      onDragStart={() => {
+        dragging.current = true;
+      }}
       onDragEnd={onDragEnd}
     >
       <SortableContext
@@ -260,6 +304,7 @@ function FavoriteBar({ me, favorites, orderFavorites }: FavoriteBarProps) {
         strategy={horizontalListSortingStrategy}
       >
         <nav
+          ref={barRef}
           aria-label="Favorite boards"
           className="bg-nav text-nav-muted border-t border-nav-muted/20 h-9 px-4 flex items-center gap-1 overflow-x-auto text-sm"
         >
