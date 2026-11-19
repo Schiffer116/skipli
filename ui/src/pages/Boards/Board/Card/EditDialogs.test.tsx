@@ -1,14 +1,22 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { BoardContext } from "../BoardContext";
 import EditCardDialog from "./EditCardDialog";
 import EditTaskDialog from "./Task/EditTaskDialog";
 
 afterEach(cleanup);
+
+// jsdom lacks the layout and pointer-capture APIs Radix Select calls when it
+// opens; these stubs let it run.
+beforeAll(() => {
+  Element.prototype.scrollIntoView ??= () => {};
+  Element.prototype.hasPointerCapture ??= () => false;
+  Element.prototype.releasePointerCapture ??= () => {};
+});
 
 const make = vi.fn(async () => {});
 
@@ -210,6 +218,13 @@ describe("Edit task", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  async function pickStatus(user: ReturnType<typeof userEvent.setup>, option: string) {
+    await user.click(screen.getByRole("combobox", { name: "Status" }));
+    const listbox = await screen.findByRole("listbox");
+    await user.click(within(listbox).getByRole("option", { name: option }));
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+  }
+
   it("only offers Pending or Done as the status", async () => {
     const user = userEvent.setup();
     open(
@@ -222,18 +237,70 @@ describe("Edit task", () => {
       />,
     );
     await user.click(screen.getByRole("button", { name: "Edit task" }));
-    const status = screen.getByLabelText("Status");
+    expect(screen.getByRole("combobox", { name: "Status" }).textContent).toBe(
+      "Pending",
+    );
+    screen.getByRole("combobox", { name: "Status" }).focus();
+    await user.keyboard("{Enter}");
     expect(
-      within(status)
+      within(await screen.findByRole("listbox"))
         .getAllByRole("option")
         .map((o) => o.textContent),
     ).toEqual(["Pending", "Done"]);
-    await user.selectOptions(status, "done");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+    // Closing the select alone leaves the modal dialog open, and its
+    // pointer-events lock would leak into the next test.
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("sends only the status when only the status changed, and keeps the dialog open on pick", async () => {
+    const user = userEvent.setup();
+    open(
+      <EditTaskDialog
+        id="t1"
+        cardId="c1"
+        name="Milk"
+        description=""
+        status="pending"
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Edit task" }));
+    await pickStatus(user, "Done");
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(make).not.toHaveBeenCalled();
+
     await user.click(screen.getByRole("button", { name: "Save" }));
 
-    expect(make).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ type: "updateTask", status: "done" }),
+    expect(make).toHaveBeenCalledExactlyOnceWith({
+      type: "updateTask",
+      boardId: "b1",
+      cardId: "c1",
+      taskId: "t1",
+      status: "done",
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("sends nothing when the status is picked back to what it was", async () => {
+    const user = userEvent.setup();
+    open(
+      <EditTaskDialog
+        id="t1"
+        cardId="c1"
+        name="Milk"
+        description=""
+        status="done"
+      />,
     );
+    await user.click(screen.getByRole("button", { name: "Edit task" }));
+    await pickStatus(user, "Pending");
+    await pickStatus(user, "Done");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(make).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("saves only the field it changed, then closes", async () => {

@@ -1,3 +1,8 @@
 allowBuilds:
   '@tailwindcss/oxide': false
   esbuild: false
+overrides:
+  # Dialog and Select must share one dismissable layer: two copies each track
+  # the body's pointer-events lock, and a Select inside a Dialog leaves the
+  # page unclickable after the dialog closes.
+  '@radix-ui/react-dismissable-layer': 1.1.20

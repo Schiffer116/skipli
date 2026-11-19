@@ -13,6 +13,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { submitOnModEnter } from "@/lib/submitOnModEnter";
 import { AlertDialog } from "@radix-ui/react-alert-dialog";
@@ -115,15 +122,18 @@ export default function EditTaskDialog(props: TaskType) {
               </div>
               <div className="grid gap-3">
                 <Label htmlFor="task-status">Status</Label>
-                <select
-                  id="task-status"
+                <Select
                   name="status"
                   defaultValue={status === "done" ? "done" : "pending"}
-                  className="border-input dark:bg-background h-9 w-full rounded-md border bg-transparent px-3 py-1 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] md:text-sm"
                 >
-                  <option value="pending">Pending</option>
-                  <option value="done">Done</option>
-                </select>
+                  <SelectTrigger id="task-status" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="done">Done</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <DialogFooter className="mt-4 flex-row justify-end">
