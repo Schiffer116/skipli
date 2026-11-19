@@ -233,15 +233,28 @@ function FavoriteBar({ me, favorites, orderFavorites }: FavoriteBarProps) {
   const barRef = useRef<HTMLElement>(null);
   // Set while a drag is on, and for the click that ends it. dnd-kit stops that
   // click's propagation, but the browser still follows the link, so the click
-  // is cancelled at the window, where it arrives before dnd-kit sees it.
+  // is cancelled at the window, where it arrives before dnd-kit sees it. A drag
+  // that ends without a click (a keyboard drop, say) leaves the flag set, so
+  // the next press or key clears it; Enter on a link is a click, so keys count.
   const dragging = useRef(false);
 
   useEffect(() => {
     const cancelClick = (event: MouseEvent) => {
-      if (dragging.current) event.preventDefault();
+      if (!dragging.current) return;
+      event.preventDefault();
+      dragging.current = false;
+    };
+    const clear = () => {
+      dragging.current = false;
     };
     window.addEventListener("click", cancelClick, true);
-    return () => window.removeEventListener("click", cancelClick, true);
+    window.addEventListener("pointerdown", clear, true);
+    window.addEventListener("keydown", clear, true);
+    return () => {
+      window.removeEventListener("click", cancelClick, true);
+      window.removeEventListener("pointerdown", clear, true);
+      window.removeEventListener("keydown", clear, true);
+    };
   }, []);
 
   // A drag moves sideways along the bar only, and stays within its edges.
@@ -253,14 +266,6 @@ function FavoriteBar({ me, favorites, orderFavorites }: FavoriteBarProps) {
       x: clampToBar(transform.x, bar, draggingNodeRect),
       y: 0,
     };
-  };
-
-  // Released after the click, if there is one; the timeout is for drags that
-  // end anywhere else.
-  const clearDraggingAfterClick = () => {
-    setTimeout(() => {
-      dragging.current = false;
-    });
   };
 
   const sensors = useSensors(
@@ -292,11 +297,7 @@ function FavoriteBar({ me, favorites, orderFavorites }: FavoriteBarProps) {
       onDragStart={() => {
         dragging.current = true;
       }}
-      onDragEnd={(event) => {
-        clearDraggingAfterClick();
-        onDragEnd(event);
-      }}
-      onDragCancel={clearDraggingAfterClick}
+      onDragEnd={onDragEnd}
     >
       <SortableContext
         items={favorites}

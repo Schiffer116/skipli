@@ -23,7 +23,10 @@ vi.mock("@/utils/theme", () => ({
   setTheme: vi.fn(),
 }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 const me: Me = { id: "u1", email: "me@example.com", name: "Me" };
 
@@ -107,16 +110,22 @@ describe("favorites bar", () => {
     ]);
   });
 
-  it("swallows only the click that follows a drag", async () => {
-    const user = userEvent.setup();
+  it("swallows only the click that follows a drag", () => {
+    // dnd-kit swallows every click for 50ms after a drag ends (its own timer),
+    // so the timers are faked and advanced past that window, not waited out.
+    vi.useFakeTimers();
     const { link, where } = renderBar();
+    const charlie = link("Charlie");
 
-    expect(await drag(user, link("Charlie"), link("Charlie"), -220, 0)).toBe(
-      false,
-    );
+    fireEvent.mouseDown(charlie, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.mouseMove(document, { clientX: 60, clientY: 10 });
+    fireEvent.mouseMove(document, { clientX: -210, clientY: 10 });
+    fireEvent.mouseUp(charlie, { button: 0, clientX: -210, clientY: 10 });
+    expect(fireEvent.click(charlie)).toBe(false);
     expect(where()).toBe("/boards");
 
-    await user.click(link("Bravo"));
+    vi.advanceTimersByTime(50);
+    fireEvent.click(link("Bravo"));
     expect(where()).toBe("/boards/b");
   });
 });
