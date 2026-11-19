@@ -35,7 +35,7 @@ import { BoardContext } from "../../BoardContext";
 import type { TaskType } from "./Task";
 
 export default function EditTaskDialog(props: TaskType) {
-  const { id, cardId, name, description, status } = props;
+  const { id, cardId, name, description } = props;
 
   const boardId = useParams().boardId!;
   const { make, setCreateTaskFormId, setShowCreateCardForm } =
@@ -47,12 +47,11 @@ export default function EditTaskDialog(props: TaskType) {
     const formData = new FormData(e.currentTarget);
     const name = formData.get("name") as string;
     const description = (formData.get("description") as string) ?? "";
-    const status = formData.get("status") as string;
     if (!name) {
       return;
     }
 
-    const changed = changedFields(props, { name, description, status });
+    const changed = changedFields(props, { name, description });
     if (Object.keys(changed).length > 0) {
       void make({
         type: "updateTask",
@@ -112,18 +111,6 @@ export default function EditTaskDialog(props: TaskType) {
                   defaultValue={description}
                   onKeyDown={submitOnModEnter}
                 />
-              </div>
-              <div className="grid gap-3">
-                <Label htmlFor="task-status">Status</Label>
-                <select
-                  id="task-status"
-                  name="status"
-                  defaultValue={status === "done" ? "done" : "pending"}
-                  className="border-input dark:bg-background h-9 w-full rounded-md border bg-transparent px-3 py-1 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] md:text-sm"
-                >
-                  <option value="pending">Pending</option>
-                  <option value="done">Done</option>
-                </select>
               </div>
             </div>
             <DialogFooter className="mt-4 flex-row justify-end">

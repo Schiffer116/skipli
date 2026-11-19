@@ -210,32 +210,6 @@ describe("Edit task", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("only offers Pending or Done as the status", async () => {
-    const user = userEvent.setup();
-    open(
-      <EditTaskDialog
-        id="t1"
-        cardId="c1"
-        name="Milk"
-        description=""
-        status="pending"
-      />,
-    );
-    await user.click(screen.getByRole("button", { name: "Edit task" }));
-    const status = screen.getByLabelText("Status");
-    expect(
-      within(status)
-        .getAllByRole("option")
-        .map((o) => o.textContent),
-    ).toEqual(["Pending", "Done"]);
-    await user.selectOptions(status, "done");
-    await user.click(screen.getByRole("button", { name: "Save" }));
-
-    expect(make).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ type: "updateTask", status: "done" }),
-    );
-  });
-
   it("saves only the field it changed, then closes", async () => {
     const user = userEvent.setup();
     open(
